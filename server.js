@@ -39,6 +39,25 @@ app.get('/api/config', (req, res) => {
   }
 });
 
+// Get full saved config (for sending - includes password)
+app.get('/api/config/full', (req, res) => {
+  const configPath = path.join(__dirname, 'config.json');
+
+  if (!fs.existsSync(configPath)) {
+    return res.json({});
+  }
+
+  try {
+    const encrypted = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    res.json({
+      email: decrypt(encrypted.email),
+      password: decrypt(encrypted.password)
+    });
+  } catch (e) {
+    res.json({});
+  }
+});
+
 // Save config
 app.post('/api/save-config', (req, res) => {
   const { email, password } = req.body;

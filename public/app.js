@@ -56,13 +56,15 @@ function extractEditableContent(html) {
 // Load saved Gmail config
 async function loadSavedConfig() {
   try {
-    const res = await fetch('/api/config');
+    const res = await fetch('/api/config/full');
     if (res.ok) {
       const data = await res.json();
-      if (data.email) {
+      if (data.email && data.password) {
         state.credentials.email = data.email;
+        state.credentials.password = data.password;
         state.credentials.remember = true;
         $('#gmailEmail').value = data.email;
+        $('#gmailPassword').value = '••••••••••••••••';
         $('#rememberCreds').checked = true;
       }
     }
