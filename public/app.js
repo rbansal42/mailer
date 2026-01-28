@@ -2,10 +2,11 @@
 const state = {
   currentTemplate: 'simple',
   templates: {},
-  credentials: { email: '', password: '', remember: false },
+  credentials: { email: '', password: '', geminiKey: '', remember: false },
   recipients: [],
   variables: [],
   sending: false,
+  formatting: false,
   abortController: null
 };
 
@@ -67,6 +68,10 @@ async function loadSavedConfig() {
         $('#gmailPassword').value = '••••••••••••••••';
         $('#rememberCreds').checked = true;
       }
+      if (data.geminiKey) {
+        state.credentials.geminiKey = data.geminiKey;
+        $('#geminiKey').value = '••••••••••••••••';
+      }
     }
   } catch (e) {
     // No saved config, that's fine
@@ -107,6 +112,9 @@ function setupEventListeners() {
 
   // Save config
   $('#saveConfig').addEventListener('click', saveConfig);
+
+  // Format with AI
+  $('#formatBtn').addEventListener('click', formatWithAI);
 
   // Send
   $('#sendBtn').addEventListener('click', sendEmails);
@@ -256,8 +264,19 @@ function validateForm() {
 // Save Gmail config
 async function saveConfig() {
   state.credentials.email = $('#gmailEmail').value.trim();
-  state.credentials.password = $('#gmailPassword').value;
   state.credentials.remember = $('#rememberCreds').checked;
+
+  // Only update password if not showing masked value
+  const pwdValue = $('#gmailPassword').value;
+  if (pwdValue && !pwdValue.startsWith('•')) {
+    state.credentials.password = pwdValue;
+  }
+
+  // Only update gemini key if not showing masked value
+  const geminiValue = $('#geminiKey').value;
+  if (geminiValue && !geminiValue.startsWith('•')) {
+    state.credentials.geminiKey = geminiValue;
+  }
 
   if (state.credentials.remember && state.credentials.email && state.credentials.password) {
     try {
@@ -266,7 +285,8 @@ async function saveConfig() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: state.credentials.email,
-          password: state.credentials.password
+          password: state.credentials.password,
+          geminiKey: state.credentials.geminiKey || null
         })
       });
     } catch (e) {
@@ -408,5 +428,56 @@ function showResults(data) {
 function cancelSending() {
   if (state.abortController) {
     state.abortController.abort();
+  }
+}
+
+// Format content with AI (Gemini)
+async function formatWithAI() {
+  if (state.formatting) return;
+
+  const content = $('#editor').value.trim();
+  if (!content) {
+    alert('Please enter some content to format');
+    return;
+  }
+
+  if (!state.credentials.geminiKey) {
+    alert('Please add your Gemini API key in Gmail Config');
+    $('#configModal').classList.add('open');
+    return;
+  }
+
+  state.formatting = true;
+  const btn = $('#formatBtn');
+  btn.classList.add('loading');
+  btn.disabled = true;
+
+  try {
+    const res = await fetch('/api/format', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        content: content,
+        geminiKey: state.credentials.geminiKey
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Formatting failed');
+    }
+
+    const data = await res.json();
+    if (data.formatted) {
+      $('#editor').value = data.formatted;
+      updatePreview();
+      validateForm();
+    }
+  } catch (e) {
+    alert('Formatting failed: ' + e.message);
+  } finally {
+    state.formatting = false;
+    btn.classList.remove('loading');
+    btn.disabled = false;
   }
 }

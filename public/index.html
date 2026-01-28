@@ -45,8 +45,11 @@
       </div>
       <div class="compose-grid">
         <div class="editor-pane">
-          <label>Content</label>
-          <textarea id="editor" placeholder="Edit your email content here..."></textarea>
+          <div class="editor-header">
+            <label>Content</label>
+            <button id="formatBtn" class="format-btn">Format with AI</button>
+          </div>
+          <textarea id="editor" placeholder="Paste your email content here and click 'Format with AI' to convert it to proper HTML..."></textarea>
         </div>
         <div class="preview-pane">
           <label>Preview</label>
@@ -113,6 +116,10 @@
           <label for="gmailPassword">App Password:</label>
           <input type="password" id="gmailPassword" placeholder="xxxx xxxx xxxx xxxx">
         </div>
+        <div class="form-group">
+          <label for="geminiKey">Gemini API Key (for AI formatting):</label>
+          <input type="password" id="geminiKey" placeholder="AIza...">
+        </div>
         <div class="form-group checkbox">
           <label>
             <input type="checkbox" id="rememberCreds">
@@ -120,8 +127,9 @@
           </label>
         </div>
         <div class="form-info">
-          <p>Requires a Gmail App Password (not your regular password).</p>
-          <a href="https://myaccount.google.com/apppasswords" target="_blank">Create App Password →</a>
+          <p>Gmail requires an App Password. Gemini key is optional (for AI formatting).</p>
+          <a href="https://myaccount.google.com/apppasswords" target="_blank">Gmail App Password</a> |
+          <a href="https://aistudio.google.com/apikey" target="_blank">Gemini API Key</a>
         </div>
       </div>
       <div class="modal-footer">

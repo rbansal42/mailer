@@ -49,10 +49,14 @@ app.get('/api/config/full', (req, res) => {
 
   try {
     const encrypted = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    res.json({
+    const result = {
       email: decrypt(encrypted.email),
       password: decrypt(encrypted.password)
-    });
+    };
+    if (encrypted.geminiKey) {
+      result.geminiKey = decrypt(encrypted.geminiKey);
+    }
+    res.json(result);
   } catch (e) {
     res.json({});
   }
@@ -60,7 +64,7 @@ app.get('/api/config/full', (req, res) => {
 
 // Save config
 app.post('/api/save-config', (req, res) => {
-  const { email, password } = req.body;
+  const { email, password, geminiKey } = req.body;
 
   if (!email || !password) {
     return res.status(400).json({ error: 'Email and password required' });
@@ -72,8 +76,67 @@ app.post('/api/save-config', (req, res) => {
     password: encrypt(password)
   };
 
+  if (geminiKey) {
+    encrypted.geminiKey = encrypt(geminiKey);
+  }
+
   fs.writeFileSync(configPath, JSON.stringify(encrypted, null, 2));
   res.json({ success: true });
+});
+
+// Format content with Gemini AI
+app.post('/api/format', async (req, res) => {
+  const { content, geminiKey } = req.body;
+
+  if (!content || !geminiKey) {
+    return res.status(400).json({ error: 'Content and Gemini API key required' });
+  }
+
+  const prompt = `Convert this email content into clean HTML for an email template.
+Rules:
+- Wrap paragraphs in <p> tags
+- Replace any placeholder like [Name], [name], {name}, or similar with {{name}} (lowercase, double curly braces)
+- Replace any placeholder like [Company], {company}, etc with {{company}}
+- Keep the same tone and content, just format it as HTML
+- Do NOT add any styling, classes, or extra HTML structure
+- Do NOT include DOCTYPE, html, head, or body tags
+- Only output the HTML content, nothing else
+- Preserve any existing {{variables}} as-is
+
+Content to format:
+${content}`;
+
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.1,
+            maxOutputTokens: 2048
+          }
+        })
+      }
+    );
+
+    if (!response.ok) {
+      const err = await response.json();
+      return res.status(400).json({ error: err.error?.message || 'Gemini API error' });
+    }
+
+    const data = await response.json();
+    let formatted = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+    // Clean up any markdown code blocks if present
+    formatted = formatted.replace(/```html\n?/gi, '').replace(/```\n?/g, '').trim();
+
+    res.json({ formatted });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // Send emails (SSE)
