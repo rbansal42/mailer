@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mailer</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>Mailer</h1>
+    <button id="configBtn" class="config-btn">Gmail Config</button>
+  </header>
+
+  <main>
+    <!-- Section 1: Template Selection -->
+    <section class="section">
+      <h2>1. Choose Template</h2>
+      <div class="template-grid" id="templateGrid">
+        <button class="template-card active" data-template="simple">
+          <div class="template-preview simple-preview"></div>
+          <span>Simple</span>
+        </button>
+        <button class="template-card" data-template="newsletter">
+          <div class="template-preview newsletter-preview"></div>
+          <span>Newsletter</span>
+        </button>
+        <button class="template-card" data-template="professional">
+          <div class="template-preview professional-preview"></div>
+          <span>Professional</span>
+        </button>
+        <button class="template-card" data-template="outreach">
+          <div class="template-preview outreach-preview"></div>
+          <span>Outreach</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- Section 2: Compose -->
+    <section class="section">
+      <h2>2. Compose Email</h2>
+      <div class="subject-row">
+        <label for="subject">Subject:</label>
+        <input type="text" id="subject" placeholder="Hello {{name}}, welcome!">
+      </div>
+      <div class="compose-grid">
+        <div class="editor-pane">
+          <label>Content</label>
+          <textarea id="editor" placeholder="Edit your email content here..."></textarea>
+        </div>
+        <div class="preview-pane">
+          <label>Preview</label>
+          <iframe id="preview" title="Email preview"></iframe>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 3: Recipients -->
+    <section class="section">
+      <h2>3. Recipients</h2>
+      <div class="recipients-input">
+        <div class="input-header">
+          <span>Paste from Excel or CSV (first row = headers, must include "email" column)</span>
+          <label class="file-upload">
+            <input type="file" id="csvFile" accept=".csv,.txt">
+            Upload CSV
+          </label>
+        </div>
+        <textarea id="recipientsData" placeholder="name&#9;email&#9;company&#10;John&#9;john@example.com&#9;Acme&#10;Sarah&#9;sarah@test.com&#9;Beta"></textarea>
+      </div>
+      <div class="recipients-info">
+        <div id="detectedVars">Detected variables: <span class="vars-list">—</span></div>
+        <div id="recipientCount">Recipients: <span>0</span></div>
+      </div>
+      <div class="cc-row">
+        <label for="globalCc">Global CC:</label>
+        <input type="text" id="globalCc" placeholder="cc@example.com (optional)">
+      </div>
+    </section>
+
+    <!-- Section 4: Send -->
+    <section class="section">
+      <h2>4. Send</h2>
+      <div id="validationErrors" class="validation-errors"></div>
+      <div id="progressContainer" class="progress-container" style="display: none;">
+        <div class="progress-bar">
+          <div class="progress-fill" id="progressFill"></div>
+        </div>
+        <div class="progress-text" id="progressText">0/0 sent</div>
+        <div class="progress-log" id="progressLog"></div>
+      </div>
+      <div id="resultsContainer" class="results-container" style="display: none;"></div>
+      <div class="send-actions">
+        <button id="sendBtn" class="send-btn" disabled>Send Emails</button>
+        <button id="cancelBtn" class="cancel-btn" style="display: none;">Cancel</button>
+      </div>
+    </section>
+  </main>
+
+  <!-- Gmail Config Modal -->
+  <div id="configModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Gmail Configuration</h3>
+        <button class="close-btn" id="closeModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="gmailEmail">Gmail Address:</label>
+          <input type="email" id="gmailEmail" placeholder="your.email@gmail.com">
+        </div>
+        <div class="form-group">
+          <label for="gmailPassword">App Password:</label>
+          <input type="password" id="gmailPassword" placeholder="xxxx xxxx xxxx xxxx">
+        </div>
+        <div class="form-group checkbox">
+          <label>
+            <input type="checkbox" id="rememberCreds">
+            Remember credentials
+          </label>
+        </div>
+        <div class="form-info">
+          <p>Requires a Gmail App Password (not your regular password).</p>
+          <a href="https://myaccount.google.com/apppasswords" target="_blank">Create App Password →</a>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="saveConfig" class="save-btn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
