@@ -8,8 +8,8 @@
     "dev": "bun run --filter '*' dev",
     "dev:server": "bun run --filter server dev",
     "dev:frontend": "bun run --filter frontend dev",
-    "build": "bun run --filter frontend build && bun run --filter server build",
-    "start": "bun run server/dist/server.js",
+    "build": "bun run --filter frontend build && rm -rf public && cp -r frontend/dist public && bun run --filter server build",
+    "start": "bun run server/dist/index.js",
     "db:migrate": "bun run --filter server db:migrate"
   }
 }

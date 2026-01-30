@@ -1,18 +1,27 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, SenderAccount, GmailConfig, SmtpConfig } from '../lib/api'
+import { useThemeStore, ThemeColor } from '../hooks/useThemeStore'
+import { COLOR_PRESETS, THEME_COLORS } from '../lib/theme'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import {
-  Plus, GripVertical, Trash2, Check, X, Eye, EyeOff,
-  Loader2, AlertCircle, CheckCircle2
+  Plus, GripVertical, Trash2, Check, Eye, EyeOff,
+  Loader2, AlertCircle, CheckCircle2, Sun, Moon
 } from 'lucide-react'
 import { cn } from '../lib/utils'
 
 export default function Settings() {
-  const [activeTab, setActiveTab] = useState<'accounts' | 'general' | 'queue'>('accounts')
+  const [activeTab, setActiveTab] = useState<'accounts' | 'general' | 'queue' | 'appearance'>('accounts')
+
+  const tabLabels: Record<string, string> = {
+    accounts: 'Sender Accounts',
+    general: 'General',
+    queue: 'Queue',
+    appearance: 'Appearance',
+  }
 
   return (
     <div className="p-4">
@@ -20,18 +29,18 @@ export default function Settings() {
 
       {/* Tabs */}
       <div className="flex gap-1 mb-4 border-b">
-        {(['accounts', 'general', 'queue'] as const).map((tab) => (
+        {(['accounts', 'general', 'queue', 'appearance'] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
             className={cn(
-              'px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors capitalize',
+              'px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
               activeTab === tab
                 ? 'border-primary text-primary'
                 : 'border-transparent text-muted-foreground hover:text-foreground'
             )}
           >
-            {tab === 'accounts' ? 'Sender Accounts' : tab}
+            {tabLabels[tab]}
           </button>
         ))}
       </div>
@@ -39,6 +48,7 @@ export default function Settings() {
       {activeTab === 'accounts' && <AccountsSettings />}
       {activeTab === 'general' && <GeneralSettings />}
       {activeTab === 'queue' && <QueueSettings />}
+      {activeTab === 'appearance' && <AppearanceSettings />}
     </div>
   )
 }
@@ -598,6 +608,107 @@ function QueueSettings() {
           </CardContent>
         </Card>
       )}
+    </div>
+  )
+}
+
+function AppearanceSettings() {
+  const mode = useThemeStore((state) => state.mode)
+  const primaryColor = useThemeStore((state) => state.primaryColor)
+  const setMode = useThemeStore((state) => state.setMode)
+  const setPrimaryColor = useThemeStore((state) => state.setPrimaryColor)
+
+  return (
+    <div className="max-w-lg space-y-6">
+      {/* Theme Mode */}
+      <div className="space-y-3">
+        <Label className="text-sm font-medium">Theme Mode</Label>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setMode('light')}
+            className={cn(
+              'flex-1 flex items-center justify-center gap-2 py-3 rounded-lg border-2 transition-all',
+              mode === 'light'
+                ? 'border-primary bg-primary/5'
+                : 'border-input hover:border-muted-foreground/50'
+            )}
+          >
+            <Sun className="h-5 w-5" />
+            <span className="font-medium">Light</span>
+            {mode === 'light' && <Check className="h-4 w-4 text-primary" />}
+          </button>
+          <button
+            onClick={() => setMode('dark')}
+            className={cn(
+              'flex-1 flex items-center justify-center gap-2 py-3 rounded-lg border-2 transition-all',
+              mode === 'dark'
+                ? 'border-primary bg-primary/5'
+                : 'border-input hover:border-muted-foreground/50'
+            )}
+          >
+            <Moon className="h-5 w-5" />
+            <span className="font-medium">Dark</span>
+            {mode === 'dark' && <Check className="h-4 w-4 text-primary" />}
+          </button>
+        </div>
+      </div>
+
+      {/* Accent Color */}
+      <div className="space-y-3">
+        <Label className="text-sm font-medium">Accent Color</Label>
+        <div className="grid grid-cols-4 gap-3">
+          {THEME_COLORS.map((color) => {
+            const preset = COLOR_PRESETS[color]
+            const isSelected = primaryColor === color
+            return (
+              <button
+                key={color}
+                onClick={() => setPrimaryColor(color)}
+                className={cn(
+                  'relative flex flex-col items-center gap-2 p-3 rounded-lg border-2 transition-all',
+                  isSelected
+                    ? 'border-primary bg-primary/5'
+                    : 'border-input hover:border-muted-foreground/50'
+                )}
+              >
+                <div
+                  className="w-8 h-8 rounded-full shadow-sm"
+                  style={{ backgroundColor: preset.swatch }}
+                />
+                <span className="text-xs font-medium">{preset.name}</span>
+                {isSelected && (
+                  <div className="absolute top-1 right-1">
+                    <Check className="h-3 w-3 text-primary" />
+                  </div>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Preview */}
+      <div className="space-y-3">
+        <Label className="text-sm font-medium">Preview</Label>
+        <Card>
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <Button size="sm">Primary Button</Button>
+              <Button size="sm" variant="outline">Outline</Button>
+              <Button size="sm" variant="secondary">Secondary</Button>
+            </div>
+            <div className="flex items-center gap-4 text-sm">
+              <span className="text-primary font-medium">Primary Text</span>
+              <span className="text-muted-foreground">Muted Text</span>
+              <span className="text-destructive">Destructive</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Input placeholder="Input field" className="h-8 text-sm max-w-48" />
+              <div className="w-4 h-4 rounded-full bg-primary" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }
