@@ -1,14 +1,15 @@
 {
   "name": "mailer",
-  "version": "1.0.0",
-  "description": "Bulk email sender with HTML templates and mail merge",
-  "main": "server.js",
+  "version": "2.0.0",
+  "description": "Bulk email sender with HTML templates, mail merge, and multi-account support",
+  "private": true,
+  "workspaces": ["server", "frontend"],
   "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch server.js"
-  },
-  "dependencies": {
-    "express": "^4.18.2",
-    "nodemailer": "^6.9.7"
+    "dev": "bun run --filter '*' dev",
+    "dev:server": "bun run --filter server dev",
+    "dev:frontend": "bun run --filter frontend dev",
+    "build": "bun run --filter frontend build && bun run --filter server build",
+    "start": "bun run server/dist/server.js",
+    "db:migrate": "bun run --filter server db:migrate"
   }
 }

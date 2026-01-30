@@ -1,0 +1,14 @@
+services:
+  mailer:
+    build: .
+    ports:
+      - "3342:3342"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - NODE_ENV=production
+      - PORT=3342
+      - JWT_SECRET=${JWT_SECRET}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - TZ=${TZ:-UTC}
+    restart: unless-stopped

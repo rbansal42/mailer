@@ -1,4 +1,39 @@
+# Dependencies
 node_modules/
-config.json
+
+# Build outputs
+dist/
+server/dist/
+frontend/dist/
+
+# Data
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Environment
 .env
+.env.local
+.env.*.local
+
+# Old config
+config.json
+
+# OS
 .DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+
+# Lock files (keep bun.lockb)
+package-lock.json
+yarn.lock
