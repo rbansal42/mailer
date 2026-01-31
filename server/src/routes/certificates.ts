@@ -2,25 +2,18 @@ import { Router } from 'express'
 import { db } from '../db'
 import { logger } from '../lib/logger'
 import { generatePdf, generateCertificateId } from '../services/pdf-generator'
+import { getAllTemplates, getTemplateById, renderTemplate } from '../services/certificate-templates'
+import { registerAllTemplates } from '../templates/certificates'
 import type {
-  CertificateTemplate,
   CertificateConfig,
   CertificateData,
   GeneratedCertificate,
 } from '../lib/certificate-types'
 
-export const certificatesRouter = Router()
+// Register all templates on module load
+registerAllTemplates()
 
-// HTML escape helper to prevent XSS
-function escapeHtml(text: string): string {
-  if (!text) return ''
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;')
-}
+export const certificatesRouter = Router()
 
 // Color validation to prevent CSS injection
 const hexColorRegex = /^#[0-9A-Fa-f]{6}$/
@@ -58,73 +51,7 @@ interface GeneratedCertificateRow {
   generated_at: string
 }
 
-// Static certificate templates (design presets)
-const CERTIFICATE_TEMPLATES: CertificateTemplate[] = [
-  {
-    id: 'modern-blue',
-    name: 'Modern Blue',
-    category: 'modern',
-    thumbnail: '/templates/modern-blue.png',
-    description: 'Clean and professional blue design with geometric accents',
-    defaultColors: { primary: '#1e40af', secondary: '#3b82f6', accent: '#dbeafe' },
-  },
-  {
-    id: 'modern-green',
-    name: 'Modern Green',
-    category: 'modern',
-    thumbnail: '/templates/modern-green.png',
-    description: 'Fresh green design for environmental or wellness certificates',
-    defaultColors: { primary: '#166534', secondary: '#22c55e', accent: '#dcfce7' },
-  },
-  {
-    id: 'dark-gold',
-    name: 'Dark Gold',
-    category: 'dark',
-    thumbnail: '/templates/dark-gold.png',
-    description: 'Elegant dark theme with gold accents',
-    defaultColors: { primary: '#1f2937', secondary: '#d97706', accent: '#fef3c7' },
-  },
-  {
-    id: 'dark-silver',
-    name: 'Dark Silver',
-    category: 'dark',
-    thumbnail: '/templates/dark-silver.png',
-    description: 'Sophisticated dark theme with silver highlights',
-    defaultColors: { primary: '#111827', secondary: '#9ca3af', accent: '#e5e7eb' },
-  },
-  {
-    id: 'elegant-cream',
-    name: 'Elegant Cream',
-    category: 'elegant',
-    thumbnail: '/templates/elegant-cream.png',
-    description: 'Classic cream and burgundy design with ornate borders',
-    defaultColors: { primary: '#7c2d12', secondary: '#dc2626', accent: '#fef2f2' },
-  },
-  {
-    id: 'elegant-navy',
-    name: 'Elegant Navy',
-    category: 'elegant',
-    thumbnail: '/templates/elegant-navy.png',
-    description: 'Traditional navy blue with gold trim',
-    defaultColors: { primary: '#1e3a5f', secondary: '#c9a227', accent: '#f5f0e1' },
-  },
-  {
-    id: 'minimal-mono',
-    name: 'Minimal Mono',
-    category: 'minimal',
-    thumbnail: '/templates/minimal-mono.png',
-    description: 'Clean black and white minimalist design',
-    defaultColors: { primary: '#171717', secondary: '#525252', accent: '#fafafa' },
-  },
-  {
-    id: 'minimal-pastel',
-    name: 'Minimal Pastel',
-    category: 'minimal',
-    thumbnail: '/templates/minimal-pastel.png',
-    description: 'Soft pastel colors with clean typography',
-    defaultColors: { primary: '#6366f1', secondary: '#a5b4fc', accent: '#eef2ff' },
-  },
-]
+
 
 function formatConfig(row: CertificateConfigRow): CertificateConfig {
   return {
@@ -159,7 +86,7 @@ function formatGeneratedCertificate(row: GeneratedCertificateRow): GeneratedCert
 // GET /templates - Return all certificate templates
 certificatesRouter.get('/templates', (_, res) => {
   logger.info('Listing certificate templates', { service: 'certificates' })
-  res.json(CERTIFICATE_TEMPLATES)
+  res.json(getAllTemplates())
 })
 
 // GET /configs - List saved certificate configs
@@ -326,14 +253,14 @@ certificatesRouter.post('/preview', async (req, res) => {
     }
     
     const config = formatConfig(configRow)
-    const template = CERTIFICATE_TEMPLATES.find(t => t.id === config.templateId)
+    const template = getTemplateById(config.templateId)
     
     if (!template) {
       return res.status(400).json({ error: 'Invalid template ID in config' })
     }
     
     // Generate HTML from config and data
-    const html = generateCertificateHtml(config, data, template)
+    const html = renderTemplate(template, config, data)
     
     // Generate PDF
     const pdfBuffer = await generatePdf(html)
@@ -375,7 +302,7 @@ certificatesRouter.post('/generate', async (req, res) => {
     }
     
     const config = formatConfig(configRow)
-    const template = CERTIFICATE_TEMPLATES.find(t => t.id === config.templateId)
+    const template = getTemplateById(config.templateId)
     
     if (!template) {
       return res.status(400).json({ error: 'Invalid template ID in config' })
@@ -392,7 +319,7 @@ certificatesRouter.post('/generate', async (req, res) => {
       const dataWithId = { ...recipientData, certificate_id: certificateId }
       
       // Generate HTML and PDF
-      const html = generateCertificateHtml(config, dataWithId, template)
+      const html = renderTemplate(template, config, dataWithId)
       const pdfBuffer = await generatePdf(html)
       const base64 = pdfBuffer.toString('base64')
       
@@ -438,180 +365,4 @@ certificatesRouter.post('/generate', async (req, res) => {
   }
 })
 
-// Helper function to generate certificate HTML
-function generateCertificateHtml(
-  config: CertificateConfig,
-  data: CertificateData,
-  template: CertificateTemplate
-): string {
-  // Replace placeholders in description template (escape user data for XSS prevention)
-  let description = config.descriptionTemplate
-  for (const [key, value] of Object.entries(data)) {
-    if (value) {
-      description = description.replace(new RegExp(`{{${key}}}`, 'g'), escapeHtml(value))
-    }
-  }
-  // Escape the entire description after variable replacement
-  description = escapeHtml(description)
-  
-  // Build logo HTML (escape URLs for XSS prevention)
-  const logosHtml = config.logos
-    .sort((a, b) => a.order - b.order)
-    .map(logo => `<img src="${escapeHtml(logo.url)}" style="height: 60px; margin: 0 15px;" alt="Logo">`)
-    .join('')
-  
-  // Build signatories HTML (escape user data for XSS prevention)
-  const signatoriesHtml = config.signatories
-    .sort((a, b) => a.order - b.order)
-    .map(sig => `
-      <div style="text-align: center; margin: 0 30px;">
-        ${sig.signatureUrl ? `<img src="${escapeHtml(sig.signatureUrl)}" style="height: 50px; margin-bottom: 5px;" alt="Signature">` : '<div style="height: 50px;"></div>'}
-        <div style="border-top: 1px solid ${config.colors.secondary}; padding-top: 5px;">
-          <div style="font-weight: bold;">${escapeHtml(sig.name)}</div>
-          <div style="font-size: 12px; color: ${config.colors.secondary};">${escapeHtml(sig.designation)}</div>
-          <div style="font-size: 11px; color: #666;">${escapeHtml(sig.organization)}</div>
-        </div>
-      </div>
-    `)
-    .join('')
-  
-  return `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Open+Sans:wght@400;600&display=swap');
-    
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    
-    body {
-      font-family: 'Open Sans', sans-serif;
-      background: ${config.colors.accent};
-      width: 297mm;
-      height: 210mm;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    
-    .certificate {
-      width: 280mm;
-      height: 195mm;
-      background: white;
-      border: 3px solid ${config.colors.primary};
-      padding: 20mm;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: space-between;
-      position: relative;
-    }
-    
-    .certificate::before {
-      content: '';
-      position: absolute;
-      top: 5mm;
-      left: 5mm;
-      right: 5mm;
-      bottom: 5mm;
-      border: 1px solid ${config.colors.secondary};
-      pointer-events: none;
-    }
-    
-    .header {
-      text-align: center;
-    }
-    
-    .logos {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      margin-bottom: 10px;
-    }
-    
-    .title {
-      font-family: 'Playfair Display', serif;
-      font-size: 42px;
-      font-weight: 700;
-      color: ${config.colors.primary};
-      letter-spacing: 8px;
-      margin-bottom: 5px;
-    }
-    
-    .subtitle {
-      font-size: 18px;
-      color: ${config.colors.secondary};
-      letter-spacing: 4px;
-      text-transform: uppercase;
-    }
-    
-    .content {
-      text-align: center;
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-    }
-    
-    .presented-to {
-      font-size: 14px;
-      color: #666;
-      margin-bottom: 10px;
-    }
-    
-    .recipient-name {
-      font-family: 'Playfair Display', serif;
-      font-size: 48px;
-      color: ${config.colors.primary};
-      margin-bottom: 20px;
-    }
-    
-    .description {
-      font-size: 16px;
-      color: #444;
-      max-width: 500px;
-      margin: 0 auto;
-      line-height: 1.6;
-    }
-    
-    .footer {
-      width: 100%;
-    }
-    
-    .signatories {
-      display: flex;
-      justify-content: center;
-      margin-bottom: 15px;
-    }
-    
-    .certificate-id {
-      text-align: center;
-      font-size: 10px;
-      color: #999;
-    }
-  </style>
-</head>
-<body>
-  <div class="certificate">
-    <div class="header">
-      <div class="logos">${logosHtml}</div>
-      <div class="title">${escapeHtml(config.titleText)}</div>
-      <div class="subtitle">${escapeHtml(config.subtitleText)}</div>
-    </div>
-    
-    <div class="content">
-      <div class="presented-to">This is proudly presented to</div>
-      <div class="recipient-name">${escapeHtml(data.name)}</div>
-      <div class="description">${description}</div>
-    </div>
-    
-    <div class="footer">
-      <div class="signatories">${signatoriesHtml}</div>
-      ${data.certificate_id ? `<div class="certificate-id">Certificate ID: ${escapeHtml(data.certificate_id)}</div>` : ''}
-    </div>
-  </div>
-</body>
-</html>
-  `.trim()
-}
+

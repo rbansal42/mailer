@@ -1,6 +1,17 @@
 import type { CertificateTemplate, CertificateConfig, CertificateData } from '../lib/certificate-types'
 import { calculateFontSize } from './pdf-generator'
 
+// HTML escape utility to prevent XSS attacks
+export function escapeHtml(str: string | undefined): string {
+  if (!str) return ''
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
 // Template registry - will be populated with actual templates
 const templates: Map<string, CertificateTemplate & { render: (config: CertificateConfig, data: CertificateData) => string }> = new Map()
 
@@ -29,7 +40,7 @@ export function renderTemplate(
 
 // Helper to replace template variables
 export function replaceVariables(text: string, data: CertificateData): string {
-  return text.replace(/\{\{(\w+)\}\}/g, (_, key) => data[key] || `{{${key}}}`)
+  return text.replace(/\{\{(\w+)\}\}/g, (_, key) => escapeHtml(data[key]) || `{{${key}}}`)
 }
 
 // Helper to generate logo HTML
@@ -38,7 +49,7 @@ export function renderLogos(logos: CertificateConfig['logos']): string {
   
   const sortedLogos = [...logos].sort((a, b) => a.order - b.order)
   return sortedLogos
-    .map(logo => `<img src="${logo.url}" style="height: 60px; width: auto; max-width: ${logo.width}px;" />`)
+    .map(logo => `<img src="${escapeHtml(logo.url)}" style="height: 60px; width: auto; max-width: ${logo.width}px;" />`)
     .join('')
 }
 
@@ -49,10 +60,10 @@ export function renderSignatories(signatories: CertificateConfig['signatories'])
   const sortedSignatories = [...signatories].sort((a, b) => a.order - b.order)
   return sortedSignatories.map(sig => `
     <div class="signatory">
-      ${sig.signatureUrl ? `<img src="${sig.signatureUrl}" class="signature-img" />` : '<div class="signature-line"></div>'}
-      <div class="sig-name">${sig.name}</div>
-      <div class="sig-title">${sig.designation}</div>
-      ${sig.organization ? `<div class="sig-org">${sig.organization}</div>` : ''}
+      ${sig.signatureUrl ? `<img src="${escapeHtml(sig.signatureUrl)}" class="signature-img" />` : '<div class="signature-line"></div>'}
+      <div class="sig-name">${escapeHtml(sig.name)}</div>
+      <div class="sig-title">${escapeHtml(sig.designation)}</div>
+      ${sig.organization ? `<div class="sig-org">${escapeHtml(sig.organization)}</div>` : ''}
     </div>
   `).join('')
 }
