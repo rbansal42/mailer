@@ -358,6 +358,60 @@ certificatesRouter.post('/preview', async (req, res) => {
   }
 })
 
+// POST /preview-draft - Preview with unsaved config data (no configId required)
+certificatesRouter.post('/preview-draft', async (req, res) => {
+  const { config, data } = req.body as {
+    config: {
+      templateId: string
+      titleText: string
+      subtitleText: string
+      descriptionTemplate: string
+      logos: Array<{ url: string; width?: number }>
+      signatories: Array<{
+        name: string
+        designation: string
+        organization?: string
+        signatureUrl?: string
+      }>
+    }
+    data: CertificateData
+  }
+
+  if (!config || !data || !data.name) {
+    return res.status(400).json({ error: 'config and data with name are required' })
+  }
+
+  if (!isValidTemplate(config.templateId)) {
+    return res.status(400).json({ error: `Invalid template ID. Valid options: ${getReactPdfTemplateIds().join(', ')}` })
+  }
+
+  logger.info('Generating draft certificate preview', { service: 'certificates', templateId: config.templateId })
+
+  try {
+    const props: CertificateProps = {
+      title: config.titleText || 'CERTIFICATE',
+      subtitle: config.subtitleText,
+      recipientName: data.name,
+      description: replaceVariables(config.descriptionTemplate || '', data),
+      logos: config.logos,
+      signatories: config.signatories,
+      certificateId: data.certificate_id || 'PREVIEW',
+    }
+
+    const pdfBuffer = await generateReactPdf(config.templateId as TemplateId, props)
+    const base64 = pdfBuffer.toString('base64')
+
+    logger.info('Draft certificate preview generated', { service: 'certificates' })
+    res.json({ pdf: base64 })
+  } catch (error) {
+    logger.error('Failed to generate draft certificate preview', {
+      service: 'certificates',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    })
+    res.status(500).json({ error: 'Failed to generate certificate preview' })
+  }
+})
+
 // POST /generate - Bulk generate certificates
 certificatesRouter.post('/generate', async (req, res) => {
   const { configId, recipients } = req.body as { configId: number; recipients: CertificateData[] }

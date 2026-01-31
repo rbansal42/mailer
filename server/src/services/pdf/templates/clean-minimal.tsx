@@ -28,14 +28,17 @@ const styles = StyleSheet.create({
   },
   // Logo section with generous spacing
   logoSection: {
-    marginBottom: 40,
+    marginBottom: 20,
   },
   // Main content area
   content: {
     flex: 1,
+    minHeight: 0,
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
   // Title - simple and clean
   title: {
@@ -49,7 +52,7 @@ const styles = StyleSheet.create({
     ...typography.subtitle,
     color: colors.secondary,
     textAlign: 'center',
-    marginBottom: 35,
+    marginBottom: 15,
   },
   // Presented to - muted italic
   presentedTo: {
@@ -78,14 +81,16 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.secondary,
     textAlign: 'center',
-    maxWidth: '70%',
+    maxWidth: '80%',
     marginTop: 10,
-    marginBottom: 35,
+    marginBottom: 15,
+    flexShrink: 1,
   },
   // Signatories at bottom
   signatoriesContainer: {
     marginTop: 'auto',
-    paddingTop: 20,
+    paddingTop: 15,
+    flexShrink: 0,
   },
   // Single horizontal accent line near bottom
   accentLine: {

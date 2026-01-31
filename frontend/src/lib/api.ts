@@ -158,6 +158,21 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ configId, data }),
     }),
+  previewCertificateDraft: (
+    config: {
+      templateId: string
+      titleText: string
+      subtitleText: string
+      descriptionTemplate: string
+      logos: LogoConfig[]
+      signatories: SignatoryConfig[]
+    },
+    data: CertificateData
+  ) =>
+    request<{ pdf: string }>('/certificates/preview-draft', {
+      method: 'POST',
+      body: JSON.stringify({ config, data }),
+    }),
   generateCertificates: (configId: number, recipients: CertificateData[]) =>
     request<GenerateResponse>('/certificates/generate', {
       method: 'POST',

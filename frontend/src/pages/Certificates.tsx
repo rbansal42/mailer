@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import Papa from 'papaparse'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
@@ -271,7 +272,7 @@ function CertificateEditor({ config, templates, onBack }: EditorProps) {
         : api.createCertificateConfig(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['certificateConfigs'] })
-      onBack()
+      toast.success('Configuration saved successfully')
     },
     onError: (error) => {
       setSaveError(error instanceof Error ? error.message : 'Failed to save configuration')
@@ -326,24 +327,42 @@ function CertificateEditor({ config, templates, onBack }: EditorProps) {
     )
   }
 
-  // Preview generation requires saving config first, so we use a temporary preview
   const loadPreview = useCallback(async () => {
-    if (!config?.id) {
-      // For new configs, show a placeholder
+    if (!selectedTemplateId) {
       setPreviewPdf('')
       return
     }
-    
+
     setIsLoadingPreview(true)
     try {
-      const result = await api.previewCertificate(config.id, SAMPLE_DATA)
+      const result = await api.previewCertificateDraft(
+        {
+          templateId: selectedTemplateId,
+          titleText: titleText || 'CERTIFICATE',
+          subtitleText: subtitleText || 'of Participation',
+          descriptionTemplate: descriptionTemplate,
+          logos: logos,
+          signatories: signatories,
+        },
+        SAMPLE_DATA
+      )
       setPreviewPdf(result.pdf)
     } catch (error) {
       console.error('Failed to load preview:', error)
+      setPreviewPdf('')
     } finally {
       setIsLoadingPreview(false)
     }
-  }, [config?.id])
+  }, [selectedTemplateId, titleText, subtitleText, descriptionTemplate, logos, signatories])
+
+  // Auto-refresh preview when editor state changes (debounced)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      loadPreview()
+    }, 500)
+
+    return () => clearTimeout(timer)
+  }, [loadPreview])
 
   return (
     <div className="h-full flex flex-col">
@@ -463,15 +482,14 @@ function CertificateEditor({ config, templates, onBack }: EditorProps) {
               variant="outline"
               size="sm"
               onClick={loadPreview}
-              disabled={isLoadingPreview || !config?.id}
-              title={!config?.id ? 'Save configuration first to preview' : undefined}
+              disabled={isLoadingPreview || !selectedTemplateId}
             >
               {isLoadingPreview ? (
                 <Loader2 className="h-4 w-4 animate-spin mr-1" />
               ) : (
                 <Eye className="h-4 w-4 mr-1" />
               )}
-              Preview
+              Refresh
             </Button>
           </div>
 
@@ -491,7 +509,7 @@ function CertificateEditor({ config, templates, onBack }: EditorProps) {
                 <div className="text-center">
                   <Award className="h-12 w-12 mx-auto mb-2 text-muted-foreground" />
                   <p className="text-sm text-muted-foreground">
-                    {config?.id ? 'Click Preview to generate' : 'Save configuration to enable preview'}
+                    {selectedTemplateId ? 'Loading preview...' : 'Select a template to preview'}
                   </p>
                 </div>
               </div>
@@ -748,7 +766,9 @@ function LogoManager({ logos, onChange }: LogoManagerProps) {
                   max={200}
                   value={logo.width}
                   onChange={(e) => handleWidthChange(logo.id, parseInt(e.target.value))}
-                  className="w-full h-1"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  className="w-full h-1 cursor-pointer"
                 />
                 <p className="text-xs text-muted-foreground">{logo.width}px</p>
               </div>
