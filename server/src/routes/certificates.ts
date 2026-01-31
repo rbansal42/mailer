@@ -16,6 +16,7 @@ import type {
   CertificateData,
   GeneratedCertificate,
 } from '../lib/certificate-types'
+import { validateLogoUrls, validateSignatoryUrls } from '../lib/url-validation'
 
 // Data directory for storing generated certificates
 const DATA_DIR = process.env.DATA_DIR || join(process.cwd(), '..', 'data')
@@ -209,6 +210,17 @@ certificatesRouter.post('/configs', (req, res) => {
     return res.status(400).json({ error: 'Invalid color format. Colors must be valid hex codes (e.g., #1e40af)' })
   }
   
+  // Validate logo and signature URLs to prevent SSRF
+  const logoUrlError = validateLogoUrls(logos)
+  if (logoUrlError) {
+    return res.status(400).json({ error: logoUrlError })
+  }
+  
+  const signatoryUrlError = validateSignatoryUrls(signatories)
+  if (signatoryUrlError) {
+    return res.status(400).json({ error: signatoryUrlError })
+  }
+  
   logger.info('Creating certificate config', { service: 'certificates', name, templateId })
   
   const result = db.run(
@@ -265,10 +277,20 @@ certificatesRouter.put('/configs/:id', (req, res) => {
     values.push(JSON.stringify(colors))
   }
   if (logos !== undefined) {
+    // Validate logo URLs to prevent SSRF
+    const logoUrlError = validateLogoUrls(logos)
+    if (logoUrlError) {
+      return res.status(400).json({ error: logoUrlError })
+    }
     updates.push('logos = ?')
     values.push(JSON.stringify(logos))
   }
   if (signatories !== undefined) {
+    // Validate signature URLs to prevent SSRF
+    const signatoryUrlError = validateSignatoryUrls(signatories)
+    if (signatoryUrlError) {
+      return res.status(400).json({ error: signatoryUrlError })
+    }
     updates.push('signatories = ?')
     values.push(JSON.stringify(signatories))
   }
@@ -386,6 +408,17 @@ certificatesRouter.post('/preview-draft', async (req, res) => {
     return res.status(400).json({ error: `Invalid template ID. Valid options: ${getReactPdfTemplateIds().join(', ')}` })
   }
 
+  // Validate logo and signature URLs to prevent SSRF
+  const logoUrlError = validateLogoUrls(config.logos)
+  if (logoUrlError) {
+    return res.status(400).json({ error: logoUrlError })
+  }
+
+  const signatoryUrlError = validateSignatoryUrls(config.signatories)
+  if (signatoryUrlError) {
+    return res.status(400).json({ error: signatoryUrlError })
+  }
+
   logger.info('Generating draft certificate preview', { service: 'certificates', templateId: config.templateId })
 
   try {
@@ -445,6 +478,9 @@ certificatesRouter.post('/generate', async (req, res) => {
     
     const results: { certificateId: string; recipientName: string; pdf: string }[] = []
     
+    // Generate all PDFs first (before transaction)
+    const generatedPdfs: { recipientData: CertificateData; certificateId: string; pdfBuffer: Buffer }[] = []
+    
     for (const recipientData of recipients) {
       if (!recipientData.name) {
         continue // Skip recipients without names
@@ -452,28 +488,40 @@ certificatesRouter.post('/generate', async (req, res) => {
       
       const certificateId = recipientData.certificate_id || generateCertificateId()
       const pdfBuffer = await generateCertificatePdf(config, recipientData, certificateId)
-      const base64 = pdfBuffer.toString('base64')
-      
-      // Save to database
-      const dataWithId = { ...recipientData, certificate_id: certificateId }
-      db.run(
-        `INSERT INTO generated_certificates 
-         (certificate_id, config_id, recipient_name, recipient_email, data)
-         VALUES (?, ?, ?, ?, ?)`,
-        [
+      generatedPdfs.push({ recipientData, certificateId, pdfBuffer })
+    }
+    
+    // Use transaction for all database inserts
+    db.exec('BEGIN TRANSACTION')
+    try {
+      for (const { recipientData, certificateId, pdfBuffer } of generatedPdfs) {
+        const base64 = pdfBuffer.toString('base64')
+        
+        // Save to database
+        const dataWithId = { ...recipientData, certificate_id: certificateId }
+        db.run(
+          `INSERT INTO generated_certificates 
+           (certificate_id, config_id, recipient_name, recipient_email, data)
+           VALUES (?, ?, ?, ?, ?)`,
+          [
+            certificateId,
+            configId,
+            recipientData.name,
+            recipientData.email || null,
+            JSON.stringify(dataWithId),
+          ]
+        )
+        
+        results.push({
           certificateId,
-          configId,
-          recipientData.name,
-          recipientData.email || null,
-          JSON.stringify(dataWithId),
-        ]
-      )
-      
-      results.push({
-        certificateId,
-        recipientName: recipientData.name,
-        pdf: base64,
-      })
+          recipientName: recipientData.name!,
+          pdf: base64,
+        })
+      }
+      db.exec('COMMIT')
+    } catch (error) {
+      db.exec('ROLLBACK')
+      throw error
     }
     
     logger.info('Bulk certificate generation complete', { 
@@ -546,7 +594,8 @@ certificatesRouter.post('/generate/zip', async (req, res) => {
     // Pipe archive to response
     archive.pipe(res)
     
-    let generated = 0
+    // Generate all PDFs first (before transaction)
+    const generatedPdfs: { recipientData: CertificateData; certificateId: string; pdfBuffer: Buffer; filename: string }[] = []
     
     for (const recipientData of recipients) {
       if (!recipientData.name) {
@@ -560,25 +609,35 @@ certificatesRouter.post('/generate/zip', async (req, res) => {
       const safeName = recipientData.name.replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, '_')
       const filename = `${safeName}_${certificateId}.pdf`
       
-      // Add to archive
-      archive.append(pdfBuffer, { name: filename })
-      
-      // Save to database
-      const dataWithId = { ...recipientData, certificate_id: certificateId }
-      db.run(
-        `INSERT INTO generated_certificates 
-         (certificate_id, config_id, recipient_name, recipient_email, data)
-         VALUES (?, ?, ?, ?, ?)`,
-        [
-          certificateId,
-          configId,
-          recipientData.name,
-          recipientData.email || null,
-          JSON.stringify(dataWithId),
-        ]
-      )
-      
-      generated++
+      generatedPdfs.push({ recipientData, certificateId, pdfBuffer, filename })
+    }
+    
+    // Use transaction for all database inserts
+    db.exec('BEGIN TRANSACTION')
+    try {
+      for (const { recipientData, certificateId, pdfBuffer, filename } of generatedPdfs) {
+        // Add to archive
+        archive.append(pdfBuffer, { name: filename })
+        
+        // Save to database
+        const dataWithId = { ...recipientData, certificate_id: certificateId }
+        db.run(
+          `INSERT INTO generated_certificates 
+           (certificate_id, config_id, recipient_name, recipient_email, data)
+           VALUES (?, ?, ?, ?, ?)`,
+          [
+            certificateId,
+            configId,
+            recipientData.name,
+            recipientData.email || null,
+            JSON.stringify(dataWithId),
+          ]
+        )
+      }
+      db.exec('COMMIT')
+    } catch (error) {
+      db.exec('ROLLBACK')
+      throw error
     }
     
     // Finalize archive
@@ -587,7 +646,7 @@ certificatesRouter.post('/generate/zip', async (req, res) => {
     logger.info('ZIP generation complete', { 
       service: 'certificates', 
       configId, 
-      generated 
+      generated: generatedPdfs.length 
     })
   } catch (error) {
     logger.error('Failed to generate certificates ZIP', { 
@@ -653,6 +712,16 @@ certificatesRouter.post('/generate/campaign', async (req, res) => {
     const timestamp = Date.now()
     const results: { email: string; certificateId: string; attachmentId: number }[] = []
     
+    // Generate all PDFs and save to disk first (before transaction)
+    const generatedPdfs: { 
+      recipientData: CertificateData
+      certificateId: string
+      pdfBuffer: Buffer
+      safeName: string
+      filename: string
+      filepath: string
+    }[] = []
+    
     for (let i = 0; i < recipientsWithEmail.length; i++) {
       const recipientData = recipientsWithEmail[i]
       
@@ -666,57 +735,79 @@ certificatesRouter.post('/generate/campaign', async (req, res) => {
       
       writeFileSync(filepath, pdfBuffer)
       
-      // Create attachment record
-      const attachmentResult = db.run(
-        `INSERT INTO attachments (draft_id, filename, original_filename, filepath, size_bytes, mime_type)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [
-          draftId ?? null,
-          filename,
-          `Certificate_${safeName}.pdf`,
-          filepath,
-          pdfBuffer.length,
-          'application/pdf',
-        ]
-      )
-      const attachmentId = Number(attachmentResult.lastInsertRowid)
-      
-      // Create recipient-attachment mapping
-      const email = recipientData.email!
-      const name = recipientData.name!
-      const dataWithId = { ...recipientData, certificate_id: certificateId }
-      
-      db.run(
-        `INSERT INTO recipient_attachments (draft_id, recipient_email, attachment_id, matched_by)
-         VALUES (?, ?, ?, ?)`,
-        [
-          draftId ?? null,
-          email,
-          attachmentId,
-          'certificate:auto-generated',
-        ]
-      )
-      
-      // Save certificate record
-      db.run(
-        `INSERT INTO generated_certificates 
-         (certificate_id, config_id, recipient_name, recipient_email, data, pdf_path)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [
+      generatedPdfs.push({ recipientData, certificateId, pdfBuffer, safeName, filename, filepath })
+    }
+    
+    // Use transaction for all database inserts
+    db.exec('BEGIN TRANSACTION')
+    try {
+      for (const { recipientData, certificateId, pdfBuffer, safeName, filename, filepath } of generatedPdfs) {
+        // Create attachment record
+        const attachmentResult = db.run(
+          `INSERT INTO attachments (draft_id, filename, original_filename, filepath, size_bytes, mime_type)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [
+            draftId ?? null,
+            filename,
+            `Certificate_${safeName}.pdf`,
+            filepath,
+            pdfBuffer.length,
+            'application/pdf',
+          ]
+        )
+        const attachmentId = Number(attachmentResult.lastInsertRowid)
+        
+        // Create recipient-attachment mapping
+        const email = recipientData.email!
+        const name = recipientData.name!
+        const dataWithId = { ...recipientData, certificate_id: certificateId }
+        
+        db.run(
+          `INSERT INTO recipient_attachments (draft_id, recipient_email, attachment_id, matched_by)
+           VALUES (?, ?, ?, ?)`,
+          [
+            draftId ?? null,
+            email,
+            attachmentId,
+            'certificate:auto-generated',
+          ]
+        )
+        
+        // Save certificate record
+        db.run(
+          `INSERT INTO generated_certificates 
+           (certificate_id, config_id, recipient_name, recipient_email, data, pdf_path)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [
+            certificateId,
+            configId,
+            name,
+            email,
+            JSON.stringify(dataWithId),
+            filepath,
+          ]
+        )
+        
+        results.push({
+          email: recipientData.email!,
           certificateId,
-          configId,
-          name,
-          email,
-          JSON.stringify(dataWithId),
-          filepath,
-        ]
-      )
-      
-      results.push({
-        email: recipientData.email!,
-        certificateId,
-        attachmentId,
-      })
+          attachmentId,
+        })
+      }
+      db.exec('COMMIT')
+    } catch (error) {
+      db.exec('ROLLBACK')
+      // Clean up orphan PDF files on rollback
+      for (const { filepath } of generatedPdfs) {
+        try {
+          if (existsSync(filepath)) {
+            unlinkSync(filepath)
+          }
+        } catch {
+          // Ignore cleanup errors
+        }
+      }
+      throw error
     }
     
     logger.info('Campaign certificates generation complete', { 

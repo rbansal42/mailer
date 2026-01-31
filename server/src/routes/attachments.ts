@@ -18,6 +18,88 @@ import {
 
 export const attachmentsRouter = Router()
 
+// MIME type whitelist for allowed file uploads
+const ALLOWED_MIME_TYPES = new Set([
+  // Documents
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  // Images
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+  'image/svg+xml',
+  // Text
+  'text/plain',
+  'text/csv',
+  // Archives (for ZIP extraction)
+  'application/zip',
+  'application/x-zip-compressed',
+])
+
+// File extension whitelist (must match MIME types)
+const ALLOWED_EXTENSIONS = new Set([
+  '.pdf',
+  '.doc',
+  '.docx',
+  '.xls',
+  '.xlsx',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.webp',
+  '.svg',
+  '.txt',
+  '.csv',
+  '.zip',
+])
+
+/**
+ * Validates that a file has an allowed MIME type and extension
+ */
+function validateFileType(file: Express.Multer.File): { valid: boolean; error?: string } {
+  const ext = extname(file.originalname).toLowerCase()
+  const mimeType = file.mimetype.toLowerCase()
+
+  // Check extension
+  if (!ALLOWED_EXTENSIONS.has(ext)) {
+    return {
+      valid: false,
+      error: `File extension "${ext}" is not allowed. Allowed extensions: ${[...ALLOWED_EXTENSIONS].join(', ')}`,
+    }
+  }
+
+  // Check MIME type
+  if (!ALLOWED_MIME_TYPES.has(mimeType)) {
+    return {
+      valid: false,
+      error: `MIME type "${mimeType}" is not allowed. Allowed types: ${[...ALLOWED_MIME_TYPES].join(', ')}`,
+    }
+  }
+
+  return { valid: true }
+}
+
+/**
+ * Validates that a file path has an allowed extension (for extracted ZIP contents)
+ */
+function validateExtractedFile(filepath: string): { valid: boolean; error?: string } {
+  const ext = extname(filepath).toLowerCase()
+
+  if (!ALLOWED_EXTENSIONS.has(ext)) {
+    return {
+      valid: false,
+      error: `File extension "${ext}" is not allowed`,
+    }
+  }
+
+  return { valid: true }
+}
+
 // Configure multer with disk storage
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {
@@ -27,8 +109,19 @@ const storage = multer.diskStorage({
   filename: (_req, file, cb) => cb(null, basename(file.originalname)),
 })
 
+// File filter to validate MIME types and extensions
+const fileFilter: multer.Options['fileFilter'] = (_req, file, cb) => {
+  const validation = validateFileType(file)
+  if (!validation.valid) {
+    cb(new Error(validation.error))
+    return
+  }
+  cb(null, true)
+}
+
 const upload = multer({
   storage,
+  fileFilter,
   limits: { fileSize: 10 * 1024 * 1024, files: 500 }, // 10MB per file, max 500 files
 })
 
@@ -88,7 +181,35 @@ attachmentsRouter.post('/upload', (req, res, next) => {
         const extractDir = createTempDir()
         tempDirs.push(extractDir)
         const extractedFiles = extractZip(file.path, extractDir)
-        filesToStore.push(...extractedFiles)
+
+        // Validate each extracted file's extension
+        const rejectedFiles: string[] = []
+        const validFiles: string[] = []
+
+        for (const extractedFile of extractedFiles) {
+          const validation = validateExtractedFile(extractedFile)
+          if (validation.valid) {
+            validFiles.push(extractedFile)
+          } else {
+            rejectedFiles.push(basename(extractedFile))
+            // Remove the invalid file
+            try {
+              unlinkSync(extractedFile)
+            } catch {
+              // Ignore cleanup errors
+            }
+          }
+        }
+
+        if (rejectedFiles.length > 0) {
+          logger.warn('Rejected files from ZIP with disallowed extensions', {
+            requestId,
+            zipFile: file.originalname,
+            rejectedFiles,
+          })
+        }
+
+        filesToStore.push(...validFiles)
 
         // Remove the ZIP file after extraction
         try {
@@ -100,7 +221,8 @@ attachmentsRouter.post('/upload', (req, res, next) => {
         logger.info('Extracted ZIP file', {
           requestId,
           zipFile: file.originalname,
-          extractedCount: extractedFiles.length,
+          extractedCount: validFiles.length,
+          rejectedCount: rejectedFiles.length,
         })
       } else {
         // Regular file
