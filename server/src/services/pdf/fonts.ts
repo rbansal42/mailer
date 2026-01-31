@@ -8,6 +8,7 @@ Font.register({
   family: 'Montserrat',
   fonts: [
     { src: path.join(FONTS_DIR, 'Montserrat-Regular.ttf'), fontWeight: 'normal' },
+    { src: path.join(FONTS_DIR, 'Montserrat-Italic.ttf'), fontWeight: 'normal', fontStyle: 'italic' },
     { src: path.join(FONTS_DIR, 'Montserrat-SemiBold.ttf'), fontWeight: 600 },
     { src: path.join(FONTS_DIR, 'Montserrat-Bold.ttf'), fontWeight: 'bold' },
   ],
