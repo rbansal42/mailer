@@ -11,6 +11,7 @@ import { accountsRouter } from './routes/accounts'
 import { sendRouter } from './routes/send'
 import { queueRouter } from './routes/queue'
 import { settingsRouter } from './routes/settings'
+import { attachmentsRouter } from './routes/attachments'
 import { authMiddleware } from './middleware/auth'
 import { startQueueProcessor } from './services/queue-processor'
 import { requestIdMiddleware, requestLogMiddleware, logger } from './lib/logger'
@@ -101,6 +102,7 @@ app.use('/api/accounts', authMiddleware, accountsRouter)
 app.use('/api/send', authMiddleware, sendRouter)
 app.use('/api/queue', authMiddleware, queueRouter)
 app.use('/api/settings', authMiddleware, settingsRouter)
+app.use('/api/attachments', authMiddleware, attachmentsRouter)
 
 // Serve static frontend in production
 const publicPath = join(process.cwd(), 'public')
