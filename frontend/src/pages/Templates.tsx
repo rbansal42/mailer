@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, Template, Block } from '../lib/api'
 import { Button } from '../components/ui/button'
@@ -7,9 +7,12 @@ import { Label } from '../components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import {
   Plus, ChevronLeft, Save, Trash2, Type, Image, MousePointer,
-  Minus, Square, Columns, FileText, GripVertical, Loader2
+  Minus, Square, Columns, FileText, GripVertical, Loader2, Undo2, Redo2, Copy,
+  Monitor, Smartphone, Moon, Code
 } from 'lucide-react'
 import { cn } from '../lib/utils'
+import { useBlockHistory } from '../stores/history'
+import { useKeyboardShortcuts, createSaveShortcut, createUndoShortcut, createRedoShortcut } from '../hooks/useKeyboardShortcuts'
 
 const BLOCK_TYPES = [
   { type: 'header', label: 'Header', icon: FileText },
@@ -47,7 +50,7 @@ export default function Templates() {
     <div className="p-4">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-xl font-semibold">Templates</h1>
-        <Button size="sm" onClick={() => setIsCreating(true)}>
+        <Button size="sm" onClick={() => setIsCreating(true)} aria-label="Add new template">
           <Plus className="h-4 w-4 mr-1" />
           New Template
         </Button>
@@ -105,8 +108,26 @@ function TemplateEditor({ template, onBack }: EditorProps) {
   const [description, setDescription] = useState(template?.description || '')
   const [blocks, setBlocks] = useState<Block[]>(template?.blocks || [])
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
+  const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>('desktop')
+  const [darkMode, setDarkMode] = useState(false)
+  const [showSource, setShowSource] = useState(false)
+  
+  const { set: recordHistory, undo, redo, canUndo, canRedo } = useBlockHistory()
 
   const selectedBlock = blocks.find((b) => b.id === selectedBlockId)
+  
+  // Sync local blocks state with history store when undo/redo happens
+  useEffect(() => {
+    const history = useBlockHistory.getState()
+    if (history.present) {
+      setBlocks(history.present)
+    }
+  }, [canUndo, canRedo])
+  
+  const updateBlocks = (newBlocks: Block[]) => {
+    setBlocks(newBlocks)
+    recordHistory(newBlocks)
+  }
 
   const saveMutation = useMutation({
     mutationFn: template
@@ -149,6 +170,41 @@ function TemplateEditor({ template, onBack }: EditorProps) {
     if (selectedBlockId === id) setSelectedBlockId(null)
   }
 
+  const duplicateBlock = (id: string) => {
+    const blockIndex = blocks.findIndex((b) => b.id === id)
+    if (blockIndex === -1) return
+
+    const blockToCopy = blocks[blockIndex]
+    const newBlock: Block = {
+      ...blockToCopy,
+      id: `block_${Date.now()}`,
+      props: { ...blockToCopy.props },
+    }
+
+    const newBlocks = [
+      ...blocks.slice(0, blockIndex + 1),
+      newBlock,
+      ...blocks.slice(blockIndex + 1),
+    ]
+
+    setBlocks(newBlocks)
+    setSelectedBlockId(newBlock.id)
+  }
+
+  // Keyboard shortcuts
+  useKeyboardShortcuts([
+    createSaveShortcut(handleSave),
+    {
+      key: 'd',
+      ctrl: true,
+      action: () => {
+        if (selectedBlockId) {
+          duplicateBlock(selectedBlockId)
+        }
+      },
+    },
+  ])
+
   const moveBlock = (id: string, direction: 'up' | 'down') => {
     const index = blocks.findIndex((b) => b.id === id)
     if (direction === 'up' && index > 0) {
@@ -183,11 +239,12 @@ function TemplateEditor({ template, onBack }: EditorProps) {
               size="sm"
               className="text-destructive"
               onClick={() => deleteMutation.mutate()}
+              aria-label="Delete template"
             >
               <Trash2 className="h-4 w-4" />
             </Button>
           )}
-          <Button size="sm" onClick={handleSave} disabled={saveMutation.isPending}>
+          <Button size="sm" onClick={handleSave} disabled={saveMutation.isPending} aria-label="Save template">
             <Save className="h-4 w-4 mr-1" />
             Save
           </Button>
@@ -232,8 +289,18 @@ function TemplateEditor({ template, onBack }: EditorProps) {
                     )}
                   >
                     {/* Block controls */}
-                    <div className="absolute -left-6 top-0 bottom-0 flex flex-col justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                      <GripVertical className="h-4 w-4 text-muted-foreground" />
+                    <div className="absolute -left-8 top-0 bottom-0 flex flex-col justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab" />
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          duplicateBlock(block.id)
+                        }}
+                        className="p-0.5 rounded hover:bg-accent"
+                        title="Duplicate (Ctrl+D)"
+                      >
+                        <Copy className="h-3 w-3 text-muted-foreground" />
+                      </button>
                     </div>
                     
                     {/* Block content */}
@@ -256,6 +323,7 @@ function TemplateEditor({ template, onBack }: EditorProps) {
                   size="icon"
                   className="h-6 w-6 text-destructive"
                   onClick={() => deleteBlock(selectedBlock.id)}
+                  aria-label="Delete block"
                 >
                   <Trash2 className="h-3 w-3" />
                 </Button>
