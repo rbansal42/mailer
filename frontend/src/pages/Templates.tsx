@@ -194,6 +194,16 @@ function TemplateEditor({ template, onBack }: EditorProps) {
   // Keyboard shortcuts
   useKeyboardShortcuts([
     createSaveShortcut(handleSave),
+    createUndoShortcut(() => {
+      if (canUndo) {
+        undo()
+      }
+    }),
+    createRedoShortcut(() => {
+      if (canRedo) {
+        redo()
+      }
+    }),
     {
       key: 'd',
       ctrl: true,
@@ -233,6 +243,24 @@ function TemplateEditor({ template, onBack }: EditorProps) {
           />
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={undo}
+            disabled={!canUndo}
+            title="Undo (Ctrl+Z)"
+          >
+            <Undo2 className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={redo}
+            disabled={!canRedo}
+            title="Redo (Ctrl+Shift+Z)"
+          >
+            <Redo2 className="h-4 w-4" />
+          </Button>
           {template && (
             <Button
               variant="ghost"
