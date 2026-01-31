@@ -5,6 +5,7 @@ import { compileTemplate, replaceVariables } from '../services/template-compiler
 import { createProvider } from '../providers'
 import { sendCampaignSchema, validate } from '../lib/validation'
 import { logger } from '../lib/logger'
+import { getRecipientAttachment } from '../services/attachment-matcher'
 
 export const sendRouter = Router()
 
@@ -157,6 +158,14 @@ sendRouter.get('/', async (req: Request, res: Response) => {
         const html = compileTemplate(blocks, recipientData)
         const compiledSubject = replaceVariables(validatedSubject, recipientData)
 
+        // Get per-recipient attachment if one was matched
+        const recipientAttachment = getRecipientAttachment(recipient.email, undefined, campaignId)
+        const attachments = recipientAttachment ? [{
+          filename: recipientAttachment.filename,
+          path: recipientAttachment.path,
+          contentType: recipientAttachment.mimeType
+        }] : undefined
+
         // Create provider and send email
         const provider = createProvider(account.providerType as 'gmail' | 'smtp', account.config)
 
@@ -166,6 +175,7 @@ sendRouter.get('/', async (req: Request, res: Response) => {
           bcc: bcc || [],
           subject: compiledSubject,
           html,
+          attachments
         })
 
         await provider.disconnect()
