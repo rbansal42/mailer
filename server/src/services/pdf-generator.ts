@@ -19,13 +19,24 @@ export async function generatePdf(html: string): Promise<Buffer> {
   const page = await browser.newPage()
   
   try {
-    await page.setContent(html, { waitUntil: 'networkidle0' })
+    // Set viewport to A4 landscape dimensions (at 96 DPI)
+    await page.setViewport({ width: 1123, height: 794, deviceScaleFactor: 1 })
     
-    // A4 landscape at 300 DPI
+    // Set content and wait for network idle
+    await page.setContent(html, { waitUntil: ['load', 'networkidle0'] })
+    
+    // Wait for fonts to be fully loaded
+    await page.evaluateHandle('document.fonts.ready')
+    
+    // Small delay to ensure all rendering is complete
+    await new Promise(resolve => setTimeout(resolve, 100))
+    
+    // A4 landscape at ~150 DPI (scale 0.75 for faster rendering)
     const pdf = await page.pdf({
       format: 'A4',
       landscape: true,
       printBackground: true,
+      scale: 0.75,
       margin: { top: 0, right: 0, bottom: 0, left: 0 },
     })
     

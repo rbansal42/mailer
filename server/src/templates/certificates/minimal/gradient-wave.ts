@@ -198,6 +198,25 @@ export function renderGradientWave(config: CertificateConfig, data: CertificateD
       bottom: 10mm;
       z-index: 2;
     }
+    
+    /* Print media fallbacks - gradient text doesn't work in print mode */
+    @media print {
+      .title {
+        background: none !important;
+        -webkit-background-clip: initial !important;
+        -webkit-text-fill-color: ${colors.primary} !important;
+        background-clip: initial !important;
+        color: ${colors.primary} !important;
+      }
+      
+      .recipient-name {
+        background: none !important;
+        -webkit-background-clip: initial !important;
+        -webkit-text-fill-color: ${colors.primary} !important;
+        background-clip: initial !important;
+        color: ${colors.primary} !important;
+      }
+    }
   </style>
 </head>
 <body>

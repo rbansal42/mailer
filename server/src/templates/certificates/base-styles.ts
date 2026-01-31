@@ -12,6 +12,8 @@ export const baseStyles = `
     height: 210mm;
     font-family: 'Montserrat', sans-serif;
     overflow: hidden;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
   
   .certificate {
