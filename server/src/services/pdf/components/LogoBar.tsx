@@ -4,7 +4,7 @@ import { baseStyles } from '../styles'
 
 interface Logo {
   url: string
-  width?: number
+  height?: number
 }
 
 interface LogoBarProps {
@@ -22,7 +22,7 @@ export const LogoBar: React.FC<LogoBarProps> = ({ logos }) => {
           src={logo.url}
           style={{
             ...baseStyles.logo,
-            width: logo.width || 'auto',
+            height: logo.height || baseStyles.logo.height,
           }}
         />
       ))}

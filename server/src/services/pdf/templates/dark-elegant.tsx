@@ -15,7 +15,7 @@ interface DarkElegantProps {
   subtitle?: string
   recipientName: string
   description: string
-  logos?: Array<{ url: string; width?: number }>
+  logos?: Array<{ url: string; height?: number }>
   signatories?: Array<Signatory>
   certificateId?: string
 }

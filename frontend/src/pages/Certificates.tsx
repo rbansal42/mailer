@@ -677,7 +677,7 @@ function LogoManager({ logos, onChange }: LogoManagerProps) {
           newLogos.push({
             id: `logo_${Date.now()}_${index}_${Math.random().toString(36).substring(2, 11)}`,
             url: event.target?.result as string,
-            width: 100,
+            height: 50,
             order: logos.length + index,
           })
           resolve()
@@ -698,8 +698,8 @@ function LogoManager({ logos, onChange }: LogoManagerProps) {
     onChange(logos.filter(l => l.id !== id))
   }
 
-  const handleWidthChange = (id: string, width: number) => {
-    onChange(logos.map(l => l.id === id ? { ...l, width } : l))
+  const handleHeightChange = (id: string, height: number) => {
+    onChange(logos.map(l => l.id === id ? { ...l, height } : l))
   }
 
   const handleReorder = (dragIndex: number, dropIndex: number) => {
@@ -762,15 +762,15 @@ function LogoManager({ logos, onChange }: LogoManagerProps) {
               <div className="flex-1">
                 <input
                   type="range"
-                  min={50}
-                  max={200}
-                  value={logo.width}
-                  onChange={(e) => handleWidthChange(logo.id, parseInt(e.target.value))}
+                  min={30}
+                  max={80}
+                  value={logo.height}
+                  onChange={(e) => handleHeightChange(logo.id, parseInt(e.target.value))}
                   onMouseDown={(e) => e.stopPropagation()}
                   onPointerDown={(e) => e.stopPropagation()}
                   className="w-full h-1 cursor-pointer"
                 />
-                <p className="text-xs text-muted-foreground">{logo.width}px</p>
+                <p className="text-xs text-muted-foreground">Height: {logo.height}px</p>
               </div>
               <Button
                 variant="ghost"

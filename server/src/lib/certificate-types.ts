@@ -14,7 +14,7 @@ export interface CertificateTemplate {
 export interface LogoConfig {
   id: string
   url: string
-  width: number
+  height: number
   order: number
 }
 
