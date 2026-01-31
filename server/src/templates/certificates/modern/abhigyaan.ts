@@ -212,6 +212,25 @@ export function renderAbhigyaan(config: CertificateConfig, data: CertificateData
       top: 40%;
       left: 5%;
     }
+    
+    /* Print media fallbacks - gradient text doesn't work in print mode */
+    @media print {
+      .title {
+        background: none !important;
+        -webkit-background-clip: initial !important;
+        -webkit-text-fill-color: ${config.colors.primary} !important;
+        background-clip: initial !important;
+        color: ${config.colors.primary} !important;
+      }
+      
+      .recipient-name {
+        background: none !important;
+        -webkit-background-clip: initial !important;
+        -webkit-text-fill-color: ${config.colors.primary} !important;
+        background-clip: initial !important;
+        color: ${config.colors.primary} !important;
+      }
+    }
   `
 
   return `<!DOCTYPE html>
