@@ -13,6 +13,8 @@ import { queueRouter } from './routes/queue'
 import { settingsRouter } from './routes/settings'
 import { attachmentsRouter } from './routes/attachments'
 import { backupsRouter } from './routes/backups'
+import { trackingRouter } from './routes/tracking'
+import { analyticsRouter } from './routes/analytics'
 import { authMiddleware } from './middleware/auth'
 import { startQueueProcessor } from './services/queue-processor'
 import { startScheduler } from './services/scheduler'
@@ -93,10 +95,14 @@ app.get('/api/health', (_, res) => {
   })
 })
 
+// Public tracking routes (no auth required)
+app.use('/t', trackingRouter)
+
 // Auth routes (no auth required)
 app.use('/api/auth', authRouter)
 
 // Protected API routes
+app.use('/api', analyticsRouter)
 app.use('/api/templates', authMiddleware, templatesRouter)
 app.use('/api/drafts', authMiddleware, draftsRouter)
 app.use('/api/campaigns', authMiddleware, campaignsRouter)
