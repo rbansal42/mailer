@@ -414,7 +414,7 @@ function BlockProperties({ block, onChange }: { block: Block; onChange: (props: 
               value={String(props.content || '')}
               onChange={(e) => onChange({ content: e.target.value })}
               placeholder="Hello {{name}}..."
-              className="w-full h-24 text-xs rounded-md border px-2 py-1 resize-none"
+              className="w-full h-24 text-xs rounded-md border border-input bg-background text-foreground px-2 py-1 resize-none focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
           <div className="grid grid-cols-2 gap-2">
@@ -432,7 +432,7 @@ function BlockProperties({ block, onChange }: { block: Block; onChange: (props: 
               <select
                 value={String(props.align || 'left')}
                 onChange={(e) => onChange({ align: e.target.value })}
-                className="w-full h-8 text-xs rounded-md border px-2"
+                className="w-full h-8 text-xs rounded-md border border-input bg-background text-foreground px-2 focus:outline-none focus:ring-2 focus:ring-ring"
               >
                 <option value="left">Left</option>
                 <option value="center">Center</option>
@@ -477,7 +477,7 @@ function BlockProperties({ block, onChange }: { block: Block; onChange: (props: 
               <select
                 value={String(props.align || 'center')}
                 onChange={(e) => onChange({ align: e.target.value })}
-                className="w-full h-8 text-xs rounded-md border px-2"
+                className="w-full h-8 text-xs rounded-md border border-input bg-background text-foreground px-2 focus:outline-none focus:ring-2 focus:ring-ring"
               >
                 <option value="left">Left</option>
                 <option value="center">Center</option>
@@ -523,7 +523,7 @@ function BlockProperties({ block, onChange }: { block: Block; onChange: (props: 
               <select
                 value={String(props.align || 'center')}
                 onChange={(e) => onChange({ align: e.target.value })}
-                className="w-full h-8 text-xs rounded-md border px-2"
+                className="w-full h-8 text-xs rounded-md border border-input bg-background text-foreground px-2 focus:outline-none focus:ring-2 focus:ring-ring"
               >
                 <option value="left">Left</option>
                 <option value="center">Center</option>
@@ -541,7 +541,7 @@ function BlockProperties({ block, onChange }: { block: Block; onChange: (props: 
             <select
               value={String(props.style || 'solid')}
               onChange={(e) => onChange({ style: e.target.value })}
-              className="w-full h-8 text-xs rounded-md border px-2"
+              className="w-full h-8 text-xs rounded-md border border-input bg-background text-foreground px-2 focus:outline-none focus:ring-2 focus:ring-ring"
             >
               <option value="solid">Solid</option>
               <option value="dashed">Dashed</option>
@@ -578,7 +578,7 @@ function BlockProperties({ block, onChange }: { block: Block; onChange: (props: 
           <select
             value={Number(props.count) || 2}
             onChange={(e) => onChange({ count: Number(e.target.value) })}
-            className="w-full h-8 text-xs rounded-md border px-2"
+            className="w-full h-8 text-xs rounded-md border border-input bg-background text-foreground px-2 focus:outline-none focus:ring-2 focus:ring-ring"
           >
             <option value={2}>2 Columns</option>
             <option value={3}>3 Columns</option>
@@ -593,7 +593,7 @@ function BlockProperties({ block, onChange }: { block: Block; onChange: (props: 
             value={String(props.text || '')}
             onChange={(e) => onChange({ text: e.target.value })}
             placeholder="© 2026 Company · Unsubscribe"
-            className="w-full h-16 text-xs rounded-md border px-2 py-1 resize-none"
+            className="w-full h-16 text-xs rounded-md border border-input bg-background text-foreground px-2 py-1 resize-none focus:outline-none focus:ring-2 focus:ring-ring"
           />
         </div>
       )
