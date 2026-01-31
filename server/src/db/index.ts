@@ -212,6 +212,49 @@ export function initializeDatabase() {
     )
   `)
 
+  // Drip sequences
+  db.run(`
+    CREATE TABLE IF NOT EXISTS sequences (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      description TEXT,
+      enabled INTEGER DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `)
+
+  // Sequence steps
+  db.run(`
+    CREATE TABLE IF NOT EXISTS sequence_steps (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sequence_id INTEGER REFERENCES sequences(id) ON DELETE CASCADE,
+      step_order INTEGER NOT NULL,
+      template_id INTEGER REFERENCES templates(id),
+      subject TEXT NOT NULL,
+      delay_days INTEGER NOT NULL,
+      delay_hours INTEGER DEFAULT 0,
+      send_time TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `)
+
+  // Sequence enrollments
+  db.run(`
+    CREATE TABLE IF NOT EXISTS sequence_enrollments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sequence_id INTEGER REFERENCES sequences(id) ON DELETE CASCADE,
+      recipient_email TEXT NOT NULL,
+      recipient_data TEXT,
+      current_step INTEGER DEFAULT 0,
+      status TEXT DEFAULT 'active',
+      enrolled_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      next_send_at DATETIME,
+      completed_at DATETIME,
+      UNIQUE(sequence_id, recipient_email)
+    )
+  `)
+
   // Create attachments directory
   mkdirSync(join(DATA_DIR, 'attachments'), { recursive: true })
 
@@ -236,6 +279,9 @@ export function initializeDatabase() {
   db.run('CREATE INDEX IF NOT EXISTS idx_tracking_events_type ON tracking_events(event_type)')
   db.run('CREATE INDEX IF NOT EXISTS idx_tracking_tokens_token ON tracking_tokens(token)')
   db.run('CREATE INDEX IF NOT EXISTS idx_scheduled_batches_status ON scheduled_batches(status, scheduled_for)')
+  db.run('CREATE INDEX IF NOT EXISTS idx_enrollments_next_send ON sequence_enrollments(next_send_at)')
+  db.run('CREATE INDEX IF NOT EXISTS idx_enrollments_status ON sequence_enrollments(status)')
+  db.run('CREATE INDEX IF NOT EXISTS idx_sequence_steps_order ON sequence_steps(sequence_id, step_order)')
 
   // Initialize default tracking settings
   const trackingDefaults = [
