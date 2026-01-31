@@ -123,6 +123,16 @@ export function initializeDatabase() {
   seedTemplates()
 }
 
+export function checkDatabaseHealth(): { ok: boolean; latencyMs: number } {
+  const start = Date.now()
+  try {
+    db.query('SELECT 1').get()
+    return { ok: true, latencyMs: Date.now() - start }
+  } catch {
+    return { ok: false, latencyMs: Date.now() - start }
+  }
+}
+
 function seedTemplates(): void {
   // Check if templates already exist
   const count = db.query('SELECT COUNT(*) as count FROM templates').get() as { count: number }

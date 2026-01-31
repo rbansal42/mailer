@@ -2,7 +2,7 @@ import express from 'express'
 import cors from 'cors'
 import { join } from 'path'
 import { existsSync } from 'fs'
-import { initializeDatabase } from './db'
+import { initializeDatabase, checkDatabaseHealth, db } from './db'
 import { authRouter } from './routes/auth'
 import { templatesRouter } from './routes/templates'
 import { draftsRouter } from './routes/drafts'
@@ -29,7 +29,65 @@ initializeDatabase()
 
 // Health check (no auth)
 app.get('/api/health', (_, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() })
+  const dbHealth = checkDatabaseHealth()
+  
+  // Check disk space (data directory)
+  const dataDir = join(process.cwd(), 'data')
+  let diskOk = true
+  let diskInfo = {}
+  try {
+    if (existsSync(dataDir)) {
+      diskInfo = { exists: true }
+    }
+  } catch {
+    diskOk = false
+  }
+  
+  // Check queue status
+  let queuePending = 0
+  try {
+    const result = db.query("SELECT COUNT(*) as count FROM email_queue WHERE status = 'pending'").get() as any
+    queuePending = result?.count || 0
+  } catch {
+    // Queue table might not exist yet
+  }
+  
+  // Check accounts
+  let accountsInfo = { total: 0, enabled: 0, atCap: 0 }
+  try {
+    const today = new Date().toISOString().split('T')[0]
+    const accounts = db.query(`
+      SELECT sa.id, sa.daily_cap, sa.enabled,
+             COALESCE(sc.count, 0) as sent_today
+      FROM sender_accounts sa
+      LEFT JOIN send_counts sc ON sa.id = sc.account_id AND sc.date = ?
+    `).all(today) as any[]
+    
+    accountsInfo.total = accounts.length
+    accountsInfo.enabled = accounts.filter(a => a.enabled).length
+    accountsInfo.atCap = accounts.filter(a => a.enabled && a.sent_today >= a.daily_cap).length
+  } catch {
+    // Tables might not exist yet
+  }
+  
+  const allHealthy = dbHealth.ok && diskOk
+  
+  res.status(allHealthy ? 200 : 503).json({
+    status: allHealthy ? 'healthy' : 'degraded',
+    timestamp: new Date().toISOString(),
+    version: '2.1.0',
+    checks: {
+      database: { status: dbHealth.ok ? 'ok' : 'error', latencyMs: dbHealth.latencyMs },
+      disk: { status: diskOk ? 'ok' : 'error', ...diskInfo },
+      queue: { status: 'ok', pending: queuePending },
+      accounts: { 
+        status: 'ok',
+        total: accountsInfo.total,
+        enabled: accountsInfo.enabled,
+        atCap: accountsInfo.atCap
+      }
+    }
+  })
 })
 
 // Auth routes (no auth required)
