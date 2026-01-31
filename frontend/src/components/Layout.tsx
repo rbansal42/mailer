@@ -2,12 +2,13 @@ import { useState } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../hooks/useAuthStore'
 import { useThemeStore } from '../hooks/useThemeStore'
-import { Mail, FileText, History, Settings, LogOut, Sun, Moon, Menu, X } from 'lucide-react'
+import { Mail, FileText, History, Settings, LogOut, Sun, Moon, Menu, X, Award } from 'lucide-react'
 import { cn } from '../lib/utils'
 
 const navItems = [
   { to: '/campaigns', label: 'Campaigns', icon: Mail },
   { to: '/templates', label: 'Templates', icon: FileText },
+  { to: '/certificates', label: 'Certificates', icon: Award },
   { to: '/history', label: 'History', icon: History },
   { to: '/settings', label: 'Settings', icon: Settings },
 ]
