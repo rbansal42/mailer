@@ -3,6 +3,8 @@ import { db } from '../db'
 import { getNextAvailableAccount, incrementSendCount } from '../services/account-manager'
 import { compileTemplate, replaceVariables } from '../services/template-compiler'
 import { createProvider } from '../providers'
+import { sendCampaignSchema, validate } from '../lib/validation'
+import { logger } from '../lib/logger'
 
 export const sendRouter = Router()
 
@@ -28,26 +30,59 @@ function getNextDay(): string {
 }
 
 sendRouter.get('/', async (req: Request, res: Response) => {
-  const { templateId, subject, recipients: recipientsJson, name } = req.query
+  const { templateId, subject, recipients: recipientsJson, name, cc: ccJson, bcc: bccJson } = req.query
 
-  // Validate required parameters
-  if (!templateId || !subject || !recipientsJson || !name) {
-    res.status(400).json({ error: 'Missing required parameters' })
-    return
-  }
+  // Parse JSON fields from query params
+  let parsedRecipients: unknown
+  let parsedCc: unknown = []
+  let parsedBcc: unknown = []
 
-  let recipients: Recipient[]
   try {
-    recipients = JSON.parse(recipientsJson as string)
+    parsedRecipients = JSON.parse(recipientsJson as string)
   } catch {
     res.status(400).json({ error: 'Invalid recipients JSON' })
     return
   }
 
-  if (!Array.isArray(recipients) || recipients.length === 0) {
-    res.status(400).json({ error: 'Recipients must be a non-empty array' })
+  try {
+    if (ccJson) parsedCc = JSON.parse(ccJson as string)
+  } catch {
+    res.status(400).json({ error: 'Invalid cc JSON' })
     return
   }
+
+  try {
+    if (bccJson) parsedBcc = JSON.parse(bccJson as string)
+  } catch {
+    res.status(400).json({ error: 'Invalid bcc JSON' })
+    return
+  }
+
+  // Validate with schema
+  const validation = validate(sendCampaignSchema, {
+    name: name as string,
+    templateId: Number(templateId),
+    subject: subject as string,
+    recipients: parsedRecipients,
+    cc: parsedCc,
+    bcc: parsedBcc
+  })
+
+  if (!validation.success) {
+    logger.warn('Send campaign validation failed', { error: validation.error })
+    res.status(400).json({ error: validation.error })
+    return
+  }
+
+  const { templateId: validatedTemplateId, subject: validatedSubject, recipients, cc, bcc, name: campaignName } = validation.data
+
+  logger.info('Starting campaign send', {
+    service: 'send',
+    templateId: validatedTemplateId,
+    recipientCount: recipients.length,
+    ccCount: cc?.length || 0,
+    bccCount: bcc?.length || 0
+  })
 
   // Set up SSE headers
   res.setHeader('Content-Type', 'text/event-stream')
@@ -58,9 +93,10 @@ sendRouter.get('/', async (req: Request, res: Response) => {
 
   try {
     // Get template from database
-    const template = db.query('SELECT * FROM templates WHERE id = ?').get(templateId) as TemplateRow | null
+    const template = db.query('SELECT * FROM templates WHERE id = ?').get(validatedTemplateId) as TemplateRow | null
 
     if (!template) {
+      logger.warn('Template not found', { templateId: validatedTemplateId })
       sendSSE(res, { type: 'error', message: 'Template not found' })
       res.end()
       return
@@ -68,13 +104,15 @@ sendRouter.get('/', async (req: Request, res: Response) => {
 
     const blocks = JSON.parse(template.blocks || '[]')
 
-    // Create campaign record
+    // Create campaign record with cc/bcc
     const result = db.run(
-      `INSERT INTO campaigns (name, template_id, subject, total_recipients, started_at)
-       VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)`,
-      [name as string, templateId, subject as string, recipients.length]
+      `INSERT INTO campaigns (name, template_id, subject, total_recipients, cc, bcc, status, started_at)
+       VALUES (?, ?, ?, ?, ?, ?, 'sending', CURRENT_TIMESTAMP)`,
+      [campaignName || 'Unnamed', validatedTemplateId, validatedSubject, recipients.length, JSON.stringify(cc || []), JSON.stringify(bcc || [])]
     )
     const campaignId = Number(result.lastInsertRowid)
+
+    logger.info('Campaign created', { campaignId, service: 'send' })
 
     let successful = 0
     let failed = 0
@@ -114,15 +152,18 @@ sendRouter.get('/', async (req: Request, res: Response) => {
           continue
         }
 
-        // Compile template with recipient data
-        const html = compileTemplate(blocks, recipient)
-        const compiledSubject = replaceVariables(subject as string, recipient)
+        // Compile template with recipient data (merge email with data for variable substitution)
+        const recipientData: Record<string, string> = { email: recipient.email, ...recipient.data }
+        const html = compileTemplate(blocks, recipientData)
+        const compiledSubject = replaceVariables(validatedSubject, recipientData)
 
         // Create provider and send email
         const provider = createProvider(account.providerType as 'gmail' | 'smtp', account.config)
 
         await provider.send({
           to: recipient.email,
+          cc: cc || [],
+          bcc: bcc || [],
           subject: compiledSubject,
           html,
         })
@@ -141,6 +182,13 @@ sendRouter.get('/', async (req: Request, res: Response) => {
           [campaignId, account.id, recipient.email]
         )
 
+        logger.debug('Email sent successfully', {
+          service: 'send',
+          campaignId,
+          recipient: recipient.email,
+          account: account.name
+        })
+
         sendSSE(res, {
           type: 'progress',
           current,
@@ -157,6 +205,12 @@ sendRouter.get('/', async (req: Request, res: Response) => {
           [campaignId, recipient.email, errorMessage]
         )
 
+        logger.error('Failed to send email', {
+          service: 'send',
+          campaignId,
+          recipient: recipient.email
+        }, error instanceof Error ? error : undefined)
+
         sendSSE(res, {
           type: 'progress',
           current,
@@ -171,14 +225,23 @@ sendRouter.get('/', async (req: Request, res: Response) => {
 
     // Update campaign stats
     db.run(
-      `UPDATE campaigns SET successful = ?, failed = ?, queued = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      `UPDATE campaigns SET successful = ?, failed = ?, queued = ?, status = 'completed', completed_at = CURRENT_TIMESTAMP WHERE id = ?`,
       [successful, failed, queued, campaignId]
     )
+
+    logger.info('Campaign completed', {
+      service: 'send',
+      campaignId,
+      successful,
+      failed,
+      queued
+    })
 
     sendSSE(res, { type: 'complete', campaignId })
     res.end()
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    logger.error('Campaign failed', { service: 'send' }, error instanceof Error ? error : undefined)
     sendSSE(res, { type: 'error', message: errorMessage })
     res.end()
   }
