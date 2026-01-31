@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import multer from 'multer'
 import { existsSync, unlinkSync } from 'fs'
-import { extname } from 'path'
+import { basename, extname } from 'path'
 import { db } from '../db'
 import { logger } from '../lib/logger'
 import {
@@ -24,7 +24,7 @@ const storage = multer.diskStorage({
     const uploadDir = createTempDir()
     cb(null, uploadDir)
   },
-  filename: (_req, file, cb) => cb(null, file.originalname),
+  filename: (_req, file, cb) => cb(null, basename(file.originalname)),
 })
 
 const upload = multer({
