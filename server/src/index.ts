@@ -13,12 +13,15 @@ import { queueRouter } from './routes/queue'
 import { settingsRouter } from './routes/settings'
 import { authMiddleware } from './middleware/auth'
 import { startQueueProcessor } from './services/queue-processor'
+import { requestIdMiddleware, requestLogMiddleware, logger } from './lib/logger'
 
 const app = express()
 const PORT = process.env.PORT || 3342
 
 // Middleware
 app.use(cors())
+app.use(requestIdMiddleware)
+app.use(requestLogMiddleware)
 app.use(express.json())
 
 // Initialize database
@@ -54,5 +57,5 @@ if (existsSync(publicPath)) {
 startQueueProcessor()
 
 app.listen(PORT, () => {
-  console.log(`Mailer server running on http://localhost:${PORT}`)
+  logger.info('Server started', { port: PORT, env: process.env.NODE_ENV || 'development' })
 })
