@@ -11,7 +11,7 @@ Mailer is a self-hosted email campaign management system with certificate genera
 - **Runtime**: Bun (NOT npm/node)
 - **Frontend**: React + Vite + TypeScript + TailwindCSS + shadcn/ui
 - **Backend**: Express + TypeScript + SQLite (via bun:sqlite)
-- **PDF Generation**: Puppeteer
+- **PDF Generation**: @react-pdf/renderer (primary), Puppeteer (legacy templates)
 
 ## Commands
 
@@ -57,6 +57,14 @@ mailer/
 
 ## Certificate Templates
 
+### React PDF Templates (Recommended)
+Located in `server/src/services/pdf/templates/`:
+- **modern-clean**: Double border design with accent bar
+- **dark-elegant**: Dark background with gold accents
+- **clean-minimal**: White minimal design
+- **wave-accent**: Layered color bars at bottom
+
+### Legacy HTML Templates (Puppeteer)
 Located in `server/src/templates/certificates/`:
 - **Modern**: abhigyaan, geometric-purple, teal-medical
 - **Dark**: galaxy-night, navy-gold, tech-cyan
@@ -65,11 +73,13 @@ Located in `server/src/templates/certificates/`:
 
 ## Known Issues / Gotchas
 
-1. **Gradient text in PDFs**: `-webkit-background-clip: text` doesn't work in print mode. Use `@media print` fallbacks.
+1. **Gradient text in PDFs**: Legacy Puppeteer templates have issues with `-webkit-background-clip: text`. Use React PDF templates which use solid colors instead.
 
 2. **Large payloads**: JSON body limit is 10mb for certificate configs with base64 images.
 
 3. **Worktrees**: Use `.worktrees/` directory for feature branches. It's gitignored.
+
+4. **React PDF fonts**: Fonts are registered in `server/src/services/pdf/fonts.ts`. Font files are in `server/assets/fonts/`.
 
 ## Workflow
 
