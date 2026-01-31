@@ -36,11 +36,19 @@ A self-hosted bulk email platform with multi-account sending, visual template ed
 - **Drip Sequences** - Multi-step automated email sequences with delays
 - **Timezone Support** - Send at recipient's local time
 
+### Certificate Generation
+- **PDF Worker Pool** - Parallel PDF generation using worker threads
+- **Configurable Pool Size** - Adjust worker count via `PDF_WORKER_COUNT` (default: 5)
+- **Timeout Protection** - Configurable timeout via `PDF_TIMEOUT_MS` (default: 30s)
+- **Queue Management** - Automatic queueing when all workers are busy
+- **Multiple Templates** - Modern, elegant, minimal, and wave-accent designs
+
 ### Reliability
 - **Automatic Retries** - Exponential backoff for failed sends
 - **Circuit Breaker** - Pause problematic accounts automatically
 - **Database Backups** - Scheduled backups with configurable retention
 - **Structured Logging** - JSON logs with request correlation IDs
+- **PDF Pool Stats** - Health endpoint includes worker pool statistics
 
 ## Quick Start
 
@@ -92,6 +100,8 @@ docker compose up -d
 | `PORT` | Server port (default: 3342) | No |
 | `TZ` | Timezone for scheduling (e.g., `America/Los_Angeles`) | No |
 | `DATA_DIR` | Directory for SQLite database and uploads | No |
+| `PDF_WORKER_COUNT` | Number of PDF worker threads (default: 5) | No |
+| `PDF_TIMEOUT_MS` | PDF generation timeout in ms (default: 30000) | No |
 
 ### Email Accounts
 
