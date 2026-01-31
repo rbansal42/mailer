@@ -1,13 +1,14 @@
 import { Router, Request, Response } from 'express'
 import { db } from '../db'
 import { getNextAvailableAccount, incrementSendCount } from '../services/account-manager'
-import { compileTemplate, replaceVariables } from '../services/template-compiler'
+import { compileTemplate, replaceVariables, injectTracking } from '../services/template-compiler'
 import { createProvider } from '../providers'
 import { sendCampaignSchema, validate } from '../lib/validation'
 import { logger } from '../lib/logger'
 import { getRecipientAttachment } from '../services/attachment-matcher'
 import { withRetry, DEFAULT_CONFIG } from '../services/retry'
 import { isCircuitOpen, recordSuccess, recordFailure, getOpenCircuits } from '../services/circuit-breaker'
+import { getTrackingSettings, getOrCreateToken } from '../services/tracking'
 
 export const sendRouter = Router()
 
@@ -207,8 +208,18 @@ sendRouter.get('/', async (req: Request, res: Response) => {
 
         // Compile template with recipient data (merge email with data for variable substitution)
         const recipientData: Record<string, string> = { email: recipient.email, ...recipient.data }
-        const html = compileTemplate(blocks, recipientData)
+        let html = compileTemplate(blocks, recipientData)
         const compiledSubject = replaceVariables(validatedSubject, recipientData)
+
+        // Inject tracking if enabled
+        const trackingSettings = getTrackingSettings()
+        if (trackingSettings.enabled) {
+          const trackingToken = getOrCreateToken(campaignId, recipient.email)
+          html = injectTracking(html, trackingToken, trackingSettings.baseUrl, {
+            openTracking: trackingSettings.openEnabled,
+            clickTracking: trackingSettings.clickEnabled,
+          })
+        }
 
         // Get per-recipient attachment if one was matched
         const recipientAttachment = getRecipientAttachment(recipient.email, undefined, campaignId)
