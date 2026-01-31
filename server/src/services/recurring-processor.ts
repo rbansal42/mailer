@@ -39,32 +39,57 @@ interface BlockInput {
 
 /**
  * Calculate next run time from cron expression
+ * 
+ * Note: For proper timezone support, consider using luxon or date-fns-tz.
+ * This implementation handles common cron patterns but uses server local time.
  */
-export function calculateNextRun(cronExpression: string, timezone: string = 'UTC'): Date {
+export function calculateNextRun(cronExpression: string, _timezone: string = 'UTC'): Date {
   // Parse cron expression parts (minute hour dayOfMonth month dayOfWeek)
   const parts = cronExpression.split(' ')
   if (parts.length !== 5) {
     throw new Error('Invalid cron expression')
   }
 
+  const [minute, hour, dayOfMonth, month, dayOfWeek] = parts
   const now = new Date()
-
-  // For basic implementation, calculate based on cron parts
-  // A full implementation would use a proper cron library like cron-parser
-  const [minute, hour] = parts
-
   const nextRun = new Date(now)
   nextRun.setSeconds(0, 0)
 
   // Set the time from cron expression
   const cronHour = hour === '*' ? now.getHours() : parseInt(hour, 10)
-  const cronMinute = minute === '*' ? now.getMinutes() : parseInt(minute, 10)
-
+  const cronMinute = minute === '*' ? 0 : parseInt(minute, 10)
   nextRun.setHours(cronHour, cronMinute, 0, 0)
 
-  // If the time has already passed today, schedule for tomorrow
-  if (nextRun <= now) {
-    nextRun.setDate(nextRun.getDate() + 1)
+  // Handle day of week (0-6, where 0 is Sunday)
+  if (dayOfWeek !== '*') {
+    const targetDay = parseInt(dayOfWeek, 10)
+    const currentDay = nextRun.getDay()
+    let daysToAdd = targetDay - currentDay
+    if (daysToAdd < 0 || (daysToAdd === 0 && nextRun <= now)) {
+      daysToAdd += 7
+    }
+    nextRun.setDate(nextRun.getDate() + daysToAdd)
+  } else if (dayOfMonth !== '*') {
+    // Handle specific day of month
+    const targetDate = parseInt(dayOfMonth, 10)
+    nextRun.setDate(targetDate)
+    if (nextRun <= now) {
+      nextRun.setMonth(nextRun.getMonth() + 1)
+    }
+  } else {
+    // Daily or more frequent - if time passed, go to next day
+    if (nextRun <= now) {
+      nextRun.setDate(nextRun.getDate() + 1)
+    }
+  }
+
+  // Handle month if specified
+  if (month !== '*') {
+    const targetMonth = parseInt(month, 10) - 1 // Cron months are 1-12, JS is 0-11
+    nextRun.setMonth(targetMonth)
+    if (nextRun <= now) {
+      nextRun.setFullYear(nextRun.getFullYear() + 1)
+    }
   }
 
   return nextRun

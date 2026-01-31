@@ -95,9 +95,15 @@ sequencesRouter.post('/', (req, res) => {
   try {
     const { name, description, enabled } = req.body
 
+    // Validate required fields
+    if (!name || typeof name !== 'string' || name.trim().length === 0) {
+      res.status(400).json({ error: 'Name is required' })
+      return
+    }
+
     const result = db.run(
       `INSERT INTO sequences (name, description, enabled) VALUES (?, ?, ?)`,
-      [name, description || null, enabled !== false ? 1 : 0]
+      [name.trim(), description || null, enabled !== false ? 1 : 0]
     )
 
     const id = Number(result.lastInsertRowid)
@@ -159,6 +165,20 @@ sequencesRouter.post('/:id/steps', (req, res) => {
   try {
     const sequenceId = parseInt(req.params.id, 10)
     const { templateId, subject, delayDays, delayHours, sendTime } = req.body
+
+    // Validate required fields
+    if (!subject || typeof subject !== 'string' || subject.trim().length === 0) {
+      res.status(400).json({ error: 'Subject is required' })
+      return
+    }
+    if (delayDays !== undefined && (typeof delayDays !== 'number' || delayDays < 0)) {
+      res.status(400).json({ error: 'Delay days must be a non-negative number' })
+      return
+    }
+    if (delayHours !== undefined && (typeof delayHours !== 'number' || delayHours < 0)) {
+      res.status(400).json({ error: 'Delay hours must be a non-negative number' })
+      return
+    }
 
     // Get next step order
     const maxOrder = db

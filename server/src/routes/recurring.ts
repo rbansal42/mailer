@@ -72,6 +72,24 @@ recurringRouter.post('/', (req: Request, res: Response) => {
   try {
     const { name, templateId, subject, recipientSource, recipientData, scheduleCron, timezone, cc, bcc, enabled } = req.body
 
+    // Validate required fields
+    if (!name || typeof name !== 'string' || name.trim().length === 0) {
+      res.status(400).json({ error: 'Name is required' })
+      return
+    }
+    if (!subject || typeof subject !== 'string' || subject.trim().length === 0) {
+      res.status(400).json({ error: 'Subject is required' })
+      return
+    }
+    if (!recipientSource || !['static', 'csv_url', 'api'].includes(recipientSource)) {
+      res.status(400).json({ error: 'Valid recipient source is required (static, csv_url, api)' })
+      return
+    }
+    if (!scheduleCron) {
+      res.status(400).json({ error: 'Schedule cron expression is required' })
+      return
+    }
+
     // Validate cron expression
     if (!cron.validate(scheduleCron)) {
       res.status(400).json({ error: 'Invalid cron expression' })
