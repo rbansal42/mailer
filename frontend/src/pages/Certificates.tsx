@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import Papa from 'papaparse'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
@@ -7,11 +8,15 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../co
 import {
   Plus, ChevronLeft, Save, Trash2, Loader2, Upload, X, GripVertical,
   ChevronDown, ChevronRight, Eye, Download, FileSpreadsheet, Award,
-  Palette, Users, Image, RotateCcw
+  Palette, Users, Image, RotateCcw, AlertCircle
 } from 'lucide-react'
 import { cn } from '../lib/utils'
 import { api } from '../lib/api'
 import type { CertificateConfig, CertificateTemplate, LogoConfig, SignatoryConfig, CertificateData } from '../lib/api'
+
+// File validation constants
+const ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/svg+xml', 'image/webp']
+const MAX_IMAGE_SIZE = 2 * 1024 * 1024 // 2MB
 
 const TEMPLATE_CATEGORIES = [
   { id: 'modern', name: 'Modern', icon: Palette },
@@ -32,6 +37,7 @@ export default function Certificates() {
   const [isEditing, setIsEditing] = useState(false)
   const [editingConfig, setEditingConfig] = useState<CertificateConfig | null>(null)
   const [generatingConfig, setGeneratingConfig] = useState<CertificateConfig | null>(null)
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null)
 
   const { data: configs, isLoading: configsLoading } = useQuery({
     queryKey: ['certificateConfigs'],
@@ -109,17 +115,50 @@ export default function Certificates() {
                 <CardHeader className="p-4 pb-2">
                   <CardTitle className="text-sm flex items-center justify-between">
                     <span>{config.name}</span>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 text-destructive"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        deleteMutation.mutate(config.id)
-                      }}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
+                    {deleteConfirmId === config.id ? (
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          className="h-6 text-xs px-2"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            deleteMutation.mutate(config.id)
+                            setDeleteConfirmId(null)
+                          }}
+                          disabled={deleteMutation.isPending}
+                        >
+                          {deleteMutation.isPending ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            'Delete'
+                          )}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 text-xs px-2"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setDeleteConfirmId(null)
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 text-destructive hover:text-destructive"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setDeleteConfirmId(config.id)
+                        }}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    )}
                   </CardTitle>
                   <CardDescription className="text-xs">
                     {template?.name || config.templateId}
@@ -212,6 +251,8 @@ function CertificateEditor({ config, templates, onBack }: EditorProps) {
   const [previewPdf, setPreviewPdf] = useState<string>('')
   const [isLoadingPreview, setIsLoadingPreview] = useState(false)
   const [expandedCategories, setExpandedCategories] = useState<string[]>(['modern'])
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [validationError, setValidationError] = useState<string | null>(null)
 
   const selectedTemplate = templates.find(t => t.id === selectedTemplateId)
 
@@ -232,18 +273,34 @@ function CertificateEditor({ config, templates, onBack }: EditorProps) {
       queryClient.invalidateQueries({ queryKey: ['certificateConfigs'] })
       onBack()
     },
+    onError: (error) => {
+      setSaveError(error instanceof Error ? error.message : 'Failed to save configuration')
+    },
   })
 
   const handleSave = () => {
+    // Validate before saving
+    setSaveError(null)
+    setValidationError(null)
+    
+    if (!configName.trim()) {
+      setValidationError('Configuration name is required')
+      return
+    }
+    if (!selectedTemplateId) {
+      setValidationError('Please select a template')
+      return
+    }
+    
     saveMutation.mutate({
-      name: configName,
+      name: configName.trim(),
       templateId: selectedTemplateId,
       colors,
       logos,
       signatories,
-      titleText,
-      subtitleText,
-      descriptionTemplate,
+      titleText: titleText.trim() || 'CERTIFICATE',
+      subtitleText: subtitleText.trim() || 'of Participation',
+      descriptionTemplate: descriptionTemplate.trim(),
     })
   }
 
@@ -291,27 +348,43 @@ function CertificateEditor({ config, templates, onBack }: EditorProps) {
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="p-3 border-b flex items-center justify-between bg-card">
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={onBack}>
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <Input
-            value={configName}
-            onChange={(e) => setConfigName(e.target.value)}
-            className="h-8 text-sm font-semibold w-64"
-          />
+      <div className="p-3 border-b flex flex-col gap-2 bg-card">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" onClick={onBack}>
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Input
+              value={configName}
+              onChange={(e) => {
+                setConfigName(e.target.value)
+                setValidationError(null)
+              }}
+              className={cn(
+                "h-8 text-sm font-semibold w-64",
+                validationError && !configName.trim() && "border-destructive"
+              )}
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <Button size="sm" onClick={handleSave} disabled={saveMutation.isPending}>
+              {saveMutation.isPending ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4 mr-1" />
+              )}
+              Save
+            </Button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button size="sm" onClick={handleSave} disabled={saveMutation.isPending}>
-            {saveMutation.isPending ? (
-              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-            ) : (
-              <Save className="h-4 w-4 mr-1" />
-            )}
-            Save
-          </Button>
-        </div>
+        
+        {/* Error display */}
+        {(validationError || saveError) && (
+          <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 rounded px-3 py-2">
+            <AlertCircle className="h-4 w-4 flex-shrink-0" />
+            <span>{validationError || saveError}</span>
+          </div>
+        )}
       </div>
 
       {/* Main Content - 3 Columns */}
@@ -554,26 +627,49 @@ interface LogoManagerProps {
 
 function LogoManager({ logos, onChange }: LogoManagerProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [uploadError, setUploadError] = useState<string | null>(null)
 
-  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files) return
-
-    Array.from(files).forEach(file => {
-      if (logos.length >= 6) return
-
-      const reader = new FileReader()
-      reader.onload = (event) => {
-        const newLogo: LogoConfig = {
-          id: `logo_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          url: event.target?.result as string,
-          width: 100,
-          order: logos.length,
-        }
-        onChange([...logos, newLogo])
+    
+    setUploadError(null)
+    const remainingSlots = 6 - logos.length
+    const filesToProcess = Array.from(files).slice(0, remainingSlots)
+    
+    // Validate all files first
+    for (const file of filesToProcess) {
+      if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+        setUploadError(`Invalid file type: ${file.name}. Use PNG, JPEG, GIF, SVG, or WebP.`)
+        return
       }
-      reader.readAsDataURL(file)
-    })
+      if (file.size > MAX_IMAGE_SIZE) {
+        setUploadError(`File too large: ${file.name}. Maximum size is 2MB.`)
+        return
+      }
+    }
+    
+    // Process all files and collect results
+    const newLogos: LogoConfig[] = []
+    
+    await Promise.all(filesToProcess.map((file, index) => 
+      new Promise<void>((resolve) => {
+        const reader = new FileReader()
+        reader.onload = (event) => {
+          newLogos.push({
+            id: `logo_${Date.now()}_${index}_${Math.random().toString(36).substring(2, 11)}`,
+            url: event.target?.result as string,
+            width: 100,
+            order: logos.length + index,
+          })
+          resolve()
+        }
+        reader.readAsDataURL(file)
+      })
+    ))
+    
+    // Update state once with all new logos
+    onChange([...logos, ...newLogos])
 
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
@@ -618,6 +714,13 @@ function LogoManager({ logos, onChange }: LogoManagerProps) {
           onChange={handleUpload}
         />
       </div>
+
+      {uploadError && (
+        <div className="flex items-center gap-2 text-xs text-destructive bg-destructive/10 rounded p-2">
+          <AlertCircle className="h-3 w-3 flex-shrink-0" />
+          <span>{uploadError}</span>
+        </div>
+      )}
 
       {logos.length === 0 ? (
         <p className="text-xs text-muted-foreground text-center py-2">No logos added</p>
@@ -812,23 +915,29 @@ function CsvUploadModal({ config, onClose }: CsvUploadModalProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const parseCsv = (text: string): CertificateData[] => {
-    const lines = text.trim().split('\n')
-    if (lines.length < 2) return []
+    // Use papaparse for proper CSV handling (handles quoted fields, commas in values, etc.)
+    const result = Papa.parse<Record<string, string>>(text, {
+      header: true,
+      skipEmptyLines: true,
+      transformHeader: (header) => header.trim().toLowerCase(),
+    })
 
-    const headers = lines[0].split(',').map(h => h.trim().toLowerCase())
-    const nameIndex = headers.findIndex(h => h === 'name')
-    if (nameIndex === -1) return []
+    if (result.errors.length > 0) {
+      console.warn('CSV parse warnings:', result.errors)
+    }
 
-    return lines.slice(1).map(line => {
-      const values = line.split(',').map(v => v.trim())
-      const data: CertificateData = { name: '' }
-      headers.forEach((header, i) => {
-        if (values[i]) {
-          data[header] = values[i]
-        }
+    // Filter to records that have a name field
+    return result.data
+      .filter(row => row.name && row.name.trim())
+      .map(row => {
+        const data: CertificateData = { name: row.name.trim() }
+        Object.entries(row).forEach(([key, value]) => {
+          if (key !== 'name' && value && value.trim()) {
+            data[key] = value.trim()
+          }
+        })
+        return data
       })
-      return data
-    }).filter(d => d.name)
   }
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
