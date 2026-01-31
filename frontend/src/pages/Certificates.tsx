@@ -905,12 +905,15 @@ interface CsvUploadModalProps {
   onClose: () => void
 }
 
+// Threshold for using server-side ZIP generation (more efficient for large batches)
+const SERVER_ZIP_THRESHOLD = 10
+
 function CsvUploadModal({ config, onClose }: CsvUploadModalProps) {
   const [csvData, setCsvData] = useState<CertificateData[]>([])
   const [rawCsv, setRawCsv] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
-  const [, setProgress] = useState({ current: 0, total: 0 })
   const [generatedPdfs, setGeneratedPdfs] = useState<{ certificateId: string; recipientName: string; pdf: string }[]>([])
+  const [serverZipBlob, setServerZipBlob] = useState<Blob | null>(null)
   const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -963,16 +966,23 @@ function CsvUploadModal({ config, onClose }: CsvUploadModalProps) {
 
     setIsGenerating(true)
     setError(null)
-    setProgress({ current: 0, total: csvData.length })
+    setGeneratedPdfs([])
+    setServerZipBlob(null)
 
     try {
-      const result = await api.generateCertificates(config.id, csvData)
-      
-      if (result.success) {
-        setGeneratedPdfs(result.certificates)
-        setProgress({ current: result.generated, total: csvData.length })
+      // Use server-side ZIP for large batches (more memory efficient)
+      if (csvData.length > SERVER_ZIP_THRESHOLD) {
+        const blob = await api.downloadCertificatesZip(config.id, csvData)
+        setServerZipBlob(blob)
       } else {
-        setError('Generation failed')
+        // Use client-side generation for small batches (instant preview)
+        const result = await api.generateCertificates(config.id, csvData)
+        
+        if (result.success) {
+          setGeneratedPdfs(result.certificates)
+        } else {
+          setError('Generation failed')
+        }
       }
     } catch (err) {
       console.error('Generation failed:', err)
@@ -983,6 +993,18 @@ function CsvUploadModal({ config, onClose }: CsvUploadModalProps) {
   }
 
   const handleDownloadZip = async () => {
+    // If we have a server-generated ZIP, download it directly
+    if (serverZipBlob) {
+      const url = URL.createObjectURL(serverZipBlob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `certificates-${config.name.replace(/[^a-zA-Z0-9]/g, '_')}-${Date.now()}.zip`
+      a.click()
+      URL.revokeObjectURL(url)
+      return
+    }
+    
+    // Otherwise, create ZIP from client-side generated PDFs
     if (generatedPdfs.length === 0) return
     
     // Import JSZip dynamically for creating ZIP
@@ -1002,10 +1024,13 @@ function CsvUploadModal({ config, onClose }: CsvUploadModalProps) {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `certificates-${config.name}-${Date.now()}.zip`
+    a.download = `certificates-${config.name.replace(/[^a-zA-Z0-9]/g, '_')}-${Date.now()}.zip`
     a.click()
     URL.revokeObjectURL(url)
   }
+  
+  const generationComplete = generatedPdfs.length > 0 || serverZipBlob !== null
+  const generatedCount = serverZipBlob ? csvData.length : generatedPdfs.length
 
   return (
     <div className="h-full flex flex-col">
@@ -1032,13 +1057,13 @@ function CsvUploadModal({ config, onClose }: CsvUploadModalProps) {
           )}
 
           {/* Download Complete State */}
-          {generatedPdfs.length > 0 && !isGenerating && (
+          {generationComplete && !isGenerating && (
             <Card className="border-green-500 bg-green-50 dark:bg-green-950">
               <CardContent className="p-6 text-center">
                 <Download className="h-12 w-12 mx-auto mb-4 text-green-600" />
                 <h3 className="font-semibold mb-2">Certificates Generated!</h3>
                 <p className="text-sm text-muted-foreground mb-4">
-                  {generatedPdfs.length} certificates are ready for download.
+                  {generatedCount} certificates are ready for download.
                 </p>
                 <div className="flex gap-2 justify-center">
                   <Button onClick={handleDownloadZip}>
@@ -1047,7 +1072,7 @@ function CsvUploadModal({ config, onClose }: CsvUploadModalProps) {
                   </Button>
                   <Button variant="outline" onClick={() => {
                     setGeneratedPdfs([])
-                    setProgress({ current: 0, total: 0 })
+                    setServerZipBlob(null)
                     setCsvData([])
                     setRawCsv('')
                   }}>
@@ -1081,7 +1106,7 @@ function CsvUploadModal({ config, onClose }: CsvUploadModalProps) {
           )}
 
           {/* CSV Upload */}
-          {!isGenerating && generatedPdfs.length === 0 && (
+          {!isGenerating && !generationComplete && (
             <>
               {/* Upload Zone */}
               <Card

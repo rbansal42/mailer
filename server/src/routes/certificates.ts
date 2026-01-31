@@ -1,4 +1,7 @@
 import { Router } from 'express'
+import archiver from 'archiver'
+import { join } from 'path'
+import { mkdirSync, existsSync, writeFileSync, unlinkSync } from 'fs'
 import { db } from '../db'
 import { logger } from '../lib/logger'
 import { generatePdf, generateCertificateId } from '../services/pdf-generator'
@@ -9,6 +12,10 @@ import type {
   CertificateData,
   GeneratedCertificate,
 } from '../lib/certificate-types'
+
+// Data directory for storing generated certificates
+const DATA_DIR = process.env.DATA_DIR || join(process.cwd(), '..', 'data')
+const CERTIFICATES_DIR = join(DATA_DIR, 'certificates')
 
 // Register all templates on module load
 registerAllTemplates()
@@ -365,4 +372,321 @@ certificatesRouter.post('/generate', async (req, res) => {
   }
 })
 
+// POST /generate/zip - Bulk generate certificates and return as ZIP file stream
+certificatesRouter.post('/generate/zip', async (req, res) => {
+  const { configId, recipients } = req.body as { configId: number; recipients: CertificateData[] }
+  
+  if (!configId || !recipients || !Array.isArray(recipients) || recipients.length === 0) {
+    return res.status(400).json({ error: 'configId and non-empty recipients array are required' })
+  }
+  
+  logger.info('Generating certificates ZIP', { 
+    service: 'certificates', 
+    configId, 
+    recipientCount: recipients.length 
+  })
+  
+  try {
+    const configRow = db.query(
+      'SELECT * FROM certificate_configs WHERE id = ?'
+    ).get(configId) as CertificateConfigRow | null
+    
+    if (!configRow) {
+      return res.status(404).json({ error: 'Certificate config not found' })
+    }
+    
+    const config = formatConfig(configRow)
+    const template = getTemplateById(config.templateId)
+    
+    if (!template) {
+      return res.status(400).json({ error: 'Invalid template ID in config' })
+    }
+    
+    // Set response headers for ZIP download
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+    const zipFilename = `certificates-${config.name.replace(/[^a-zA-Z0-9]/g, '_')}-${timestamp}.zip`
+    
+    res.setHeader('Content-Type', 'application/zip')
+    res.setHeader('Content-Disposition', `attachment; filename="${zipFilename}"`)
+    
+    // Create ZIP archive
+    const archive = archiver('zip', { zlib: { level: 6 } })
+    
+    archive.on('error', (err) => {
+      logger.error('Archive error', { service: 'certificates', configId, error: err.message })
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Failed to create ZIP' })
+      }
+    })
+    
+    // Pipe archive to response
+    archive.pipe(res)
+    
+    let generated = 0
+    
+    for (const recipientData of recipients) {
+      if (!recipientData.name) {
+        continue
+      }
+      
+      const certificateId = recipientData.certificate_id || generateCertificateId()
+      const dataWithId = { ...recipientData, certificate_id: certificateId }
+      
+      // Generate HTML and PDF
+      const html = renderTemplate(template, config, dataWithId)
+      const pdfBuffer = await generatePdf(html)
+      
+      // Sanitize filename
+      const safeName = recipientData.name.replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, '_')
+      const filename = `${safeName}_${certificateId}.pdf`
+      
+      // Add to archive
+      archive.append(pdfBuffer, { name: filename })
+      
+      // Save to database
+      db.run(
+        `INSERT INTO generated_certificates 
+         (certificate_id, config_id, recipient_name, recipient_email, data)
+         VALUES (?, ?, ?, ?, ?)`,
+        [
+          certificateId,
+          configId,
+          recipientData.name,
+          recipientData.email || null,
+          JSON.stringify(dataWithId),
+        ]
+      )
+      
+      generated++
+    }
+    
+    // Finalize archive
+    await archive.finalize()
+    
+    logger.info('ZIP generation complete', { 
+      service: 'certificates', 
+      configId, 
+      generated 
+    })
+  } catch (error) {
+    logger.error('Failed to generate certificates ZIP', { 
+      service: 'certificates', 
+      configId, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    })
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Failed to generate certificates' })
+    }
+  }
+})
 
+// Helper to ensure certificates directory exists
+function ensureCertificatesDir(): void {
+  if (!existsSync(CERTIFICATES_DIR)) {
+    mkdirSync(CERTIFICATES_DIR, { recursive: true })
+  }
+}
+
+// POST /generate/campaign - Generate certificates and store as attachments for email campaign
+certificatesRouter.post('/generate/campaign', async (req, res) => {
+  const { configId, recipients, draftId } = req.body as { 
+    configId: number
+    recipients: CertificateData[]
+    draftId?: number 
+  }
+  
+  if (!configId || !recipients || !Array.isArray(recipients) || recipients.length === 0) {
+    return res.status(400).json({ error: 'configId and non-empty recipients array are required' })
+  }
+  
+  // Verify all recipients have email addresses for campaign use
+  const recipientsWithEmail = recipients.filter(r => r.email && r.name)
+  if (recipientsWithEmail.length === 0) {
+    return res.status(400).json({ error: 'Recipients must have email addresses for campaign integration' })
+  }
+  
+  logger.info('Generating certificates for campaign', { 
+    service: 'certificates', 
+    configId, 
+    draftId,
+    recipientCount: recipientsWithEmail.length 
+  })
+  
+  try {
+    const configRow = db.query(
+      'SELECT * FROM certificate_configs WHERE id = ?'
+    ).get(configId) as CertificateConfigRow | null
+    
+    if (!configRow) {
+      return res.status(404).json({ error: 'Certificate config not found' })
+    }
+    
+    const config = formatConfig(configRow)
+    const template = getTemplateById(config.templateId)
+    
+    if (!template) {
+      return res.status(400).json({ error: 'Invalid template ID in config' })
+    }
+    
+    ensureCertificatesDir()
+    
+    const timestamp = Date.now()
+    const results: { email: string; certificateId: string; attachmentId: number }[] = []
+    
+    for (let i = 0; i < recipientsWithEmail.length; i++) {
+      const recipientData = recipientsWithEmail[i]
+      
+      const certificateId = recipientData.certificate_id || generateCertificateId()
+      const dataWithId = { ...recipientData, certificate_id: certificateId }
+      
+      // Generate HTML and PDF
+      const html = renderTemplate(template, config, dataWithId)
+      const pdfBuffer = await generatePdf(html)
+      
+      // Save PDF to disk
+      const safeName = recipientData.name!.replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, '_')
+      const filename = `${timestamp}_${i}_${safeName}_${certificateId}.pdf`
+      const filepath = join(CERTIFICATES_DIR, filename)
+      
+      writeFileSync(filepath, pdfBuffer)
+      
+      // Create attachment record
+      const attachmentResult = db.run(
+        `INSERT INTO attachments (draft_id, filename, original_filename, filepath, size_bytes, mime_type)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          draftId ?? null,
+          filename,
+          `Certificate_${safeName}.pdf`,
+          filepath,
+          pdfBuffer.length,
+          'application/pdf',
+        ]
+      )
+      const attachmentId = Number(attachmentResult.lastInsertRowid)
+      
+      // Create recipient-attachment mapping (email is guaranteed non-null from filter above)
+      const email = recipientData.email!
+      const name = recipientData.name!
+      
+      db.run(
+        `INSERT INTO recipient_attachments (draft_id, recipient_email, attachment_id, matched_by)
+         VALUES (?, ?, ?, ?)`,
+        [
+          draftId ?? null,
+          email,
+          attachmentId,
+          'certificate:auto-generated',
+        ]
+      )
+      
+      // Save certificate record
+      db.run(
+        `INSERT INTO generated_certificates 
+         (certificate_id, config_id, recipient_name, recipient_email, data, pdf_path)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          certificateId,
+          configId,
+          name,
+          email,
+          JSON.stringify(dataWithId),
+          filepath,
+        ]
+      )
+      
+      results.push({
+        email: recipientData.email!,
+        certificateId,
+        attachmentId,
+      })
+    }
+    
+    logger.info('Campaign certificates generation complete', { 
+      service: 'certificates', 
+      configId, 
+      draftId,
+      generated: results.length 
+    })
+    
+    res.json({ 
+      success: true, 
+      generated: results.length,
+      attachments: results,
+      message: `Generated ${results.length} certificates. They will be automatically attached when sending emails to these recipients.`
+    })
+  } catch (error) {
+    logger.error('Failed to generate campaign certificates', { 
+      service: 'certificates', 
+      configId, 
+      draftId,
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    })
+    res.status(500).json({ error: 'Failed to generate certificates' })
+  }
+})
+
+// DELETE /campaign-attachments/:draftId - Clean up certificate attachments for a draft
+certificatesRouter.delete('/campaign-attachments/:draftId', (req, res) => {
+  const draftId = parseInt(req.params.draftId)
+  
+  if (isNaN(draftId)) {
+    return res.status(400).json({ error: 'Invalid draft ID' })
+  }
+  
+  logger.info('Cleaning up campaign certificate attachments', { 
+    service: 'certificates', 
+    draftId 
+  })
+  
+  try {
+    // Get attachment filepaths before deleting
+    const attachments = db.query(
+      `SELECT a.filepath FROM attachments a
+       JOIN recipient_attachments ra ON ra.attachment_id = a.id
+       WHERE ra.draft_id = ? AND ra.matched_by = 'certificate:auto-generated'`
+    ).all(draftId) as { filepath: string }[]
+    
+    // Delete files
+    for (const attachment of attachments) {
+      try {
+        if (existsSync(attachment.filepath)) {
+          unlinkSync(attachment.filepath)
+        }
+      } catch (err) {
+        logger.warn('Failed to delete certificate file', { 
+          filepath: attachment.filepath, 
+          error: err instanceof Error ? err.message : 'Unknown' 
+        })
+      }
+    }
+    
+    // Delete database records
+    db.run(
+      `DELETE FROM recipient_attachments WHERE draft_id = ? AND matched_by = 'certificate:auto-generated'`,
+      [draftId]
+    )
+    
+    db.run(
+      `DELETE FROM attachments WHERE draft_id = ? AND id NOT IN (
+        SELECT attachment_id FROM recipient_attachments WHERE draft_id = ?
+      )`,
+      [draftId, draftId]
+    )
+    
+    logger.info('Cleaned up campaign certificate attachments', { 
+      service: 'certificates', 
+      draftId,
+      filesDeleted: attachments.length 
+    })
+    
+    res.json({ success: true, deleted: attachments.length })
+  } catch (error) {
+    logger.error('Failed to clean up campaign attachments', { 
+      service: 'certificates', 
+      draftId,
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    })
+    res.status(500).json({ error: 'Failed to clean up attachments' })
+  }
+})

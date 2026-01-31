@@ -163,6 +163,39 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ configId, recipients }),
     }),
+  
+  // Download certificates as ZIP (for large batches - server-side ZIP creation)
+  downloadCertificatesZip: async (configId: number, recipients: CertificateData[]): Promise<Blob> => {
+    const token = useAuthStore.getState().token
+    const response = await fetch(`${API_BASE}/certificates/generate/zip`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ configId, recipients }),
+    })
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Download failed' }))
+      throw new ApiError(response.status, error.message || 'Download failed')
+    }
+    
+    return response.blob()
+  },
+  
+  // Generate certificates for email campaign (stores as attachments)
+  generateCertificatesForCampaign: (configId: number, recipients: CertificateData[], draftId?: number) =>
+    request<{ success: boolean; generated: number; attachments: { email: string; certificateId: string; attachmentId: number }[]; message: string }>('/certificates/generate/campaign', {
+      method: 'POST',
+      body: JSON.stringify({ configId, recipients, draftId }),
+    }),
+  
+  // Clean up campaign certificate attachments
+  cleanupCampaignCertificates: (draftId: number) =>
+    request<{ success: boolean; deleted: number }>(`/certificates/campaign-attachments/${draftId}`, {
+      method: 'DELETE',
+    }),
 }
 
 // Types
