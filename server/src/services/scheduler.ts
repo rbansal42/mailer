@@ -286,6 +286,24 @@ export function stopScheduler(): void {
     backupJob = null
     logger.info('Backup scheduler stopped', { service: 'scheduler' })
   }
+
+  if (recurringJob) {
+    recurringJob.stop()
+    recurringJob = null
+    logger.info('Stopped recurring campaign check job', { service: 'scheduler' })
+  }
+
+  if (sequenceJob) {
+    sequenceJob.stop()
+    sequenceJob = null
+    logger.info('Stopped sequence step check job', { service: 'scheduler' })
+  }
+
+  if (batchJob) {
+    batchJob.stop()
+    batchJob = null
+    logger.info('Stopped scheduled batch check job', { service: 'scheduler' })
+  }
 }
 
 /**
