@@ -1,5 +1,7 @@
 import { Router } from 'express'
 import { db } from '../db'
+import { createDraftSchema, updateDraftSchema, validate } from '../lib/validation'
+import { logger } from '../lib/logger'
 
 export const draftsRouter = Router()
 
@@ -10,6 +12,8 @@ interface DraftRow {
   subject: string | null
   recipients: string
   variables: string
+  cc: string
+  bcc: string
   created_at: string
   updated_at: string
 }
@@ -22,57 +26,155 @@ function formatDraft(row: DraftRow) {
     subject: row.subject,
     recipients: JSON.parse(row.recipients || '[]'),
     variables: JSON.parse(row.variables || '{}'),
+    cc: JSON.parse(row.cc || '[]'),
+    bcc: JSON.parse(row.bcc || '[]'),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
 }
 
 // List drafts
-draftsRouter.get('/', (_, res) => {
-  const rows = db.query('SELECT * FROM drafts ORDER BY updated_at DESC').all() as DraftRow[]
-  res.json(rows.map(formatDraft))
+draftsRouter.get('/', (req, res) => {
+  try {
+    const rows = db.query('SELECT * FROM drafts ORDER BY updated_at DESC').all() as DraftRow[]
+    logger.debug('Drafts listed', { requestId: (req as any).requestId, count: rows.length })
+    res.json(rows.map(formatDraft))
+  } catch (error) {
+    logger.error('Failed to list drafts', { requestId: (req as any).requestId }, error as Error)
+    res.status(500).json({ error: 'Failed to list drafts' })
+  }
 })
 
 // Get draft
 draftsRouter.get('/:id', (req, res) => {
-  const row = db.query('SELECT * FROM drafts WHERE id = ?').get(req.params.id) as DraftRow | null
-  if (!row) {
-    return res.status(404).json({ message: 'Draft not found' })
+  try {
+    const row = db.query('SELECT * FROM drafts WHERE id = ?').get(req.params.id) as DraftRow | null
+    if (!row) {
+      logger.warn('Draft not found', { requestId: (req as any).requestId, draftId: req.params.id })
+      return res.status(404).json({ error: 'Draft not found' })
+    }
+    logger.debug('Draft retrieved', { requestId: (req as any).requestId, draftId: row.id })
+    res.json(formatDraft(row))
+  } catch (error) {
+    logger.error('Failed to get draft', { requestId: (req as any).requestId, draftId: req.params.id }, error as Error)
+    res.status(500).json({ error: 'Failed to get draft' })
   }
-  res.json(formatDraft(row))
 })
 
 // Create draft
 draftsRouter.post('/', (req, res) => {
-  const { name, templateId, subject, recipients, variables } = req.body
-  
-  const result = db.run(
-    'INSERT INTO drafts (name, template_id, subject, recipients, variables) VALUES (?, ?, ?, ?, ?)',
-    [name, templateId || null, subject || null, JSON.stringify(recipients || []), JSON.stringify(variables || {})]
-  )
-  
-  const row = db.query('SELECT * FROM drafts WHERE id = ?').get(result.lastInsertRowid) as DraftRow
-  res.status(201).json(formatDraft(row))
+  const validation = validate(createDraftSchema, req.body)
+  if (!validation.success) {
+    logger.warn('Draft validation failed', { requestId: (req as any).requestId, validationError: validation.error })
+    return res.status(400).json({ error: validation.error })
+  }
+
+  const { name, templateId, subject, recipients, variables, cc, bcc } = validation.data
+
+  try {
+
+    const result = db.run(
+      'INSERT INTO drafts (name, template_id, subject, recipients, variables, cc, bcc) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [
+        name,
+        templateId || null,
+        subject || null,
+        JSON.stringify(recipients || []),
+        JSON.stringify(variables || {}),
+        JSON.stringify(cc || []),
+        JSON.stringify(bcc || [])
+      ]
+    )
+
+    const row = db.query('SELECT * FROM drafts WHERE id = ?').get(result.lastInsertRowid) as DraftRow
+    logger.info('Draft created', { requestId: (req as any).requestId, draftId: result.lastInsertRowid })
+    res.status(201).json(formatDraft(row))
+  } catch (error) {
+    logger.error('Failed to create draft', { requestId: (req as any).requestId }, error as Error)
+    res.status(500).json({ error: 'Failed to create draft' })
+  }
 })
 
 // Update draft
 draftsRouter.put('/:id', (req, res) => {
-  const { name, templateId, subject, recipients, variables } = req.body
-  
-  db.run(
-    'UPDATE drafts SET name = ?, template_id = ?, subject = ?, recipients = ?, variables = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-    [name, templateId || null, subject || null, JSON.stringify(recipients || []), JSON.stringify(variables || {}), req.params.id]
-  )
-  
-  const row = db.query('SELECT * FROM drafts WHERE id = ?').get(req.params.id) as DraftRow | null
-  if (!row) {
-    return res.status(404).json({ message: 'Draft not found' })
+  const validation = validate(updateDraftSchema, req.body)
+  if (!validation.success) {
+    logger.warn('Draft update validation failed', { requestId: (req as any).requestId, draftId: req.params.id, validationError: validation.error })
+    return res.status(400).json({ error: validation.error })
   }
-  res.json(formatDraft(row))
+
+  const { name, templateId, subject, recipients, variables, cc, bcc } = validation.data
+
+  try {
+    // Check if draft exists
+    const existing = db.query('SELECT * FROM drafts WHERE id = ?').get(req.params.id) as DraftRow | null
+    if (!existing) {
+      logger.warn('Draft not found for update', { requestId: (req as any).requestId, draftId: req.params.id })
+      return res.status(404).json({ error: 'Draft not found' })
+    }
+
+    // Build update query dynamically based on provided fields
+    const updates: string[] = []
+    const values: any[] = []
+
+    if (name !== undefined) {
+      updates.push('name = ?')
+      values.push(name)
+    }
+    if (templateId !== undefined) {
+      updates.push('template_id = ?')
+      values.push(templateId || null)
+    }
+    if (subject !== undefined) {
+      updates.push('subject = ?')
+      values.push(subject || null)
+    }
+    if (recipients !== undefined) {
+      updates.push('recipients = ?')
+      values.push(JSON.stringify(recipients))
+    }
+    if (variables !== undefined) {
+      updates.push('variables = ?')
+      values.push(JSON.stringify(variables))
+    }
+    if (cc !== undefined) {
+      updates.push('cc = ?')
+      values.push(JSON.stringify(cc))
+    }
+    if (bcc !== undefined) {
+      updates.push('bcc = ?')
+      values.push(JSON.stringify(bcc))
+    }
+
+    if (updates.length > 0) {
+      updates.push('updated_at = CURRENT_TIMESTAMP')
+      values.push(req.params.id)
+      db.run(`UPDATE drafts SET ${updates.join(', ')} WHERE id = ?`, values)
+    }
+
+    const row = db.query('SELECT * FROM drafts WHERE id = ?').get(req.params.id) as DraftRow
+    logger.info('Draft updated', { requestId: (req as any).requestId, draftId: row.id })
+    res.json(formatDraft(row))
+  } catch (error) {
+    logger.error('Failed to update draft', { requestId: (req as any).requestId, draftId: req.params.id }, error as Error)
+    res.status(500).json({ error: 'Failed to update draft' })
+  }
 })
 
 // Delete draft
 draftsRouter.delete('/:id', (req, res) => {
-  db.run('DELETE FROM drafts WHERE id = ?', [req.params.id])
-  res.status(204).send()
+  try {
+    const existing = db.query('SELECT id FROM drafts WHERE id = ?').get(req.params.id)
+    if (!existing) {
+      logger.warn('Draft not found for deletion', { requestId: (req as any).requestId, draftId: req.params.id })
+      return res.status(404).json({ error: 'Draft not found' })
+    }
+
+    db.run('DELETE FROM drafts WHERE id = ?', [req.params.id])
+    logger.info('Draft deleted', { requestId: (req as any).requestId, draftId: req.params.id })
+    res.status(204).send()
+  } catch (error) {
+    logger.error('Failed to delete draft', { requestId: (req as any).requestId, draftId: req.params.id }, error as Error)
+    res.status(500).json({ error: 'Failed to delete draft' })
+  }
 })
