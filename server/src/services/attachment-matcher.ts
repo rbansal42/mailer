@@ -432,23 +432,22 @@ export function createTempDir(): string {
  * Delete attachment files and DB records for a draft or campaign
  */
 export function deleteAttachments(draftId?: number, campaignId?: number): void {
-  let whereClause = ''
-  const params: (number | null)[] = []
-
-  if (campaignId !== undefined) {
-    whereClause = 'campaign_id = ?'
-    params.push(campaignId)
-  } else if (draftId !== undefined) {
-    whereClause = 'draft_id = ?'
-    params.push(draftId)
-  } else {
+  if (campaignId === undefined && draftId === undefined) {
     return
   }
 
-  // Get file paths before deleting records
-  const attachments = db
-    .query(`SELECT filepath FROM attachments WHERE ${whereClause}`)
-    .all(...params) as { filepath: string }[]
+  // Get file paths before deleting records using parameterized queries
+  let attachments: { filepath: string }[]
+  
+  if (campaignId !== undefined) {
+    attachments = db
+      .query('SELECT filepath FROM attachments WHERE campaign_id = ?')
+      .all(campaignId) as { filepath: string }[]
+  } else {
+    attachments = db
+      .query('SELECT filepath FROM attachments WHERE draft_id = ?')
+      .all(draftId!) as { filepath: string }[]
+  }
 
   // Delete files
   for (const attachment of attachments) {
@@ -462,9 +461,14 @@ export function deleteAttachments(draftId?: number, campaignId?: number): void {
     }
   }
 
-  // Delete DB records
-  db.run(`DELETE FROM recipient_attachments WHERE ${whereClause}`, params)
-  db.run(`DELETE FROM attachments WHERE ${whereClause}`, params)
+  // Delete DB records using parameterized queries
+  if (campaignId !== undefined) {
+    db.run('DELETE FROM recipient_attachments WHERE campaign_id = ?', [campaignId])
+    db.run('DELETE FROM attachments WHERE campaign_id = ?', [campaignId])
+  } else {
+    db.run('DELETE FROM recipient_attachments WHERE draft_id = ?', [draftId!])
+    db.run('DELETE FROM attachments WHERE draft_id = ?', [draftId!])
+  }
 
   logger.info('Deleted attachments', { draftId, campaignId, count: attachments.length })
 }
