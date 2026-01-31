@@ -33,7 +33,7 @@ function getNextDay(): string {
 }
 
 sendRouter.get('/', async (req: Request, res: Response) => {
-  const { templateId, subject, recipients: recipientsJson, name, cc: ccJson, bcc: bccJson } = req.query
+  const { templateId, subject, recipients: recipientsJson, name, cc: ccJson, bcc: bccJson, scheduledFor: scheduledForParam } = req.query
 
   // Parse JSON fields from query params
   let parsedRecipients: unknown
@@ -68,7 +68,8 @@ sendRouter.get('/', async (req: Request, res: Response) => {
     subject: subject as string,
     recipients: parsedRecipients,
     cc: parsedCc,
-    bcc: parsedBcc
+    bcc: parsedBcc,
+    scheduledFor: scheduledForParam as string | undefined
   })
 
   if (!validation.success) {
@@ -77,7 +78,50 @@ sendRouter.get('/', async (req: Request, res: Response) => {
     return
   }
 
-  const { templateId: validatedTemplateId, subject: validatedSubject, recipients, cc, bcc, name: campaignName } = validation.data
+  const { templateId: validatedTemplateId, subject: validatedSubject, recipients, cc, bcc, name: campaignName, scheduledFor } = validation.data
+
+  // If scheduling for later, don't send immediately
+  if (scheduledFor) {
+    // Validate template exists
+    const template = db.query('SELECT * FROM templates WHERE id = ?').get(validatedTemplateId) as TemplateRow | null
+    if (!template) {
+      logger.warn('Template not found for scheduled campaign', { templateId: validatedTemplateId })
+      res.status(404).json({ error: 'Template not found' })
+      return
+    }
+
+    // Create scheduled campaign
+    const result = db.run(`
+      INSERT INTO campaigns (name, template_id, subject, total_recipients, cc, bcc, status, scheduled_for)
+      VALUES (?, ?, ?, ?, ?, ?, 'scheduled', ?)
+    `, [campaignName || 'Scheduled Campaign', validatedTemplateId, validatedSubject, recipients.length, JSON.stringify(cc || []), JSON.stringify(bcc || []), scheduledFor])
+
+    const campaignId = Number(result.lastInsertRowid)
+
+    // Store recipients in email_queue for the scheduled time
+    for (const recipient of recipients) {
+      db.run(
+        `INSERT INTO email_queue (campaign_id, recipient_email, recipient_data, scheduled_for, status)
+         VALUES (?, ?, ?, ?, 'pending')`,
+        [campaignId, recipient.email, JSON.stringify(recipient), scheduledFor.split('T')[0]]
+      )
+    }
+
+    logger.info('Campaign scheduled', { 
+      campaignId, 
+      scheduledFor,
+      recipients: recipients.length,
+      service: 'send'
+    })
+
+    res.json({
+      campaignId,
+      status: 'scheduled',
+      scheduledFor,
+      recipientCount: recipients.length
+    })
+    return
+  }
 
   logger.info('Starting campaign send', {
     service: 'send',
