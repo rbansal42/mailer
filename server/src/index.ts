@@ -15,6 +15,7 @@ import { attachmentsRouter } from './routes/attachments'
 import { backupsRouter } from './routes/backups'
 import { authMiddleware } from './middleware/auth'
 import { startQueueProcessor } from './services/queue-processor'
+import { startScheduler } from './services/scheduler'
 import { requestIdMiddleware, requestLogMiddleware, logger } from './lib/logger'
 
 const app = express()
@@ -117,6 +118,9 @@ if (existsSync(publicPath)) {
 
 // Start queue processor
 startQueueProcessor()
+
+// Start scheduler for recurring campaigns
+startScheduler()
 
 app.listen(PORT, () => {
   logger.info('Server started', { port: PORT, env: process.env.NODE_ENV || 'development' })
