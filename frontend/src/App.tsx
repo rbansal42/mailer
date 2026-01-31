@@ -9,6 +9,7 @@ import Campaigns from './pages/Campaigns'
 import Templates from './pages/Templates'
 import History from './pages/History'
 import Settings from './pages/Settings'
+import Certificates from './pages/Certificates'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
@@ -47,6 +48,7 @@ export default function App() {
           <Route index element={<Navigate to="/campaigns" replace />} />
           <Route path="campaigns" element={<Campaigns />} />
           <Route path="templates" element={<Templates />} />
+          <Route path="certificates" element={<Certificates />} />
           <Route path="history" element={<History />} />
           <Route path="settings" element={<Settings />} />
         </Route>

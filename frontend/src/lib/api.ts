@@ -136,6 +136,33 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify(data),
     }),
+
+  // Certificates
+  getCertificateTemplates: () => request<CertificateTemplate[]>('/certificates/templates'),
+  getCertificateConfigs: () => request<CertificateConfig[]>('/certificates/configs'),
+  getCertificateConfig: (id: number) => request<CertificateConfig>(`/certificates/configs/${id}`),
+  createCertificateConfig: (data: Omit<CertificateConfig, 'id' | 'createdAt' | 'updatedAt'>) =>
+    request<CertificateConfig>('/certificates/configs', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  updateCertificateConfig: (id: number, data: Partial<CertificateConfig>) =>
+    request<CertificateConfig>(`/certificates/configs/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  deleteCertificateConfig: (id: number) =>
+    request<void>(`/certificates/configs/${id}`, { method: 'DELETE' }),
+  previewCertificate: (configId: number, data: CertificateData) =>
+    request<{ pdf: string }>('/certificates/preview', {
+      method: 'POST',
+      body: JSON.stringify({ configId, data }),
+    }),
+  generateCertificates: (configId: number, recipients: CertificateData[]) =>
+    request<GenerateResponse>('/certificates/generate', {
+      method: 'POST',
+      body: JSON.stringify({ configId, recipients }),
+    }),
 }
 
 // Types
@@ -239,4 +266,76 @@ export interface QueueItem {
 export interface AppSettings {
   testEmail?: string
   timezone?: string
+}
+
+// Certificate types
+export interface CertificateTemplate {
+  id: string
+  name: string
+  category: 'modern' | 'dark' | 'elegant' | 'minimal'
+  thumbnail: string
+  description: string
+  defaultColors: {
+    primary: string
+    secondary: string
+    accent: string
+  }
+}
+
+export interface LogoConfig {
+  id: string
+  url: string
+  width: number
+  order: number
+}
+
+export interface SignatoryConfig {
+  id: string
+  name: string
+  designation: string
+  organization: string
+  signatureUrl: string
+  order: number
+}
+
+export interface CertificateConfig {
+  id: number
+  name: string
+  templateId: string
+  colors: {
+    primary: string
+    secondary: string
+    accent: string
+  }
+  logos: LogoConfig[]
+  signatories: SignatoryConfig[]
+  titleText: string
+  subtitleText: string
+  descriptionTemplate: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CertificateData {
+  name: string
+  email?: string
+  date?: string
+  title?: string
+  certificate_id?: string
+  custom1?: string
+  custom2?: string
+  custom3?: string
+  [key: string]: string | undefined
+}
+
+export interface GeneratedCertificate {
+  certificateId: string
+  recipientName: string
+  pdf: string // base64 encoded PDF
+}
+
+export interface GenerateResponse {
+  success: boolean
+  generated: number
+  certificates: GeneratedCertificate[]
 }
