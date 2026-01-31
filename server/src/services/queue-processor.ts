@@ -42,6 +42,12 @@ interface SenderAccount {
   enabled: number
 }
 
+interface BlockInput {
+  id: string
+  type: string
+  props: Record<string, unknown>
+}
+
 interface ProcessResult {
   processed: number
   failed: number
@@ -97,14 +103,14 @@ export async function processQueue(): Promise<ProcessResult> {
       }
 
       // Get template if exists
-      let templateBlocks: unknown[] = []
+      let templateBlocks: BlockInput[] = []
       if (campaign.template_id) {
         const template = db
           .query<Template, [number]>(`SELECT id, name, blocks FROM templates WHERE id = ?`)
           .get(campaign.template_id)
 
         if (template) {
-          templateBlocks = JSON.parse(template.blocks)
+          templateBlocks = JSON.parse(template.blocks) as BlockInput[]
         }
       }
 
@@ -116,7 +122,7 @@ export async function processQueue(): Promise<ProcessResult> {
         break // Stop processing if no accounts available
       }
 
-      const senderAccount = account as SenderAccount
+      const senderAccount = account as unknown as SenderAccount
 
       // Compile template with recipient data
       const recipientData = JSON.parse(queueItem.recipient_data)

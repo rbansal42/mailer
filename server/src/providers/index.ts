@@ -23,7 +23,8 @@ interface SmtpConfig {
 
 export function createProvider(type: 'gmail', config: GmailConfig): EmailProvider
 export function createProvider(type: 'smtp', config: SmtpConfig): EmailProvider
-export function createProvider(type: 'gmail' | 'smtp', config: GmailConfig | SmtpConfig): EmailProvider {
+export function createProvider(type: string, config: GmailConfig | SmtpConfig): EmailProvider
+export function createProvider(type: string, config: GmailConfig | SmtpConfig): EmailProvider {
   switch (type) {
     case 'gmail':
       return new GmailProvider(config as GmailConfig)

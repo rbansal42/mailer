@@ -219,7 +219,8 @@ sendRouter.get('/', async (req: Request, res: Response) => {
         }] : undefined
 
         // Create provider and send email with retry
-        const provider = createProvider(account.providerType as 'gmail' | 'smtp', account.config)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const provider = createProvider(account.providerType, account.config as any)
 
         const sendResult = await withRetry(
           async () => {
