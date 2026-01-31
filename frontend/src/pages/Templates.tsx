@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, Template, Block } from '../lib/api'
 import { Button } from '../components/ui/button'
@@ -7,9 +7,12 @@ import { Label } from '../components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import {
   Plus, ChevronLeft, Save, Trash2, Type, Image, MousePointer,
-  Minus, Square, Columns, FileText, GripVertical, Loader2
+  Minus, Square, Columns, FileText, GripVertical, Loader2, Undo2, Redo2, Copy,
+  Monitor, Smartphone, Moon, Code
 } from 'lucide-react'
 import { cn } from '../lib/utils'
+import { useBlockHistory } from '../stores/history'
+import { useKeyboardShortcuts, createSaveShortcut, createUndoShortcut, createRedoShortcut } from '../hooks/useKeyboardShortcuts'
 
 const BLOCK_TYPES = [
   { type: 'header', label: 'Header', icon: FileText },
@@ -47,7 +50,7 @@ export default function Templates() {
     <div className="p-4">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-xl font-semibold">Templates</h1>
-        <Button size="sm" onClick={() => setIsCreating(true)}>
+        <Button size="sm" onClick={() => setIsCreating(true)} aria-label="Add new template">
           <Plus className="h-4 w-4 mr-1" />
           New Template
         </Button>
@@ -102,16 +105,40 @@ interface EditorProps {
 function TemplateEditor({ template, onBack }: EditorProps) {
   const queryClient = useQueryClient()
   const [name, setName] = useState(template?.name || 'Untitled Template')
-  const [description, setDescription] = useState(template?.description || '')
+  const [_description, _setDescription] = useState(template?.description || '')
   const [blocks, setBlocks] = useState<Block[]>(template?.blocks || [])
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
+  const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>('desktop')
+  const [darkMode, setDarkMode] = useState(false)
+  const [showSource, setShowSource] = useState(false)
+  
+  const { set: recordHistory, undo, redo, canUndo, canRedo, clear: clearHistory } = useBlockHistory()
 
   const selectedBlock = blocks.find((b) => b.id === selectedBlockId)
+  
+  // Clear history when switching templates
+  useEffect(() => {
+    clearHistory()
+  }, [template?.id, clearHistory])
+  
+  // Subscribe to history store changes for undo/redo sync
+  useEffect(() => {
+    return useBlockHistory.subscribe((state) => {
+      if (state.present) {
+        setBlocks(state.present)
+      }
+    })
+  }, [])
+  
+  const updateBlocks = (newBlocks: Block[]) => {
+    setBlocks(newBlocks)
+    recordHistory(newBlocks)
+  }
 
   const saveMutation = useMutation({
-    mutationFn: template
-      ? (data: Partial<Template>) => api.updateTemplate(template.id, data)
-      : (data: Omit<Template, 'id' | 'createdAt' | 'updatedAt'>) => api.createTemplate(data),
+    mutationFn: (data: Partial<Template>) => template
+      ? api.updateTemplate(template.id, data)
+      : api.createTemplate(data as Omit<Template, 'id' | 'createdAt' | 'updatedAt'>),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['templates'] })
       onBack()
@@ -127,7 +154,7 @@ function TemplateEditor({ template, onBack }: EditorProps) {
   })
 
   const handleSave = () => {
-    saveMutation.mutate({ name, description, blocks })
+    saveMutation.mutate({ name, blocks })
   }
 
   const addBlock = (type: Block['type']) => {
@@ -136,29 +163,74 @@ function TemplateEditor({ template, onBack }: EditorProps) {
       type,
       props: getDefaultProps(type),
     }
-    setBlocks([...blocks, newBlock])
+    updateBlocks([...blocks, newBlock])
     setSelectedBlockId(newBlock.id)
   }
 
   const updateBlock = (id: string, props: Record<string, unknown>) => {
-    setBlocks(blocks.map((b) => (b.id === id ? { ...b, props: { ...b.props, ...props } } : b)))
+    updateBlocks(blocks.map((b) => (b.id === id ? { ...b, props: { ...b.props, ...props } } : b)))
   }
 
   const deleteBlock = (id: string) => {
-    setBlocks(blocks.filter((b) => b.id !== id))
+    updateBlocks(blocks.filter((b) => b.id !== id))
     if (selectedBlockId === id) setSelectedBlockId(null)
   }
+
+  const duplicateBlock = (id: string) => {
+    const blockIndex = blocks.findIndex((b) => b.id === id)
+    if (blockIndex === -1) return
+
+    const blockToCopy = blocks[blockIndex]
+    const newBlock: Block = {
+      ...blockToCopy,
+      id: `block_${Date.now()}`,
+      props: { ...blockToCopy.props },
+    }
+
+    const newBlocks = [
+      ...blocks.slice(0, blockIndex + 1),
+      newBlock,
+      ...blocks.slice(blockIndex + 1),
+    ]
+
+    updateBlocks(newBlocks)
+    setSelectedBlockId(newBlock.id)
+  }
+
+  // Keyboard shortcuts
+  useKeyboardShortcuts([
+    createSaveShortcut(handleSave),
+    createUndoShortcut(() => {
+      if (canUndo) {
+        undo()
+      }
+    }),
+    createRedoShortcut(() => {
+      if (canRedo) {
+        redo()
+      }
+    }),
+    {
+      key: 'd',
+      ctrl: true,
+      action: () => {
+        if (selectedBlockId) {
+          duplicateBlock(selectedBlockId)
+        }
+      },
+    },
+  ])
 
   const moveBlock = (id: string, direction: 'up' | 'down') => {
     const index = blocks.findIndex((b) => b.id === id)
     if (direction === 'up' && index > 0) {
       const newBlocks = [...blocks]
       ;[newBlocks[index - 1], newBlocks[index]] = [newBlocks[index], newBlocks[index - 1]]
-      setBlocks(newBlocks)
+      updateBlocks(newBlocks)
     } else if (direction === 'down' && index < blocks.length - 1) {
       const newBlocks = [...blocks]
       ;[newBlocks[index], newBlocks[index + 1]] = [newBlocks[index + 1], newBlocks[index]]
-      setBlocks(newBlocks)
+      updateBlocks(newBlocks)
     }
   }
 
@@ -177,17 +249,36 @@ function TemplateEditor({ template, onBack }: EditorProps) {
           />
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={undo}
+            disabled={!canUndo}
+            title="Undo (Ctrl+Z)"
+          >
+            <Undo2 className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={redo}
+            disabled={!canRedo}
+            title="Redo (Ctrl+Shift+Z)"
+          >
+            <Redo2 className="h-4 w-4" />
+          </Button>
           {template && (
             <Button
               variant="ghost"
               size="sm"
               className="text-destructive"
               onClick={() => deleteMutation.mutate()}
+              aria-label="Delete template"
             >
               <Trash2 className="h-4 w-4" />
             </Button>
           )}
-          <Button size="sm" onClick={handleSave} disabled={saveMutation.isPending}>
+          <Button size="sm" onClick={handleSave} disabled={saveMutation.isPending} aria-label="Save template">
             <Save className="h-4 w-4 mr-1" />
             Save
           </Button>
@@ -215,14 +306,71 @@ function TemplateEditor({ template, onBack }: EditorProps) {
 
         {/* Center: Canvas */}
         <div className="flex-1 p-4 overflow-y-auto bg-muted/20">
-          <div className="max-w-xl mx-auto bg-background rounded-lg border shadow-sm min-h-96">
-            {blocks.length === 0 ? (
+          {/* Preview Controls */}
+          <div className="max-w-xl mx-auto mb-3 flex items-center justify-between">
+            <div className="flex items-center gap-1" role="group" aria-label="Preview settings">
+              <Button
+                variant={previewMode === 'desktop' ? 'secondary' : 'ghost'}
+                size="sm"
+                onClick={() => setPreviewMode('desktop')}
+                title="Desktop view (600px)"
+                aria-label="Desktop view (600px)"
+                aria-pressed={previewMode === 'desktop'}
+              >
+                <Monitor className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={previewMode === 'mobile' ? 'secondary' : 'ghost'}
+                size="sm"
+                onClick={() => setPreviewMode('mobile')}
+                title="Mobile view (320px)"
+                aria-label="Mobile view (320px)"
+                aria-pressed={previewMode === 'mobile'}
+              >
+                <Smartphone className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={darkMode ? 'secondary' : 'ghost'}
+                size="sm"
+                onClick={() => setDarkMode(!darkMode)}
+                title="Dark mode preview"
+                aria-label="Dark mode preview"
+                aria-pressed={darkMode}
+              >
+                <Moon className="h-4 w-4" />
+              </Button>
+            </div>
+            <Button
+              variant={showSource ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => setShowSource(!showSource)}
+              title="View block data (JSON)"
+              aria-label="View block data (JSON)"
+              aria-pressed={showSource}
+            >
+              <Code className="h-4 w-4" />
+            </Button>
+          </div>
+
+          {/* Canvas */}
+          <div 
+            className={cn(
+              "mx-auto bg-background rounded-lg border shadow-sm min-h-96 transition-all",
+              previewMode === 'desktop' ? 'max-w-xl' : 'max-w-xs',
+              darkMode && 'bg-gray-900 text-white'
+            )}
+          >
+            {showSource ? (
+              <pre className="p-4 text-xs overflow-auto max-h-96 font-mono">
+                {JSON.stringify(blocks, null, 2)}
+              </pre>
+            ) : blocks.length === 0 ? (
               <div className="p-8 text-center text-muted-foreground">
                 <p>Add blocks from the left panel</p>
               </div>
             ) : (
               <div className="p-4 space-y-2">
-                {blocks.map((block, index) => (
+                {blocks.map((block) => (
                   <div
                     key={block.id}
                     onClick={() => setSelectedBlockId(block.id)}
@@ -232,12 +380,22 @@ function TemplateEditor({ template, onBack }: EditorProps) {
                     )}
                   >
                     {/* Block controls */}
-                    <div className="absolute -left-6 top-0 bottom-0 flex flex-col justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                      <GripVertical className="h-4 w-4 text-muted-foreground" />
+                    <div className="absolute -left-8 top-0 bottom-0 flex flex-col justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab" />
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          duplicateBlock(block.id)
+                        }}
+                        className="p-0.5 rounded hover:bg-accent"
+                        title="Duplicate (Ctrl+D)"
+                      >
+                        <Copy className="h-3 w-3 text-muted-foreground" />
+                      </button>
                     </div>
                     
                     {/* Block content */}
-                    <BlockPreview block={block} />
+                    <BlockPreview block={block} darkMode={darkMode} />
                   </div>
                 ))}
               </div>
@@ -256,6 +414,7 @@ function TemplateEditor({ template, onBack }: EditorProps) {
                   size="icon"
                   className="h-6 w-6 text-destructive"
                   onClick={() => deleteBlock(selectedBlock.id)}
+                  aria-label="Delete block"
                 >
                   <Trash2 className="h-3 w-3" />
                 </Button>
@@ -294,8 +453,9 @@ function TemplateEditor({ template, onBack }: EditorProps) {
   )
 }
 
-function BlockPreview({ block }: { block: Block }) {
+function BlockPreview({ block, darkMode: _darkMode }: { block: Block; darkMode?: boolean }) {
   const { type, props } = block
+  // darkMode prop reserved for future dark mode styling of individual blocks
 
   switch (type) {
     case 'header':

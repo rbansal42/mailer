@@ -4,9 +4,9 @@ import { api, Template, Draft } from '../lib/api'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
+import { Card, CardContent, CardHeader } from '../components/ui/card'
 import { Plus, Send, Save, ChevronLeft, ChevronRight, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react'
-import { cn } from '../lib/utils'
+import type { Recipient } from '../lib/api'
 
 export default function Campaigns() {
   const [isComposing, setIsComposing] = useState(false)
@@ -99,7 +99,7 @@ function CampaignComposer({ draft, templates, onBack }: ComposerProps) {
   const [templateId, setTemplateId] = useState<number | null>(draft?.templateId || null)
   const [subject, setSubject] = useState(draft?.subject || '')
   const [recipientsText, setRecipientsText] = useState('')
-  const [recipients, setRecipients] = useState<Record<string, string>[]>(draft?.recipients || [])
+  const [recipients, setRecipients] = useState<Recipient[]>(draft?.recipients || [])
   const [previewIndex, setPreviewIndex] = useState(0)
   const [sending, setSending] = useState(false)
   const [sendProgress, setSendProgress] = useState<{ current: number; total: number; logs: string[] } | null>(null)
@@ -107,7 +107,7 @@ function CampaignComposer({ draft, templates, onBack }: ComposerProps) {
   const selectedTemplate = templates.find((t) => t.id === templateId)
 
   // Parse recipients from text
-  const parseRecipients = (text: string) => {
+  const parseRecipients = (text: string): Recipient[] => {
     const lines = text.trim().split('\n')
     if (lines.length < 2) return []
 
@@ -117,7 +117,7 @@ function CampaignComposer({ draft, templates, onBack }: ComposerProps) {
 
     return lines.slice(1).map((line) => {
       const values = line.split(/[,\t]/)
-      const recipient: Record<string, string> = {}
+      const recipient: Recipient = { email: '' }
       headers.forEach((header, i) => {
         recipient[header] = values[i]?.trim() || ''
       })
@@ -144,9 +144,9 @@ function CampaignComposer({ draft, templates, onBack }: ComposerProps) {
   const canSend = validation.hasName && validation.hasTemplate && validation.hasSubject && validation.hasRecipients && validation.invalidEmails.length === 0
 
   const saveDraftMutation = useMutation({
-    mutationFn: draft
-      ? (data: Partial<Draft>) => api.updateDraft(draft.id, data)
-      : (data: Omit<Draft, 'id' | 'createdAt' | 'updatedAt'>) => api.createDraft(data),
+    mutationFn: (data: Partial<Draft>) => draft
+      ? api.updateDraft(draft.id, data)
+      : api.createDraft(data as Omit<Draft, 'id' | 'createdAt' | 'updatedAt'>),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['drafts'] })
     },

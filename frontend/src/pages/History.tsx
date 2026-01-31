@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api, Campaign, CampaignDetail } from '../lib/api'
+import { api, Campaign } from '../lib/api'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { ChevronLeft, Download, RefreshCw, Trash2, CheckCircle2, XCircle, Clock, Loader2 } from 'lucide-react'
-import { cn } from '../lib/utils'
+
 
 export default function History() {
   const [selectedCampaign, setSelectedCampaign] = useState<number | null>(null)
