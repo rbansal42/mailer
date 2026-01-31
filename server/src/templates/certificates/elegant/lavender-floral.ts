@@ -1,6 +1,6 @@
 import type { CertificateTemplate, CertificateConfig, CertificateData } from '../../../lib/certificate-types'
 import { baseStyles, fontImports } from '../base-styles'
-import { replaceVariables, renderLogos, renderSignatories, getNameFontSize } from '../../../services/certificate-templates'
+import { replaceVariables, renderLogos, renderSignatories, getNameFontSize, escapeHtml } from '../../../services/certificate-templates'
 
 export const lavenderFloralTemplate: CertificateTemplate = {
   id: 'elegant-lavender-floral',
@@ -250,12 +250,12 @@ export function render(config: CertificateConfig, data: CertificateData): string
         ${renderLogos(logos)}
       </div>
       
-      <h1 class="title">${titleText}</h1>
-      ${subtitleText ? `<p class="subtitle">${subtitleText}</p>` : ''}
+      <h1 class="title">${escapeHtml(titleText)}</h1>
+      ${subtitleText ? `<p class="subtitle">${escapeHtml(subtitleText)}</p>` : ''}
       
       <p class="presented-to">This certificate is proudly presented to</p>
       
-      <h2 class="recipient-name">${data.name}</h2>
+      <h2 class="recipient-name">${escapeHtml(data.name)}</h2>
       <div class="name-underline"></div>
       
       <p class="description">${description}</p>
@@ -265,7 +265,7 @@ export function render(config: CertificateConfig, data: CertificateData): string
       </div>
     </div>
     
-    ${data.certificate_id ? `<div class="certificate-id">${data.certificate_id}</div>` : ''}
+    ${data.certificate_id ? `<div class="certificate-id">${escapeHtml(data.certificate_id)}</div>` : ''}
   </div>
 </body>
 </html>`

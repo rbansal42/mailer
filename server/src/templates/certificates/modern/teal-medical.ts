@@ -1,6 +1,6 @@
 import type { CertificateTemplate, CertificateConfig, CertificateData } from '../../../lib/certificate-types'
 import { baseStyles } from '../base-styles'
-import { replaceVariables, renderLogos, renderSignatories, getNameFontSize } from '../../../services/certificate-templates'
+import { replaceVariables, renderLogos, renderSignatories, getNameFontSize, escapeHtml } from '../../../services/certificate-templates'
 
 export const tealMedicalTemplate: CertificateTemplate = {
   id: 'teal-medical',
@@ -349,11 +349,11 @@ export function renderTealMedical(config: CertificateConfig, data: CertificateDa
     <div class="content-wrapper">
       <div class="logo-bar">${logosHtml}</div>
       
-      <div class="title">${config.titleText}</div>
-      <div class="subtitle">${config.subtitleText}</div>
+      <div class="title">${escapeHtml(config.titleText)}</div>
+      <div class="subtitle">${escapeHtml(config.subtitleText)}</div>
       
       <div class="presented-to">This is to certify that</div>
-      <div class="recipient-name">${data.name}</div>
+      <div class="recipient-name">${escapeHtml(data.name)}</div>
       <div class="name-underline"></div>
       
       <div class="description">${description}</div>
@@ -361,7 +361,7 @@ export function renderTealMedical(config: CertificateConfig, data: CertificateDa
       <div class="signatories">${signatoriesHtml}</div>
     </div>
     
-    ${data.certificate_id ? `<div class="certificate-id">Cert. ID: ${data.certificate_id}</div>` : ''}
+    ${data.certificate_id ? `<div class="certificate-id">Cert. ID: ${escapeHtml(data.certificate_id)}</div>` : ''}
   </div>
 </body>
 </html>`

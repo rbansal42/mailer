@@ -1,6 +1,6 @@
 import type { CertificateTemplate, CertificateConfig, CertificateData } from '../../../lib/certificate-types'
 import { baseStyles, fontImports } from '../base-styles'
-import { replaceVariables, renderLogos, renderSignatories, getNameFontSize } from '../../../services/certificate-templates'
+import { replaceVariables, renderLogos, renderSignatories, getNameFontSize, escapeHtml } from '../../../services/certificate-templates'
 
 export const blueGeometricTemplate: CertificateTemplate = {
   id: 'blue-geometric',
@@ -216,11 +216,11 @@ export function renderBlueGeometric(config: CertificateConfig, data: Certificate
         ${renderLogos(logos)}
       </div>
       
-      <div class="title">${titleText}</div>
-      <div class="subtitle">${subtitleText}</div>
+      <div class="title">${escapeHtml(titleText)}</div>
+      <div class="subtitle">${escapeHtml(subtitleText)}</div>
       
       <div class="presented-to">This is to certify that</div>
-      <div class="recipient-name">${data.name}</div>
+      <div class="recipient-name">${escapeHtml(data.name)}</div>
       <div class="name-underline"></div>
       
       <div class="description">${description}</div>
@@ -230,7 +230,7 @@ export function renderBlueGeometric(config: CertificateConfig, data: Certificate
       </div>
     </div>
     
-    ${data.certificate_id ? `<div class="certificate-id">Certificate ID: ${data.certificate_id}</div>` : ''}
+    ${data.certificate_id ? `<div class="certificate-id">Certificate ID: ${escapeHtml(data.certificate_id)}</div>` : ''}
   </div>
 </body>
 </html>

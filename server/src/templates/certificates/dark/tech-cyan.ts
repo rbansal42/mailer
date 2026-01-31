@@ -1,6 +1,6 @@
 import type { CertificateTemplate, CertificateConfig, CertificateData } from '../../../lib/certificate-types'
 import { baseStyles, fontImports } from '../base-styles'
-import { replaceVariables, renderLogos, renderSignatories, getNameFontSize } from '../../../services/certificate-templates'
+import { replaceVariables, renderLogos, renderSignatories, getNameFontSize, escapeHtml } from '../../../services/certificate-templates'
 
 export const techCyanTemplate: CertificateTemplate = {
   id: 'tech-cyan',
@@ -288,8 +288,8 @@ export function renderTechCyan(config: CertificateConfig, data: CertificateData)
         ${renderLogos(logos)}
       </div>
       
-      <h1 class="title">${titleText}</h1>
-      <p class="subtitle">${subtitleText}</p>
+      <h1 class="title">${escapeHtml(titleText)}</h1>
+      <p class="subtitle">${escapeHtml(subtitleText)}</p>
       
       <div class="tech-divider">
         <div class="line"></div>
@@ -298,7 +298,7 @@ export function renderTechCyan(config: CertificateConfig, data: CertificateData)
       </div>
       
       <p class="presented-to">This is presented to</p>
-      <h2 class="recipient-name">${data.name}</h2>
+      <h2 class="recipient-name">${escapeHtml(data.name)}</h2>
       <div class="name-underline"></div>
       
       <p class="description">${description}</p>
@@ -307,7 +307,7 @@ export function renderTechCyan(config: CertificateConfig, data: CertificateData)
         ${renderSignatories(signatories)}
       </div>
       
-      ${data.certificate_id ? `<div class="certificate-id">ID: ${data.certificate_id}</div>` : ''}
+      ${data.certificate_id ? `<div class="certificate-id">ID: ${escapeHtml(data.certificate_id)}</div>` : ''}
     </div>
   </div>
 </body>

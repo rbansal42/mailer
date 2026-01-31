@@ -1,6 +1,6 @@
 import type { CertificateTemplate, CertificateConfig, CertificateData } from '../../../lib/certificate-types'
 import { baseStyles, fontImports } from '../base-styles'
-import { replaceVariables, renderLogos, renderSignatories, getNameFontSize } from '../../../services/certificate-templates'
+import { replaceVariables, renderLogos, renderSignatories, getNameFontSize, escapeHtml } from '../../../services/certificate-templates'
 
 export const whiteModernTemplate: CertificateTemplate = {
   id: 'white-modern',
@@ -140,11 +140,11 @@ export function renderWhiteModern(config: CertificateConfig, data: CertificateDa
       ${renderLogos(logos)}
     </div>
     
-    <div class="title">${titleText}</div>
-    <div class="subtitle">${subtitleText}</div>
+    <div class="title">${escapeHtml(titleText)}</div>
+    <div class="subtitle">${escapeHtml(subtitleText)}</div>
     
     <div class="presented-to">Presented to</div>
-    <div class="recipient-name">${data.name}</div>
+    <div class="recipient-name">${escapeHtml(data.name)}</div>
     <div class="name-underline"></div>
     
     <div class="description">${description}</div>
@@ -153,7 +153,7 @@ export function renderWhiteModern(config: CertificateConfig, data: CertificateDa
       ${renderSignatories(signatories)}
     </div>
     
-    ${data.certificate_id ? `<div class="certificate-id">ID: ${data.certificate_id}</div>` : ''}
+    ${data.certificate_id ? `<div class="certificate-id">ID: ${escapeHtml(data.certificate_id)}</div>` : ''}
   </div>
 </body>
 </html>

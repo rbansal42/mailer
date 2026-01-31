@@ -1,6 +1,6 @@
 import type { CertificateTemplate, CertificateConfig, CertificateData } from '../../../lib/certificate-types'
 import { baseStyles, fontImports } from '../base-styles'
-import { replaceVariables, renderLogos, renderSignatories, getNameFontSize } from '../../../services/certificate-templates'
+import { replaceVariables, renderLogos, renderSignatories, getNameFontSize, escapeHtml } from '../../../services/certificate-templates'
 
 export const gradientWaveTemplate: CertificateTemplate = {
   id: 'gradient-wave',
@@ -229,11 +229,11 @@ export function renderGradientWave(config: CertificateConfig, data: CertificateD
         ${renderLogos(logos)}
       </div>
       
-      <div class="title">${titleText}</div>
-      <div class="subtitle">${subtitleText}</div>
+      <div class="title">${escapeHtml(titleText)}</div>
+      <div class="subtitle">${escapeHtml(subtitleText)}</div>
       
       <div class="presented-to">Proudly Presented to</div>
-      <div class="recipient-name">${data.name}</div>
+      <div class="recipient-name">${escapeHtml(data.name)}</div>
       <div class="name-underline"></div>
       
       <div class="description">${description}</div>
@@ -243,7 +243,7 @@ export function renderGradientWave(config: CertificateConfig, data: CertificateD
       </div>
     </div>
     
-    ${data.certificate_id ? `<div class="certificate-id">ID: ${data.certificate_id}</div>` : ''}
+    ${data.certificate_id ? `<div class="certificate-id">ID: ${escapeHtml(data.certificate_id)}</div>` : ''}
   </div>
 </body>
 </html>
