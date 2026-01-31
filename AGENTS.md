@@ -11,7 +11,7 @@ Mailer is a self-hosted email campaign management system with certificate genera
 - **Runtime**: Bun (NOT npm/node)
 - **Frontend**: React + Vite + TypeScript + TailwindCSS + shadcn/ui
 - **Backend**: Express + TypeScript + SQLite (via bun:sqlite)
-- **PDF Generation**: @react-pdf/renderer (primary), Puppeteer (legacy templates)
+- **PDF Generation**: @react-pdf/renderer
 
 ## Commands
 
@@ -41,7 +41,6 @@ mailer/
 │   ├── src/
 │   │   ├── routes/     # API routes
 │   │   ├── services/   # Business logic
-│   │   ├── templates/  # Certificate templates
 │   │   └── lib/        # Utilities
 │   └── package.json
 ├── data/               # SQLite DB, attachments, certificates
@@ -51,35 +50,25 @@ mailer/
 ## Key Features
 
 1. **Email Campaigns** - Send bulk emails with templates
-2. **Certificate Generator** - Generate PDF certificates with 12 templates
+2. **Certificate Generator** - Generate PDF certificates with 4 templates
 3. **Attachment Matching** - Match attachments to recipients by column/filename
 4. **Tracking** - Open and click tracking
 
 ## Certificate Templates
 
-### React PDF Templates (Recommended)
 Located in `server/src/services/pdf/templates/`:
 - **modern-clean**: Double border design with accent bar
 - **dark-elegant**: Dark background with gold accents
 - **clean-minimal**: White minimal design
 - **wave-accent**: Layered color bars at bottom
 
-### Legacy HTML Templates (Puppeteer)
-Located in `server/src/templates/certificates/`:
-- **Modern**: abhigyaan, geometric-purple, teal-medical
-- **Dark**: galaxy-night, navy-gold, tech-cyan
-- **Elegant**: pink-watercolor, lavender-floral, cream-classic
-- **Minimal**: white-modern, blue-geometric, gradient-wave
-
 ## Known Issues / Gotchas
 
-1. **Gradient text in PDFs**: Legacy Puppeteer templates have issues with `-webkit-background-clip: text`. Use React PDF templates which use solid colors instead.
+1. **Large payloads**: JSON body limit is 10mb for certificate configs with base64 images.
 
-2. **Large payloads**: JSON body limit is 10mb for certificate configs with base64 images.
+2. **Worktrees**: Use `.worktrees/` directory for feature branches. It's gitignored.
 
-3. **Worktrees**: Use `.worktrees/` directory for feature branches. It's gitignored.
-
-4. **React PDF fonts**: Fonts are registered in `server/src/services/pdf/fonts.ts`. Font files are in `server/assets/fonts/`.
+3. **React PDF fonts**: Fonts are registered in `server/src/services/pdf/fonts.ts`. Font files are in `server/assets/fonts/`.
 
 ## Workflow
 

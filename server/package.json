@@ -20,7 +20,6 @@
     "multer": "^2.0.2",
     "node-cron": "^3.0.3",
     "nodemailer": "^6.9.16",
-    "puppeteer": "^24.36.1",
     "zod": "^4.3.6"
   },
   "devDependencies": {
