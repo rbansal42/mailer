@@ -108,6 +108,7 @@ export function initializeDatabase() {
       recipient_email TEXT NOT NULL,
       status TEXT NOT NULL,
       error_message TEXT,
+      retry_count INTEGER DEFAULT 1,
       sent_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `)

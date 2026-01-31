@@ -55,15 +55,22 @@ function formatAccount(row: AccountRow): Account {
  * Get the next available sender account for a campaign.
  * Returns the highest priority enabled account that hasn't exceeded its daily or campaign caps.
  * If campaignId is not provided, only daily cap is checked.
+ * Optional excludeAccountIds parameter to skip certain accounts (e.g., those with open circuits).
  */
-export function getNextAvailableAccount(campaignId?: number): Account | null {
+export function getNextAvailableAccount(campaignId?: number, excludeAccountIds?: number[]): Account | null {
   const accounts = db
     .query('SELECT * FROM sender_accounts WHERE enabled = 1 ORDER BY priority ASC')
     .all() as AccountRow[]
 
   const today = getToday()
+  const excludeSet = new Set(excludeAccountIds || [])
 
   for (const account of accounts) {
+    // Skip excluded accounts (e.g., those with open circuit breakers)
+    if (excludeSet.has(account.id)) {
+      continue
+    }
+
     // Get today's send count for this account
     const todayResult = db
       .query('SELECT count FROM send_counts WHERE account_id = ? AND date = ?')

@@ -6,6 +6,8 @@ import { createProvider } from '../providers'
 import { sendCampaignSchema, validate } from '../lib/validation'
 import { logger } from '../lib/logger'
 import { getRecipientAttachment } from '../services/attachment-matcher'
+import { withRetry, DEFAULT_CONFIG } from '../services/retry'
+import { isCircuitOpen, recordSuccess, recordFailure, getOpenCircuits } from '../services/circuit-breaker'
 
 export const sendRouter = Router()
 
@@ -125,8 +127,14 @@ sendRouter.get('/', async (req: Request, res: Response) => {
       const current = i + 1
 
       try {
-        // Get next available account
-        const account = getNextAvailableAccount(campaignId)
+        // Get accounts with open circuits to exclude
+        const openCircuits = getOpenCircuits()
+        if (openCircuits.length > 0) {
+          logger.debug('Skipping accounts with open circuits', { accountIds: openCircuits, service: 'send' })
+        }
+
+        // Get next available account, excluding those with open circuits
+        const account = getNextAvailableAccount(campaignId, openCircuits)
 
         if (!account) {
           // No account available - queue for tomorrow
@@ -166,56 +174,97 @@ sendRouter.get('/', async (req: Request, res: Response) => {
           contentType: recipientAttachment.mimeType
         }] : undefined
 
-        // Create provider and send email
+        // Create provider and send email with retry
         const provider = createProvider(account.providerType as 'gmail' | 'smtp', account.config)
 
-        await provider.send({
-          to: recipient.email,
-          cc: cc || [],
-          bcc: bcc || [],
-          subject: compiledSubject,
-          html,
-          attachments
-        })
+        const sendResult = await withRetry(
+          async () => {
+            await provider.send({
+              to: recipient.email,
+              cc: cc || [],
+              bcc: bcc || [],
+              subject: compiledSubject,
+              html,
+              attachments
+            })
+          },
+          `send:${account.id}:${recipient.email}`,
+          DEFAULT_CONFIG
+        )
 
         await provider.disconnect()
 
-        // Increment account send count
-        incrementSendCount(account.id)
+        if (sendResult.success) {
+          // Record success with circuit breaker
+          recordSuccess(account.id)
 
-        successful++
+          // Increment account send count
+          incrementSendCount(account.id)
 
-        // Log success
-        db.run(
-          `INSERT INTO send_logs (campaign_id, account_id, recipient_email, status)
-           VALUES (?, ?, ?, 'success')`,
-          [campaignId, account.id, recipient.email]
-        )
+          successful++
 
-        logger.debug('Email sent successfully', {
-          service: 'send',
-          campaignId,
-          recipient: recipient.email,
-          account: account.name
-        })
+          // Log success with retry count
+          db.run(
+            `INSERT INTO send_logs (campaign_id, account_id, recipient_email, status, retry_count)
+             VALUES (?, ?, ?, 'success', ?)`,
+            [campaignId, account.id, recipient.email, sendResult.attempts]
+          )
 
-        sendSSE(res, {
-          type: 'progress',
-          current,
-          total: recipients.length,
-          message: `Sent to ${recipient.email} via ${account.name}`,
-        })
+          logger.debug('Email sent successfully', {
+            service: 'send',
+            campaignId,
+            recipient: recipient.email,
+            account: account.name,
+            attempts: sendResult.attempts
+          })
+
+          sendSSE(res, {
+            type: 'progress',
+            current,
+            total: recipients.length,
+            message: `Sent to ${recipient.email} via ${account.name}`,
+          })
+        } else {
+          // Record failure with circuit breaker
+          recordFailure(account.id)
+
+          failed++
+          const errorMessage = sendResult.error?.message || 'Unknown error'
+
+          // Log failure with retry count
+          db.run(
+            `INSERT INTO send_logs (campaign_id, account_id, recipient_email, status, error_message, retry_count)
+             VALUES (?, ?, ?, 'failed', ?, ?)`,
+            [campaignId, account.id, recipient.email, errorMessage, sendResult.attempts]
+          )
+
+          logger.error('Failed to send email after retries', {
+            service: 'send',
+            campaignId,
+            recipient: recipient.email,
+            account: account.name,
+            attempts: sendResult.attempts
+          }, sendResult.error)
+
+          sendSSE(res, {
+            type: 'progress',
+            current,
+            total: recipients.length,
+            message: `Failed: ${recipient.email} - ${errorMessage} (${sendResult.attempts} attempts)`,
+          })
+        }
       } catch (error) {
+        // This catch is for unexpected errors (not send failures handled by retry)
         failed++
         const errorMessage = error instanceof Error ? error.message : 'Unknown error'
 
         db.run(
-          `INSERT INTO send_logs (campaign_id, recipient_email, status, error_message)
-           VALUES (?, ?, 'failed', ?)`,
+          `INSERT INTO send_logs (campaign_id, recipient_email, status, error_message, retry_count)
+           VALUES (?, ?, 'failed', ?, 1)`,
           [campaignId, recipient.email, errorMessage]
         )
 
-        logger.error('Failed to send email', {
+        logger.error('Unexpected error during send', {
           service: 'send',
           campaignId,
           recipient: recipient.email
