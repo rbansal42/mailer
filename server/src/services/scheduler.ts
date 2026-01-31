@@ -3,6 +3,9 @@ import type { ScheduledTask } from 'node-cron'
 import { db } from '../db'
 import { logger } from '../lib/logger'
 import { createBackup, pruneBackups, getBackupSettings } from './backup'
+import { processRecurringCampaigns } from './recurring-processor'
+import { processSequenceSteps } from './sequence-processor'
+import { processScheduledBatches } from './timezone-processor'
 
 interface ScheduledCampaign {
   id: number
@@ -23,6 +26,9 @@ interface InterruptedCampaign {
 // Store active cron jobs for cleanup
 let campaignCheckJob: ScheduledTask | null = null
 let backupJob: ScheduledTask | null = null
+let recurringJob: ScheduledTask | null = null
+let sequenceJob: ScheduledTask | null = null
+let batchJob: ScheduledTask | null = null
 
 /**
  * Check for campaigns that are scheduled to send and update their status.
@@ -103,6 +109,63 @@ export function runScheduledBackup(): void {
 }
 
 /**
+ * Check and process due recurring campaigns
+ */
+export async function checkRecurringCampaigns(): Promise<number> {
+  try {
+    const processed = await processRecurringCampaigns()
+    if (processed > 0) {
+      logger.info('Processed recurring campaigns', {
+        service: 'scheduler',
+        count: processed
+      })
+    }
+    return processed
+  } catch (error) {
+    logger.error('Failed to process recurring campaigns', { service: 'scheduler' }, error as Error)
+    return 0
+  }
+}
+
+/**
+ * Check and process due sequence steps
+ */
+export async function checkSequenceSteps(): Promise<number> {
+  try {
+    const processed = await processSequenceSteps()
+    if (processed > 0) {
+      logger.info('Processed sequence steps', {
+        service: 'scheduler',
+        count: processed
+      })
+    }
+    return processed
+  } catch (error) {
+    logger.error('Failed to process sequence steps', { service: 'scheduler' }, error as Error)
+    return 0
+  }
+}
+
+/**
+ * Check and process due scheduled batches
+ */
+export async function checkScheduledBatches(): Promise<number> {
+  try {
+    const count = await processScheduledBatches()
+    if (count > 0) {
+      logger.info('Found scheduled batches ready', {
+        service: 'scheduler',
+        count
+      })
+    }
+    return count
+  } catch (error) {
+    logger.error('Failed to process scheduled batches', { service: 'scheduler' }, error as Error)
+    return 0
+  }
+}
+
+/**
  * Start the scheduler with cron jobs for campaign checking and backups.
  */
 export function startScheduler(): void {
@@ -146,6 +209,24 @@ export function startScheduler(): void {
       schedule: backupSettings.schedule
     })
   }
+
+  // Check recurring campaigns every minute
+  recurringJob = cron.schedule('* * * * *', () => {
+    checkRecurringCampaigns()
+  })
+  logger.info('Started recurring campaign check job', { service: 'scheduler' })
+
+  // Check sequence steps every minute
+  sequenceJob = cron.schedule('* * * * *', () => {
+    checkSequenceSteps()
+  })
+  logger.info('Started sequence step check job', { service: 'scheduler' })
+
+  // Check scheduled batches every minute
+  batchJob = cron.schedule('* * * * *', () => {
+    checkScheduledBatches()
+  })
+  logger.info('Started scheduled batch check job', { service: 'scheduler' })
 }
 
 /**

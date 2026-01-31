@@ -15,6 +15,8 @@ import { attachmentsRouter } from './routes/attachments'
 import { backupsRouter } from './routes/backups'
 import { trackingRouter } from './routes/tracking'
 import { analyticsRouter } from './routes/analytics'
+import { recurringRouter } from './routes/recurring'
+import { sequencesRouter } from './routes/sequences'
 import { authMiddleware } from './middleware/auth'
 import { startQueueProcessor } from './services/queue-processor'
 import { startScheduler } from './services/scheduler'
@@ -112,6 +114,8 @@ app.use('/api/queue', authMiddleware, queueRouter)
 app.use('/api/settings', authMiddleware, settingsRouter)
 app.use('/api/attachments', authMiddleware, attachmentsRouter)
 app.use('/api/backups', authMiddleware, backupsRouter)
+app.use('/api/recurring', authMiddleware, recurringRouter)
+app.use('/api/sequences', authMiddleware, sequencesRouter)
 
 // Serve static frontend in production
 const publicPath = join(process.cwd(), 'public')
