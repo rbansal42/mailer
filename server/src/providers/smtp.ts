@@ -1,5 +1,5 @@
 import nodemailer, { Transporter } from 'nodemailer'
-import { EmailProvider, EmailOptions } from './base'
+import { EmailProvider, SendOptions } from './base'
 
 interface SmtpConfig {
   host: string
@@ -31,14 +31,21 @@ export class SmtpProvider extends EmailProvider {
     })
   }
 
-  async send(options: EmailOptions): Promise<void> {
-    await this.transporter.sendMail({
+  async connect(): Promise<void> {
+    // Connection established in constructor via nodemailer
+  }
+
+  async send(options: SendOptions): Promise<void> {
+    const mailOptions = {
       from: `"${this.fromName}" <${this.fromEmail}>`,
       to: options.to,
-      cc: options.cc,
+      cc: options.cc?.join(', ') || undefined,
+      bcc: options.bcc?.join(', ') || undefined,
       subject: options.subject,
       html: options.html,
-    })
+      attachments: options.attachments,
+    }
+    await this.transporter.sendMail(mailOptions)
   }
 
   async verify(): Promise<boolean> {

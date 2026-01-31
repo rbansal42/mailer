@@ -2,7 +2,7 @@ import { EmailProvider } from './base'
 import { GmailProvider } from './gmail'
 import { SmtpProvider } from './smtp'
 
-export { EmailProvider, EmailOptions } from './base'
+export { EmailProvider, SendOptions } from './base'
 export { GmailProvider } from './gmail'
 export { SmtpProvider } from './smtp'
 
