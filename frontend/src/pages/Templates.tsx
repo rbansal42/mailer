@@ -112,17 +112,23 @@ function TemplateEditor({ template, onBack }: EditorProps) {
   const [darkMode, setDarkMode] = useState(false)
   const [showSource, setShowSource] = useState(false)
   
-  const { set: recordHistory, undo, redo, canUndo, canRedo } = useBlockHistory()
+  const { set: recordHistory, undo, redo, canUndo, canRedo, clear: clearHistory } = useBlockHistory()
 
   const selectedBlock = blocks.find((b) => b.id === selectedBlockId)
   
-  // Sync local blocks state with history store when undo/redo happens
+  // Clear history when switching templates
   useEffect(() => {
-    const history = useBlockHistory.getState()
-    if (history.present) {
-      setBlocks(history.present)
-    }
-  }, [canUndo, canRedo])
+    clearHistory()
+  }, [template?.id, clearHistory])
+  
+  // Subscribe to history store changes for undo/redo sync
+  useEffect(() => {
+    return useBlockHistory.subscribe((state) => {
+      if (state.present) {
+        setBlocks(state.present)
+      }
+    })
+  }, [])
   
   const updateBlocks = (newBlocks: Block[]) => {
     setBlocks(newBlocks)
@@ -302,12 +308,14 @@ function TemplateEditor({ template, onBack }: EditorProps) {
         <div className="flex-1 p-4 overflow-y-auto bg-muted/20">
           {/* Preview Controls */}
           <div className="max-w-xl mx-auto mb-3 flex items-center justify-between">
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1" role="group" aria-label="Preview settings">
               <Button
                 variant={previewMode === 'desktop' ? 'secondary' : 'ghost'}
                 size="sm"
                 onClick={() => setPreviewMode('desktop')}
                 title="Desktop view (600px)"
+                aria-label="Desktop view (600px)"
+                aria-pressed={previewMode === 'desktop'}
               >
                 <Monitor className="h-4 w-4" />
               </Button>
@@ -316,6 +324,8 @@ function TemplateEditor({ template, onBack }: EditorProps) {
                 size="sm"
                 onClick={() => setPreviewMode('mobile')}
                 title="Mobile view (320px)"
+                aria-label="Mobile view (320px)"
+                aria-pressed={previewMode === 'mobile'}
               >
                 <Smartphone className="h-4 w-4" />
               </Button>
@@ -324,6 +334,8 @@ function TemplateEditor({ template, onBack }: EditorProps) {
                 size="sm"
                 onClick={() => setDarkMode(!darkMode)}
                 title="Dark mode preview"
+                aria-label="Dark mode preview"
+                aria-pressed={darkMode}
               >
                 <Moon className="h-4 w-4" />
               </Button>
@@ -332,7 +344,9 @@ function TemplateEditor({ template, onBack }: EditorProps) {
               variant={showSource ? 'secondary' : 'ghost'}
               size="sm"
               onClick={() => setShowSource(!showSource)}
-              title="View HTML source"
+              title="View block data (JSON)"
+              aria-label="View block data (JSON)"
+              aria-pressed={showSource}
             >
               <Code className="h-4 w-4" />
             </Button>

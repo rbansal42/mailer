@@ -229,6 +229,7 @@ Add desktop/mobile/dark mode toggles to preview.
 
 ### Task 6: Improved Drag-and-Drop
 **Priority:** Medium | **Parallelizable:** Yes
+**Status:** DEFERRED - Will be implemented in a future iteration
 
 Enhance drag-and-drop with visual indicators.
 
@@ -240,6 +241,9 @@ Enhance drag-and-drop with visual indicators.
 - Auto-scroll when near edges
 
 Using existing @dnd-kit library.
+
+**Deferral Rationale:**
+This task requires integration with @dnd-kit library and careful UX testing. The basic block reordering via Move Up/Down buttons is functional. Visual DnD enhancements will be addressed when there's dedicated time for polish.
 
 **Acceptance Criteria:**
 - [ ] Drop indicator line visible
