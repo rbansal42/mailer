@@ -83,10 +83,7 @@ export function createHistoryStore<T>(maxHistory = 50) {
 }
 
 // Create a specific history store for template blocks
-export interface Block {
-  id: string
-  type: string
-  props: Record<string, unknown>
-}
+// Import Block type from API to ensure compatibility
+import { Block } from '../lib/api'
 
 export const useBlockHistory = createHistoryStore<Block[]>()

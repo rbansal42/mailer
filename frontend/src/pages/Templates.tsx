@@ -7,8 +7,7 @@ import { Label } from '../components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import {
   Plus, ChevronLeft, Save, Trash2, Type, Image, MousePointer,
-  Minus, Square, Columns, FileText, GripVertical, Loader2, Undo2, Redo2, Copy,
-  Monitor, Smartphone, Moon, Code
+  Minus, Square, Columns, FileText, GripVertical, Loader2, Undo2, Redo2, Copy
 } from 'lucide-react'
 import { cn } from '../lib/utils'
 import { useBlockHistory } from '../stores/history'
@@ -108,9 +107,6 @@ function TemplateEditor({ template, onBack }: EditorProps) {
   const [description, setDescription] = useState(template?.description || '')
   const [blocks, setBlocks] = useState<Block[]>(template?.blocks || [])
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
-  const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>('desktop')
-  const [darkMode, setDarkMode] = useState(false)
-  const [showSource, setShowSource] = useState(false)
   
   const { set: recordHistory, undo, redo, canUndo, canRedo } = useBlockHistory()
 
@@ -157,16 +153,16 @@ function TemplateEditor({ template, onBack }: EditorProps) {
       type,
       props: getDefaultProps(type),
     }
-    setBlocks([...blocks, newBlock])
+    updateBlocks([...blocks, newBlock])
     setSelectedBlockId(newBlock.id)
   }
 
   const updateBlock = (id: string, props: Record<string, unknown>) => {
-    setBlocks(blocks.map((b) => (b.id === id ? { ...b, props: { ...b.props, ...props } } : b)))
+    updateBlocks(blocks.map((b) => (b.id === id ? { ...b, props: { ...b.props, ...props } } : b)))
   }
 
   const deleteBlock = (id: string) => {
-    setBlocks(blocks.filter((b) => b.id !== id))
+    updateBlocks(blocks.filter((b) => b.id !== id))
     if (selectedBlockId === id) setSelectedBlockId(null)
   }
 
@@ -187,7 +183,7 @@ function TemplateEditor({ template, onBack }: EditorProps) {
       ...blocks.slice(blockIndex + 1),
     ]
 
-    setBlocks(newBlocks)
+    updateBlocks(newBlocks)
     setSelectedBlockId(newBlock.id)
   }
 
@@ -220,11 +216,11 @@ function TemplateEditor({ template, onBack }: EditorProps) {
     if (direction === 'up' && index > 0) {
       const newBlocks = [...blocks]
       ;[newBlocks[index - 1], newBlocks[index]] = [newBlocks[index], newBlocks[index - 1]]
-      setBlocks(newBlocks)
+      updateBlocks(newBlocks)
     } else if (direction === 'down' && index < blocks.length - 1) {
       const newBlocks = [...blocks]
       ;[newBlocks[index], newBlocks[index + 1]] = [newBlocks[index + 1], newBlocks[index]]
-      setBlocks(newBlocks)
+      updateBlocks(newBlocks)
     }
   }
 
@@ -307,7 +303,7 @@ function TemplateEditor({ template, onBack }: EditorProps) {
               </div>
             ) : (
               <div className="p-4 space-y-2">
-                {blocks.map((block, index) => (
+                {blocks.map((block) => (
                   <div
                     key={block.id}
                     onClick={() => setSelectedBlockId(block.id)}
