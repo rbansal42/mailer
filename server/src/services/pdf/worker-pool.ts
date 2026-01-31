@@ -73,7 +73,9 @@ export class PdfWorkerPool {
       timeoutMs: this.timeoutMs 
     })
 
-    const workerPath = join(import.meta.dir, 'pdf-worker.ts')
+    // In production (bundled to dist/), worker is pdf-worker.js; in dev, it's pdf-worker.ts
+    const isProduction = import.meta.dir.endsWith('/dist') || import.meta.dir.endsWith('\\dist')
+    const workerPath = join(import.meta.dir, isProduction ? 'pdf-worker.js' : 'pdf-worker.ts')
     const readyPromises: Promise<void>[] = []
 
     for (let i = 0; i < this.size; i++) {
