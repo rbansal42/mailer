@@ -30,7 +30,7 @@ const PORT = process.env.PORT || 3342
 app.use(cors())
 app.use(requestIdMiddleware)
 app.use(requestLogMiddleware)
-app.use(express.json())
+app.use(express.json({ limit: '10mb' })) // Increased for base64 images in certificates
 
 // Initialize database
 initializeDatabase()
