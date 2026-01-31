@@ -30,6 +30,17 @@ trackingRouter.get('/:token/open.gif', (req, res) => {
   res.send(TRANSPARENT_GIF)
 })
 
+// Validate URL is safe to redirect to (prevent open redirect)
+function isValidRedirectUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url)
+    // Only allow http and https protocols
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
 // GET /:token/c/:linkIndex - Track link click and redirect
 trackingRouter.get('/:token/c/:linkIndex', (req, res) => {
   const { token, linkIndex } = req.params
@@ -37,6 +48,12 @@ trackingRouter.get('/:token/c/:linkIndex', (req, res) => {
 
   if (!url) {
     res.status(400).send('Missing url parameter')
+    return
+  }
+
+  // Validate URL to prevent open redirect attacks
+  if (!isValidRedirectUrl(url)) {
+    res.status(400).send('Invalid redirect URL')
     return
   }
 

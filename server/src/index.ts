@@ -102,7 +102,7 @@ app.use('/t', trackingRouter)
 app.use('/api/auth', authRouter)
 
 // Protected API routes
-app.use('/api', analyticsRouter)
+app.use('/api', authMiddleware, analyticsRouter)
 app.use('/api/templates', authMiddleware, templatesRouter)
 app.use('/api/drafts', authMiddleware, draftsRouter)
 app.use('/api/campaigns', authMiddleware, campaignsRouter)

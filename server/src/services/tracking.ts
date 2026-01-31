@@ -253,7 +253,7 @@ export function getCampaignAnalytics(campaignId: number): CampaignAnalytics {
     ORDER BY sl.sent_at DESC
   `).all(campaignId)
 
-  const totalSent = sent + failed // For rate calculation
+  const totalSent = sent // Rate calculation based on successfully sent emails only
   const opens = openStats?.total || 0
   const uniqueOpens = openStats?.unique_count || 0
   const clicks = clickStats?.total || 0

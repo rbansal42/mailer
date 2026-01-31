@@ -85,6 +85,17 @@ settingsRouter.put('/tracking', (req: Request, res: Response) => {
       db.run('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', ['tracking_enabled', String(enabled)])
     }
     if (baseUrl !== undefined) {
+      // Validate baseUrl is a valid URL
+      try {
+        const parsed = new URL(baseUrl)
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+          res.status(400).json({ error: 'Base URL must use http or https protocol' })
+          return
+        }
+      } catch {
+        res.status(400).json({ error: 'Invalid base URL format' })
+        return
+      }
       db.run('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', ['tracking_base_url', baseUrl])
     }
     if (openEnabled !== undefined) {
