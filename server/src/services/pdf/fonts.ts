@@ -1,7 +1,8 @@
 import { Font } from '@react-pdf/renderer'
 import path from 'path'
 
-const FONTS_DIR = path.join(__dirname, '../../../assets/fonts')
+// Use import.meta.dir for reliable path resolution in Bun
+const FONTS_DIR = path.join(import.meta.dir, '../../../assets/fonts')
 
 // Register Montserrat font family
 Font.register({
