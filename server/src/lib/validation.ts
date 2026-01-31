@@ -8,7 +8,7 @@ export const emailArraySchema = z.array(emailSchema).default([])
 
 // Template block schema
 export const blockSchema = z.object({
-  id: z.string(),
+  id: z.string().min(1),
   type: z.enum(['header', 'text', 'image', 'button', 'divider', 'spacer', 'columns', 'footer']),
   props: z.record(z.string(), z.unknown())
 })
@@ -22,34 +22,43 @@ export const createTemplateSchema = z.object({
 
 export const updateTemplateSchema = createTemplateSchema.partial()
 
+// Provider-specific config schemas
+const gmailConfigSchema = z.object({
+  email: z.string().email(),
+  appPassword: z.string().min(1)
+})
+
+const smtpConfigSchema = z.object({
+  host: z.string().min(1),
+  port: z.number().int().min(1).max(65535),
+  secure: z.boolean().default(false),
+  user: z.string().min(1),
+  pass: z.string().min(1),
+  fromEmail: z.string().email(),
+  fromName: z.string().optional()
+})
+
 // Account schemas
 export const createAccountSchema = z.object({
   name: z.string().min(1).max(100),
-  provider_type: z.enum(['gmail', 'smtp']),
-  config: z.object({
-    email: z.string().email(),
-    // Gmail
-    appPassword: z.string().optional(),
-    // SMTP
-    host: z.string().optional(),
-    port: z.number().optional(),
-    secure: z.boolean().optional(),
-    user: z.string().optional(),
-    pass: z.string().optional(),
-    fromName: z.string().optional()
-  }),
-  daily_cap: z.number().int().min(1).max(10000).default(500),
-  campaign_cap: z.number().int().min(1).max(5000).default(100),
-  priority: z.number().int().min(0).default(0)
+  providerType: z.enum(['gmail', 'smtp']),
+  config: z.union([gmailConfigSchema, smtpConfigSchema]),
+  dailyCap: z.number().int().min(1).max(10000).default(500),
+  campaignCap: z.number().int().min(1).max(5000).default(100),
+  priority: z.number().int().min(0).default(0),
+  enabled: z.boolean().default(true)
 })
 
 // Draft schemas
 export const createDraftSchema = z.object({
   name: z.string().min(1).max(200),
-  template_id: z.number().int().positive().optional(),
+  templateId: z.number().int().positive().optional(),
   subject: z.string().max(500).optional(),
-  recipients: z.string().optional(), // JSON string of recipients
-  variables: z.string().optional(),  // JSON string
+  recipients: z.array(z.object({
+    email: emailSchema,
+    data: z.record(z.string(), z.string()).optional()
+  })).optional(),
+  variables: z.record(z.string(), z.string()).optional(),
   cc: emailArraySchema,
   bcc: emailArraySchema
 })
@@ -59,7 +68,7 @@ export const updateDraftSchema = createDraftSchema.partial()
 // Send schema
 export const sendCampaignSchema = z.object({
   name: z.string().min(1).max(200).optional(),
-  template_id: z.number().int().positive(),
+  templateId: z.number().int().positive(),
   subject: z.string().min(1).max(500),
   recipients: z.array(z.object({
     email: emailSchema,
@@ -67,7 +76,7 @@ export const sendCampaignSchema = z.object({
   })).min(1, { message: 'At least one recipient required' }),
   cc: emailArraySchema,
   bcc: emailArraySchema,
-  scheduled_for: z.string().datetime().optional()
+  scheduledFor: z.string().datetime().optional()
 })
 
 // Validation helper
