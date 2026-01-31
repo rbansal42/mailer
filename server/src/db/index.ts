@@ -154,6 +154,32 @@ export function initializeDatabase() {
     )
   `)
 
+  // Tracking tokens for email analytics
+  db.run(`
+    CREATE TABLE IF NOT EXISTS tracking_tokens (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      campaign_id INTEGER REFERENCES campaigns(id),
+      recipient_email TEXT NOT NULL,
+      token TEXT UNIQUE NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(campaign_id, recipient_email)
+    )
+  `)
+
+  // Tracking events for opens, clicks, etc.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS tracking_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      token_id INTEGER REFERENCES tracking_tokens(id),
+      event_type TEXT NOT NULL,
+      link_url TEXT,
+      link_index INTEGER,
+      ip_address TEXT,
+      user_agent TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `)
+
   // Create attachments directory
   mkdirSync(join(DATA_DIR, 'attachments'), { recursive: true })
 
@@ -174,6 +200,23 @@ export function initializeDatabase() {
   db.run('CREATE INDEX IF NOT EXISTS idx_send_counts_date ON send_counts(account_id, date)')
   db.run('CREATE INDEX IF NOT EXISTS idx_send_logs_campaign ON send_logs(campaign_id)')
   db.run('CREATE INDEX IF NOT EXISTS idx_email_queue_status ON email_queue(status, scheduled_for)')
+  db.run('CREATE INDEX IF NOT EXISTS idx_tracking_events_token ON tracking_events(token_id)')
+  db.run('CREATE INDEX IF NOT EXISTS idx_tracking_events_type ON tracking_events(event_type)')
+  db.run('CREATE INDEX IF NOT EXISTS idx_tracking_tokens_token ON tracking_tokens(token)')
+
+  // Initialize default tracking settings
+  const trackingDefaults = [
+    ['tracking_enabled', 'true'],
+    ['tracking_base_url', 'https://mailer.rbansal.xyz'],
+    ['tracking_open_enabled', 'true'],
+    ['tracking_click_enabled', 'true'],
+    ['tracking_hash_ips', 'true'],
+    ['tracking_retention_days', '90'],
+  ]
+
+  for (const [key, value] of trackingDefaults) {
+    db.run('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', [key, value])
+  }
 
   console.log('Database initialized')
 
