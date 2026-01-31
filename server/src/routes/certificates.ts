@@ -11,6 +11,26 @@ import type {
 
 export const certificatesRouter = Router()
 
+// HTML escape helper to prevent XSS
+function escapeHtml(text: string): string {
+  if (!text) return ''
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
+}
+
+// Color validation to prevent CSS injection
+const hexColorRegex = /^#[0-9A-Fa-f]{6}$/
+function validateColors(colors: { primary?: string; secondary?: string; accent?: string }): boolean {
+  return colors &&
+    typeof colors.primary === 'string' && hexColorRegex.test(colors.primary) &&
+    typeof colors.secondary === 'string' && hexColorRegex.test(colors.secondary) &&
+    typeof colors.accent === 'string' && hexColorRegex.test(colors.accent)
+}
+
 // Database row types
 interface CertificateConfigRow {
   id: number
@@ -176,6 +196,10 @@ certificatesRouter.post('/configs', (req, res) => {
     return res.status(400).json({ error: 'name, templateId, and colors are required' })
   }
   
+  if (!validateColors(colors)) {
+    return res.status(400).json({ error: 'Invalid color format. Colors must be valid hex codes (e.g., #1e40af)' })
+  }
+  
   logger.info('Creating certificate config', { service: 'certificates', name, templateId })
   
   const result = db.run(
@@ -222,6 +246,9 @@ certificatesRouter.put('/configs/:id', (req, res) => {
     values.push(templateId)
   }
   if (colors !== undefined) {
+    if (!validateColors(colors)) {
+      return res.status(400).json({ error: 'Invalid color format. Colors must be valid hex codes (e.g., #1e40af)' })
+    }
     updates.push('colors = ?')
     values.push(JSON.stringify(colors))
   }
@@ -417,30 +444,32 @@ function generateCertificateHtml(
   data: CertificateData,
   template: CertificateTemplate
 ): string {
-  // Replace placeholders in description template
+  // Replace placeholders in description template (escape user data for XSS prevention)
   let description = config.descriptionTemplate
   for (const [key, value] of Object.entries(data)) {
     if (value) {
-      description = description.replace(new RegExp(`{{${key}}}`, 'g'), value)
+      description = description.replace(new RegExp(`{{${key}}}`, 'g'), escapeHtml(value))
     }
   }
+  // Escape the entire description after variable replacement
+  description = escapeHtml(description)
   
-  // Build logo HTML
+  // Build logo HTML (escape URLs for XSS prevention)
   const logosHtml = config.logos
     .sort((a, b) => a.order - b.order)
-    .map(logo => `<img src="${logo.url}" style="height: 60px; margin: 0 15px;" alt="Logo">`)
+    .map(logo => `<img src="${escapeHtml(logo.url)}" style="height: 60px; margin: 0 15px;" alt="Logo">`)
     .join('')
   
-  // Build signatories HTML
+  // Build signatories HTML (escape user data for XSS prevention)
   const signatoriesHtml = config.signatories
     .sort((a, b) => a.order - b.order)
     .map(sig => `
       <div style="text-align: center; margin: 0 30px;">
-        ${sig.signatureUrl ? `<img src="${sig.signatureUrl}" style="height: 50px; margin-bottom: 5px;" alt="Signature">` : '<div style="height: 50px;"></div>'}
+        ${sig.signatureUrl ? `<img src="${escapeHtml(sig.signatureUrl)}" style="height: 50px; margin-bottom: 5px;" alt="Signature">` : '<div style="height: 50px;"></div>'}
         <div style="border-top: 1px solid ${config.colors.secondary}; padding-top: 5px;">
-          <div style="font-weight: bold;">${sig.name}</div>
-          <div style="font-size: 12px; color: ${config.colors.secondary};">${sig.designation}</div>
-          <div style="font-size: 11px; color: #666;">${sig.organization}</div>
+          <div style="font-weight: bold;">${escapeHtml(sig.name)}</div>
+          <div style="font-size: 12px; color: ${config.colors.secondary};">${escapeHtml(sig.designation)}</div>
+          <div style="font-size: 11px; color: #666;">${escapeHtml(sig.organization)}</div>
         </div>
       </div>
     `)
@@ -567,19 +596,19 @@ function generateCertificateHtml(
   <div class="certificate">
     <div class="header">
       <div class="logos">${logosHtml}</div>
-      <div class="title">${config.titleText}</div>
-      <div class="subtitle">${config.subtitleText}</div>
+      <div class="title">${escapeHtml(config.titleText)}</div>
+      <div class="subtitle">${escapeHtml(config.subtitleText)}</div>
     </div>
     
     <div class="content">
       <div class="presented-to">This is proudly presented to</div>
-      <div class="recipient-name">${data.name}</div>
+      <div class="recipient-name">${escapeHtml(data.name)}</div>
       <div class="description">${description}</div>
     </div>
     
     <div class="footer">
       <div class="signatories">${signatoriesHtml}</div>
-      ${data.certificate_id ? `<div class="certificate-id">Certificate ID: ${data.certificate_id}</div>` : ''}
+      ${data.certificate_id ? `<div class="certificate-id">Certificate ID: ${escapeHtml(data.certificate_id)}</div>` : ''}
     </div>
   </div>
 </body>

@@ -1,4 +1,5 @@
 import puppeteer, { Browser } from 'puppeteer'
+import { randomBytes } from 'crypto'
 import { logger } from '../lib/logger'
 
 let browser: Browser | null = null
@@ -58,9 +59,9 @@ export function calculateFontSize(
   return Math.max(Math.floor(baseFontSize * scaleFactor), minFontSize)
 }
 
-// Generate unique certificate ID
+// Generate unique certificate ID using cryptographically secure random bytes
 export function generateCertificateId(): string {
   const year = new Date().getFullYear()
-  const random = Math.floor(Math.random() * 100000).toString().padStart(5, '0')
+  const random = randomBytes(6).toString('hex').toUpperCase()
   return `CERT-${year}-${random}`
 }
