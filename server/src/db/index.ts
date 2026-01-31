@@ -180,6 +180,38 @@ export function initializeDatabase() {
     )
   `)
 
+  // Scheduled batches for timezone-aware delivery
+  db.run(`
+    CREATE TABLE IF NOT EXISTS scheduled_batches (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      campaign_id INTEGER REFERENCES campaigns(id),
+      scheduled_for DATETIME NOT NULL,
+      recipient_emails TEXT NOT NULL,
+      status TEXT DEFAULT 'pending',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `)
+
+  // Recurring campaigns for scheduled sends
+  db.run(`
+    CREATE TABLE IF NOT EXISTS recurring_campaigns (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      template_id INTEGER REFERENCES templates(id),
+      subject TEXT NOT NULL,
+      recipient_source TEXT NOT NULL,
+      recipient_data TEXT,
+      schedule_cron TEXT NOT NULL,
+      timezone TEXT DEFAULT 'UTC',
+      cc TEXT DEFAULT '[]',
+      bcc TEXT DEFAULT '[]',
+      enabled INTEGER DEFAULT 1,
+      last_run_at DATETIME,
+      next_run_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `)
+
   // Create attachments directory
   mkdirSync(join(DATA_DIR, 'attachments'), { recursive: true })
 
@@ -203,6 +235,7 @@ export function initializeDatabase() {
   db.run('CREATE INDEX IF NOT EXISTS idx_tracking_events_token ON tracking_events(token_id)')
   db.run('CREATE INDEX IF NOT EXISTS idx_tracking_events_type ON tracking_events(event_type)')
   db.run('CREATE INDEX IF NOT EXISTS idx_tracking_tokens_token ON tracking_tokens(token)')
+  db.run('CREATE INDEX IF NOT EXISTS idx_scheduled_batches_status ON scheduled_batches(status, scheduled_for)')
 
   // Initialize default tracking settings
   const trackingDefaults = [
