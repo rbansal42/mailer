@@ -5,9 +5,9 @@ import { mkdirSync, existsSync, writeFileSync, unlinkSync } from 'fs'
 import { db } from '../db'
 import { logger } from '../lib/logger'
 import { 
-  generateReactPdf, 
   generateCertificateId,
   getReactPdfTemplateIds,
+  getPdfWorkerPool,
   type CertificateProps,
   type TemplateId,
 } from '../services/pdf'
@@ -26,7 +26,7 @@ function replaceVariables(text: string, data: CertificateData): string {
   return text.replace(/\{\{(\w+)\}\}/g, (_, key) => data[key] || `{{${key}}}`)
 }
 
-// Helper to generate PDF
+// Helper to generate PDF using worker pool
 async function generateCertificatePdf(
   config: CertificateConfig,
   data: CertificateData,
@@ -47,7 +47,8 @@ async function generateCertificatePdf(
     certificateId,
   }
   
-  return generateReactPdf(config.templateId as TemplateId, props)
+  const pool = getPdfWorkerPool()
+  return pool.generate(config.templateId as TemplateId, props)
 }
 
 export const certificatesRouter = Router()
@@ -398,7 +399,8 @@ certificatesRouter.post('/preview-draft', async (req, res) => {
       certificateId: data.certificate_id || 'PREVIEW',
     }
 
-    const pdfBuffer = await generateReactPdf(config.templateId as TemplateId, props)
+    const pool = getPdfWorkerPool()
+    const pdfBuffer = await pool.generate(config.templateId as TemplateId, props)
     const base64 = pdfBuffer.toString('base64')
 
     logger.info('Draft certificate preview generated', { service: 'certificates' })

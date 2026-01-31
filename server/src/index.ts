@@ -22,6 +22,7 @@ import { authMiddleware } from './middleware/auth'
 import { startQueueProcessor } from './services/queue-processor'
 import { startScheduler } from './services/scheduler'
 import { requestIdMiddleware, requestLogMiddleware, logger } from './lib/logger'
+import { getPdfWorkerPool } from './services/pdf'
 
 const app = express()
 const PORT = process.env.PORT || 3342
@@ -78,6 +79,10 @@ app.get('/api/health', (_, res) => {
     // Tables might not exist yet
   }
   
+  // Get PDF worker pool stats
+  const pdfPool = getPdfWorkerPool()
+  const pdfPoolStats = pdfPool.isReady() ? pdfPool.getStats() : null
+  
   const allHealthy = dbHealth.ok && diskOk
   
   res.status(allHealthy ? 200 : 503).json({
@@ -93,6 +98,16 @@ app.get('/api/health', (_, res) => {
         total: accountsInfo.total,
         enabled: accountsInfo.enabled,
         atCap: accountsInfo.atCap
+      },
+      pdfPool: pdfPoolStats ? {
+        status: 'ok',
+        workers: pdfPoolStats.workerCount,
+        active: pdfPoolStats.activeWorkers,
+        queued: pdfPoolStats.queueLength,
+        processed: pdfPoolStats.totalProcessed,
+        failed: pdfPoolStats.totalFailed,
+      } : {
+        status: 'not_initialized',
       }
     }
   })
