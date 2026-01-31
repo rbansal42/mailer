@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, SenderAccount, GmailConfig, SmtpConfig } from '../lib/api'
-import { useThemeStore, ThemeColor } from '../hooks/useThemeStore'
+import { useThemeStore } from '../hooks/useThemeStore'
 import { COLOR_PRESETS, THEME_COLORS } from '../lib/theme'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
@@ -203,9 +203,9 @@ function AccountEditor({ account, onClose }: { account: SenderAccount | null; on
   const [fromName, setFromName] = useState((account?.config as SmtpConfig)?.fromName || '')
 
   const saveMutation = useMutation({
-    mutationFn: account
-      ? (data: Partial<SenderAccount>) => api.updateAccount(account.id, data)
-      : (data: Omit<SenderAccount, 'id' | 'createdAt' | 'todayCount'>) => api.createAccount(data),
+    mutationFn: (data: Partial<SenderAccount>) => account
+      ? api.updateAccount(account.id, data)
+      : api.createAccount(data as Omit<SenderAccount, 'id' | 'createdAt' | 'todayCount'>),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['accounts'] })
       onClose()

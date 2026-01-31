@@ -105,7 +105,7 @@ interface EditorProps {
 function TemplateEditor({ template, onBack }: EditorProps) {
   const queryClient = useQueryClient()
   const [name, setName] = useState(template?.name || 'Untitled Template')
-  const [description, setDescription] = useState(template?.description || '')
+  const [_description, _setDescription] = useState(template?.description || '')
   const [blocks, setBlocks] = useState<Block[]>(template?.blocks || [])
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
   const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>('desktop')
@@ -130,9 +130,9 @@ function TemplateEditor({ template, onBack }: EditorProps) {
   }
 
   const saveMutation = useMutation({
-    mutationFn: template
-      ? (data: Partial<Template>) => api.updateTemplate(template.id, data)
-      : (data: Omit<Template, 'id' | 'createdAt' | 'updatedAt'>) => api.createTemplate(data),
+    mutationFn: (data: Partial<Template>) => template
+      ? api.updateTemplate(template.id, data)
+      : api.createTemplate(data as Omit<Template, 'id' | 'createdAt' | 'updatedAt'>),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['templates'] })
       onBack()
@@ -148,7 +148,7 @@ function TemplateEditor({ template, onBack }: EditorProps) {
   })
 
   const handleSave = () => {
-    saveMutation.mutate({ name, description, blocks })
+    saveMutation.mutate({ name, blocks })
   }
 
   const addBlock = (type: Block['type']) => {
