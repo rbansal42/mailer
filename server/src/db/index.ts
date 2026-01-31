@@ -212,6 +212,38 @@ export function initializeDatabase() {
     )
   `)
 
+  // Certificate configuration (user-customized templates)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS certificate_configs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      template_id TEXT NOT NULL,
+      colors TEXT NOT NULL,
+      logos TEXT DEFAULT '[]',
+      signatories TEXT DEFAULT '[]',
+      title_text TEXT DEFAULT 'CERTIFICATE',
+      subtitle_text TEXT DEFAULT 'of Participation',
+      description_template TEXT DEFAULT 'For participating in {{title}} on {{date}}.',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `)
+
+  // Generated certificates (tracking)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS generated_certificates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      certificate_id TEXT NOT NULL UNIQUE,
+      config_id INTEGER REFERENCES certificate_configs(id),
+      recipient_name TEXT NOT NULL,
+      recipient_email TEXT,
+      data TEXT DEFAULT '{}',
+      pdf_path TEXT,
+      campaign_id INTEGER REFERENCES campaigns(id),
+      generated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `)
+
   // Drip sequences
   db.run(`
     CREATE TABLE IF NOT EXISTS sequences (
@@ -282,6 +314,9 @@ export function initializeDatabase() {
   db.run('CREATE INDEX IF NOT EXISTS idx_enrollments_next_send ON sequence_enrollments(next_send_at)')
   db.run('CREATE INDEX IF NOT EXISTS idx_enrollments_status ON sequence_enrollments(status)')
   db.run('CREATE INDEX IF NOT EXISTS idx_sequence_steps_order ON sequence_steps(sequence_id, step_order)')
+  db.run('CREATE INDEX IF NOT EXISTS idx_generated_certificates_id ON generated_certificates(certificate_id)')
+  db.run('CREATE INDEX IF NOT EXISTS idx_generated_certificates_config ON generated_certificates(config_id)')
+  db.run('CREATE INDEX IF NOT EXISTS idx_generated_certificates_campaign ON generated_certificates(campaign_id)')
 
   // Initialize default tracking settings
   const trackingDefaults = [
