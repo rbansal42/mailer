@@ -45,7 +45,21 @@ interface AttachmentRow {
 }
 
 // POST /upload - Upload files (ZIP or multiple files)
-attachmentsRouter.post('/upload', upload.array('files', 500), async (req, res) => {
+attachmentsRouter.post('/upload', (req, res, next) => {
+  upload.array('files', 500)(req, res, (err: any) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ error: 'File too large. Maximum size is 10MB.' })
+      }
+      if (err.code === 'LIMIT_FILE_COUNT') {
+        return res.status(400).json({ error: 'Too many files. Maximum is 500 files.' })
+      }
+      logger.error('Upload error', { requestId: (req as any).requestId, service: 'attachments' }, err)
+      return res.status(400).json({ error: err.message || 'Upload failed' })
+    }
+    next()
+  })
+}, async (req, res) => {
   const requestId = (req as any).requestId
   const files = req.files as Express.Multer.File[]
   const draftId = req.body.draftId ? parseInt(req.body.draftId, 10) : undefined

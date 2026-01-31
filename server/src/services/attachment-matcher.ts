@@ -113,6 +113,12 @@ export function extractZip(zipPath: string, targetDir: string): string[] {
 
     const targetPath = join(targetDir, filename)
     
+    // Prevent path traversal attacks
+    if (!targetPath.startsWith(targetDir + '/') && targetPath !== targetDir) {
+      logger.warn('Skipping entry with path traversal attempt', { entry: entry.entryName, service: 'attachment-matcher' })
+      continue
+    }
+    
     // Extract the file
     zip.extractEntryTo(entry, targetDir, false, true)
     
