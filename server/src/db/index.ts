@@ -156,6 +156,9 @@ export function initializeDatabase() {
   // Create attachments directory
   mkdirSync(join(DATA_DIR, 'attachments'), { recursive: true })
 
+  // Create backups directory
+  mkdirSync(join(DATA_DIR, 'backups'), { recursive: true })
+
   // Run migrations - add columns if they don't exist
   addColumnIfNotExists('drafts', 'cc', 'TEXT', '[]')
   addColumnIfNotExists('drafts', 'bcc', 'TEXT', '[]')
@@ -163,6 +166,8 @@ export function initializeDatabase() {
   addColumnIfNotExists('campaigns', 'bcc', 'TEXT', '[]')
   addColumnIfNotExists('campaigns', 'scheduled_for', 'DATETIME', '')
   addColumnIfNotExists('campaigns', 'status', 'TEXT', 'draft')
+  addColumnIfNotExists('send_logs', 'retry_count', 'INTEGER', '0')
+  addColumnIfNotExists('sender_accounts', 'circuit_breaker_until', 'DATETIME', '')
 
   // Create indexes
   db.run('CREATE INDEX IF NOT EXISTS idx_send_counts_date ON send_counts(account_id, date)')
