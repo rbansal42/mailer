@@ -15,6 +15,18 @@ export const db = new Database(DB_PATH)
 // Enable WAL mode for better performance
 db.run('PRAGMA journal_mode = WAL')
 
+// Migration helper - add columns if they don't exist
+function addColumnIfNotExists(table: string, column: string, type: string, defaultValue: string) {
+  try {
+    const columns = db.query(`PRAGMA table_info(${table})`).all() as any[]
+    if (!columns.find(c => c.name === column)) {
+      db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${type} DEFAULT '${defaultValue}'`)
+    }
+  } catch (e) {
+    // Column might already exist or table doesn't exist
+  }
+}
+
 // Initialize schema
 export function initializeDatabase() {
   db.run(`
@@ -111,6 +123,14 @@ export function initializeDatabase() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `)
+
+  // Run migrations - add columns if they don't exist
+  addColumnIfNotExists('drafts', 'cc', 'TEXT', '[]')
+  addColumnIfNotExists('drafts', 'bcc', 'TEXT', '[]')
+  addColumnIfNotExists('campaigns', 'cc', 'TEXT', '[]')
+  addColumnIfNotExists('campaigns', 'bcc', 'TEXT', '[]')
+  addColumnIfNotExists('campaigns', 'scheduled_for', 'DATETIME', '')
+  addColumnIfNotExists('campaigns', 'status', 'TEXT', 'draft')
 
   // Create indexes
   db.run('CREATE INDEX IF NOT EXISTS idx_send_counts_date ON send_counts(account_id, date)')
