@@ -4,9 +4,16 @@ import { join } from 'path'
 import { mkdirSync, existsSync, writeFileSync, unlinkSync } from 'fs'
 import { db } from '../db'
 import { logger } from '../lib/logger'
-import { generatePdf, generateCertificateId } from '../services/pdf-generator'
+import { generatePdf, generateCertificateId as generateCertificateIdLegacy } from '../services/pdf-generator'
 import { getAllTemplates, getTemplateById, renderTemplate } from '../services/certificate-templates'
 import { registerAllTemplates } from '../templates/certificates'
+import { 
+  generateReactPdf, 
+  isReactPdfTemplate, 
+  generateCertificateId,
+  type CertificateProps,
+  type TemplateId,
+} from '../services/pdf'
 import type {
   CertificateConfig,
   CertificateData,
@@ -17,8 +24,51 @@ import type {
 const DATA_DIR = process.env.DATA_DIR || join(process.cwd(), '..', 'data')
 const CERTIFICATES_DIR = join(DATA_DIR, 'certificates')
 
-// Register all templates on module load
+// Register all legacy HTML templates on module load
 registerAllTemplates()
+
+// Helper to replace template variables in description
+function replaceVariables(text: string, data: CertificateData): string {
+  return text.replace(/\{\{(\w+)\}\}/g, (_, key) => data[key] || `{{${key}}}`)
+}
+
+// Helper to generate PDF using either React PDF or legacy Puppeteer
+async function generateCertificatePdf(
+  config: CertificateConfig,
+  data: CertificateData,
+  certificateId: string
+): Promise<Buffer> {
+  // Check if this is a React PDF template
+  if (isReactPdfTemplate(config.templateId)) {
+    // Use React PDF generator
+    const props: CertificateProps = {
+      title: config.titleText,
+      subtitle: config.subtitleText,
+      recipientName: data.name,
+      description: replaceVariables(config.descriptionTemplate, data),
+      logos: config.logos?.map(l => ({ url: l.url, width: l.width })),
+      signatories: config.signatories?.map(s => ({
+        name: s.name,
+        designation: s.designation,
+        organization: s.organization,
+        signatureUrl: s.signatureUrl,
+      })),
+      certificateId,
+    }
+    
+    return generateReactPdf(config.templateId as TemplateId, props)
+  }
+  
+  // Fall back to legacy Puppeteer generator
+  const template = getTemplateById(config.templateId)
+  if (!template) {
+    throw new Error(`Template not found: ${config.templateId}`)
+  }
+  
+  const dataWithId = { ...data, certificate_id: certificateId }
+  const html = renderTemplate(template, config, dataWithId)
+  return generatePdf(html)
+}
 
 export const certificatesRouter = Router()
 
@@ -90,10 +140,53 @@ function formatGeneratedCertificate(row: GeneratedCertificateRow): GeneratedCert
   }
 }
 
+// React PDF template metadata
+const reactPdfTemplates = [
+  {
+    id: 'modern-clean',
+    name: 'Modern Clean',
+    category: 'modern' as const,
+    thumbnail: '/thumbnails/modern-clean.png',
+    description: 'Double border design with accent bar - clean and professional',
+    defaultColors: { primary: '#1e293b', secondary: '#64748b', accent: '#0ea5e9' },
+    isReactPdf: true,
+  },
+  {
+    id: 'dark-elegant',
+    name: 'Dark Elegant',
+    category: 'dark' as const,
+    thumbnail: '/thumbnails/dark-elegant.png',
+    description: 'Dark background with gold accents - sophisticated and bold',
+    defaultColors: { primary: '#1e293b', secondary: '#94a3b8', accent: '#fbbf24' },
+    isReactPdf: true,
+  },
+  {
+    id: 'clean-minimal',
+    name: 'Clean Minimal',
+    category: 'minimal' as const,
+    thumbnail: '/thumbnails/clean-minimal.png',
+    description: 'White minimal design - simple and elegant',
+    defaultColors: { primary: '#1e293b', secondary: '#64748b', accent: '#0ea5e9' },
+    isReactPdf: true,
+  },
+  {
+    id: 'wave-accent',
+    name: 'Wave Accent',
+    category: 'minimal' as const,
+    thumbnail: '/thumbnails/wave-accent.png',
+    description: 'Layered color bars at bottom - modern and dynamic',
+    defaultColors: { primary: '#1e293b', secondary: '#64748b', accent: '#0ea5e9' },
+    isReactPdf: true,
+  },
+]
+
 // GET /templates - Return all certificate templates
 certificatesRouter.get('/templates', (_, res) => {
   logger.info('Listing certificate templates', { service: 'certificates' })
-  res.json(getAllTemplates())
+  // Combine legacy HTML templates with new React PDF templates
+  const legacyTemplates = getAllTemplates()
+  const allTemplates = [...reactPdfTemplates, ...legacyTemplates]
+  res.json(allTemplates)
 })
 
 // GET /configs - List saved certificate configs
@@ -260,17 +353,18 @@ certificatesRouter.post('/preview', async (req, res) => {
     }
     
     const config = formatConfig(configRow)
-    const template = getTemplateById(config.templateId)
     
-    if (!template) {
-      return res.status(400).json({ error: 'Invalid template ID in config' })
+    // Validate template exists (for legacy templates)
+    if (!isReactPdfTemplate(config.templateId)) {
+      const template = getTemplateById(config.templateId)
+      if (!template) {
+        return res.status(400).json({ error: 'Invalid template ID in config' })
+      }
     }
     
-    // Generate HTML from config and data
-    const html = renderTemplate(template, config, data)
-    
-    // Generate PDF
-    const pdfBuffer = await generatePdf(html)
+    // Generate PDF using appropriate generator
+    const previewCertId = data.certificate_id || 'PREVIEW'
+    const pdfBuffer = await generateCertificatePdf(config, data, previewCertId)
     const base64 = pdfBuffer.toString('base64')
     
     logger.info('Certificate preview generated', { service: 'certificates', configId })
@@ -309,10 +403,13 @@ certificatesRouter.post('/generate', async (req, res) => {
     }
     
     const config = formatConfig(configRow)
-    const template = getTemplateById(config.templateId)
     
-    if (!template) {
-      return res.status(400).json({ error: 'Invalid template ID in config' })
+    // Validate template exists (for legacy templates)
+    if (!isReactPdfTemplate(config.templateId)) {
+      const template = getTemplateById(config.templateId)
+      if (!template) {
+        return res.status(400).json({ error: 'Invalid template ID in config' })
+      }
     }
     
     const results: { certificateId: string; recipientName: string; pdf: string }[] = []
@@ -323,14 +420,13 @@ certificatesRouter.post('/generate', async (req, res) => {
       }
       
       const certificateId = recipientData.certificate_id || generateCertificateId()
-      const dataWithId = { ...recipientData, certificate_id: certificateId }
       
-      // Generate HTML and PDF
-      const html = renderTemplate(template, config, dataWithId)
-      const pdfBuffer = await generatePdf(html)
+      // Generate PDF using appropriate generator
+      const pdfBuffer = await generateCertificatePdf(config, recipientData, certificateId)
       const base64 = pdfBuffer.toString('base64')
       
       // Save to database
+      const dataWithId = { ...recipientData, certificate_id: certificateId }
       db.run(
         `INSERT INTO generated_certificates 
          (certificate_id, config_id, recipient_name, recipient_email, data)
@@ -396,10 +492,13 @@ certificatesRouter.post('/generate/zip', async (req, res) => {
     }
     
     const config = formatConfig(configRow)
-    const template = getTemplateById(config.templateId)
     
-    if (!template) {
-      return res.status(400).json({ error: 'Invalid template ID in config' })
+    // Validate template exists (for legacy templates)
+    if (!isReactPdfTemplate(config.templateId)) {
+      const template = getTemplateById(config.templateId)
+      if (!template) {
+        return res.status(400).json({ error: 'Invalid template ID in config' })
+      }
     }
     
     // Set response headers for ZIP download
@@ -430,11 +529,9 @@ certificatesRouter.post('/generate/zip', async (req, res) => {
       }
       
       const certificateId = recipientData.certificate_id || generateCertificateId()
-      const dataWithId = { ...recipientData, certificate_id: certificateId }
       
-      // Generate HTML and PDF
-      const html = renderTemplate(template, config, dataWithId)
-      const pdfBuffer = await generatePdf(html)
+      // Generate PDF using appropriate generator
+      const pdfBuffer = await generateCertificatePdf(config, recipientData, certificateId)
       
       // Sanitize filename
       const safeName = recipientData.name.replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, '_')
@@ -444,6 +541,7 @@ certificatesRouter.post('/generate/zip', async (req, res) => {
       archive.append(pdfBuffer, { name: filename })
       
       // Save to database
+      const dataWithId = { ...recipientData, certificate_id: certificateId }
       db.run(
         `INSERT INTO generated_certificates 
          (certificate_id, config_id, recipient_name, recipient_email, data)
@@ -522,10 +620,13 @@ certificatesRouter.post('/generate/campaign', async (req, res) => {
     }
     
     const config = formatConfig(configRow)
-    const template = getTemplateById(config.templateId)
     
-    if (!template) {
-      return res.status(400).json({ error: 'Invalid template ID in config' })
+    // Validate template exists (for legacy templates)
+    if (!isReactPdfTemplate(config.templateId)) {
+      const template = getTemplateById(config.templateId)
+      if (!template) {
+        return res.status(400).json({ error: 'Invalid template ID in config' })
+      }
     }
     
     ensureCertificatesDir()
@@ -537,11 +638,9 @@ certificatesRouter.post('/generate/campaign', async (req, res) => {
       const recipientData = recipientsWithEmail[i]
       
       const certificateId = recipientData.certificate_id || generateCertificateId()
-      const dataWithId = { ...recipientData, certificate_id: certificateId }
       
-      // Generate HTML and PDF
-      const html = renderTemplate(template, config, dataWithId)
-      const pdfBuffer = await generatePdf(html)
+      // Generate PDF using appropriate generator
+      const pdfBuffer = await generateCertificatePdf(config, recipientData, certificateId)
       
       // Save PDF to disk
       const safeName = recipientData.name!.replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, '_')
@@ -568,6 +667,7 @@ certificatesRouter.post('/generate/campaign', async (req, res) => {
       // Create recipient-attachment mapping (email is guaranteed non-null from filter above)
       const email = recipientData.email!
       const name = recipientData.name!
+      const dataWithId = { ...recipientData, certificate_id: certificateId }
       
       db.run(
         `INSERT INTO recipient_attachments (draft_id, recipient_email, attachment_id, matched_by)
