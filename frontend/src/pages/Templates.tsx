@@ -7,7 +7,8 @@ import { Label } from '../components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import {
   Plus, ChevronLeft, Save, Trash2, Type, Image, MousePointer,
-  Minus, Square, Columns, FileText, GripVertical, Loader2, Undo2, Redo2, Copy
+  Minus, Square, Columns, FileText, GripVertical, Loader2, Undo2, Redo2, Copy,
+  Monitor, Smartphone, Moon, Code
 } from 'lucide-react'
 import { cn } from '../lib/utils'
 import { useBlockHistory } from '../stores/history'
@@ -107,6 +108,9 @@ function TemplateEditor({ template, onBack }: EditorProps) {
   const [description, setDescription] = useState(template?.description || '')
   const [blocks, setBlocks] = useState<Block[]>(template?.blocks || [])
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
+  const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>('desktop')
+  const [darkMode, setDarkMode] = useState(false)
+  const [showSource, setShowSource] = useState(false)
   
   const { set: recordHistory, undo, redo, canUndo, canRedo } = useBlockHistory()
 
@@ -296,8 +300,57 @@ function TemplateEditor({ template, onBack }: EditorProps) {
 
         {/* Center: Canvas */}
         <div className="flex-1 p-4 overflow-y-auto bg-muted/20">
-          <div className="max-w-xl mx-auto bg-background rounded-lg border shadow-sm min-h-96">
-            {blocks.length === 0 ? (
+          {/* Preview Controls */}
+          <div className="max-w-xl mx-auto mb-3 flex items-center justify-between">
+            <div className="flex items-center gap-1">
+              <Button
+                variant={previewMode === 'desktop' ? 'secondary' : 'ghost'}
+                size="sm"
+                onClick={() => setPreviewMode('desktop')}
+                title="Desktop view (600px)"
+              >
+                <Monitor className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={previewMode === 'mobile' ? 'secondary' : 'ghost'}
+                size="sm"
+                onClick={() => setPreviewMode('mobile')}
+                title="Mobile view (320px)"
+              >
+                <Smartphone className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={darkMode ? 'secondary' : 'ghost'}
+                size="sm"
+                onClick={() => setDarkMode(!darkMode)}
+                title="Dark mode preview"
+              >
+                <Moon className="h-4 w-4" />
+              </Button>
+            </div>
+            <Button
+              variant={showSource ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => setShowSource(!showSource)}
+              title="View HTML source"
+            >
+              <Code className="h-4 w-4" />
+            </Button>
+          </div>
+
+          {/* Canvas */}
+          <div 
+            className={cn(
+              "mx-auto bg-background rounded-lg border shadow-sm min-h-96 transition-all",
+              previewMode === 'desktop' ? 'max-w-xl' : 'max-w-xs',
+              darkMode && 'bg-gray-900 text-white'
+            )}
+          >
+            {showSource ? (
+              <pre className="p-4 text-xs overflow-auto max-h-96 font-mono">
+                {JSON.stringify(blocks, null, 2)}
+              </pre>
+            ) : blocks.length === 0 ? (
               <div className="p-8 text-center text-muted-foreground">
                 <p>Add blocks from the left panel</p>
               </div>
@@ -328,7 +381,7 @@ function TemplateEditor({ template, onBack }: EditorProps) {
                     </div>
                     
                     {/* Block content */}
-                    <BlockPreview block={block} />
+                    <BlockPreview block={block} darkMode={darkMode} />
                   </div>
                 ))}
               </div>
@@ -386,8 +439,9 @@ function TemplateEditor({ template, onBack }: EditorProps) {
   )
 }
 
-function BlockPreview({ block }: { block: Block }) {
+function BlockPreview({ block, darkMode: _darkMode }: { block: Block; darkMode?: boolean }) {
   const { type, props } = block
+  // darkMode prop reserved for future dark mode styling of individual blocks
 
   switch (type) {
     case 'header':
