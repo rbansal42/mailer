@@ -1,5 +1,5 @@
 import React from 'react'
-import { Document, Page, View, Text } from '@react-pdf/renderer'
+import { Document, Page, View, Text, Styles } from '@react-pdf/renderer'
 import { StyleSheet } from '@react-pdf/renderer'
 import { colors } from '../styles'
 
@@ -10,7 +10,7 @@ interface CertificateProps {
   children: React.ReactNode
   backgroundColor?: string
   certificateId?: string
-  style?: object
+  style?: Styles[string]
 }
 
 const styles = StyleSheet.create({
@@ -18,16 +18,22 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     fontFamily: 'Montserrat',
     padding: 0,
+    width: '100%',
+    height: '100%',
   },
   container: {
     flex: 1,
     padding: 40,
     position: 'relative',
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
+    maxHeight: '100%',
   },
   certificateId: {
     position: 'absolute',
-    bottom: 25,
-    right: 40,
+    bottom: 20,
+    right: 30,
     fontSize: 8,
     color: colors.muted,
   },
@@ -42,7 +48,7 @@ export const Certificate: React.FC<CertificateProps> = ({
   return (
     <Document>
       <Page size="A4" orientation="landscape" style={styles.page}>
-        <View style={[styles.container, { backgroundColor }, style]}>
+        <View style={style ? [styles.container, { backgroundColor }, style] : [styles.container, { backgroundColor }]}>
           {children}
           {certificateId && (
             <Text style={styles.certificateId}>ID: {certificateId}</Text>

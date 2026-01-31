@@ -84,11 +84,15 @@ export const baseStyles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 30,
-    marginBottom: 25,
+    gap: 20,
+    marginBottom: 20,
+    flexWrap: 'wrap',
+    maxHeight: 70,
+    overflow: 'hidden',
   },
   logo: {
-    height: 50,
+    height: 45,
+    maxWidth: 120,
     objectFit: 'contain' as const,
   },
   contentCenter: {

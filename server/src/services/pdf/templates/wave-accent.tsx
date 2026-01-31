@@ -22,10 +22,13 @@ const styles = StyleSheet.create({
   // Main content container
   content: {
     flex: 1,
+    minHeight: 0,
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    paddingBottom: 80, // Space for wave layers
+    justifyContent: 'center',
+    paddingBottom: 70, // Space for wave layers
+    overflow: 'hidden',
   },
   // Title section
   title: {
@@ -38,7 +41,7 @@ const styles = StyleSheet.create({
     ...typography.subtitle,
     color: colors.secondary,
     textAlign: 'center',
-    marginBottom: 30,
+    marginBottom: 15,
   },
   // Presented to text
   presentedTo: {
@@ -67,14 +70,16 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.secondary,
     textAlign: 'center',
-    maxWidth: '75%',
-    marginTop: 15,
+    maxWidth: '80%',
+    marginTop: 10,
+    flexShrink: 1,
   },
   // Signatories container - positioned above wave layers
   signatoriesContainer: {
     marginTop: 'auto',
-    paddingTop: 25,
+    paddingTop: 15,
     zIndex: 10,
+    flexShrink: 0,
   },
   // Wave layer 1 (back) - light color
   waveLayer1: {
