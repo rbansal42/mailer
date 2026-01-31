@@ -9,11 +9,12 @@
     "db:migrate": "bun run src/db/migrate.ts"
   },
   "dependencies": {
+    "cors": "^2.8.5",
     "express": "^4.21.2",
-    "nodemailer": "^6.9.16",
     "jsonwebtoken": "^9.0.2",
     "node-cron": "^3.0.3",
-    "cors": "^2.8.5"
+    "nodemailer": "^6.9.16",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/bun": "^1.1.14",
