@@ -5,6 +5,11 @@ interface BlockInput {
   props: Record<string, unknown>
 }
 
+export interface TrackingOptions {
+  openTracking: boolean
+  clickTracking: boolean
+}
+
 /**
  * Replace all {{key}} placeholders with corresponding data values
  */
@@ -199,6 +204,45 @@ function compileBlock(block: BlockInput, data: Record<string, string>): string {
     default:
       return ''
   }
+}
+
+/**
+ * Inject tracking pixel and rewrite links for click tracking
+ */
+export function injectTracking(
+  html: string,
+  trackingToken: string,
+  baseUrl: string,
+  options: TrackingOptions
+): string {
+  let result = html
+
+  // Inject open tracking pixel before </body>
+  if (options.openTracking) {
+    const pixel = `<img src="${baseUrl}/t/${trackingToken}/open.gif" width="1" height="1" style="display:block;width:1px;height:1px;border:0;" alt="" />`
+    result = result.replace('</body>', `${pixel}\n</body>`)
+  }
+
+  // Rewrite links for click tracking
+  if (options.clickTracking) {
+    let linkIndex = 0
+    result = result.replace(/<a\s+([^>]*?)href="([^"]+)"([^>]*)>/gi, (match, before, url, after) => {
+      // Skip mailto:, tel:, and # links
+      if (url.startsWith('mailto:') || url.startsWith('tel:') || url === '#') {
+        return match
+      }
+      
+      // Skip tracking URLs (don't double-track)
+      if (url.includes('/t/') && url.includes('/c/')) {
+        return match
+      }
+
+      const trackingUrl = `${baseUrl}/t/${trackingToken}/c/${linkIndex++}?url=${encodeURIComponent(url)}`
+      return `<a ${before}href="${trackingUrl}"${after}>`
+    })
+  }
+
+  return result
 }
 
 /**
