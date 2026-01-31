@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import Papa from 'papaparse'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
@@ -271,7 +272,7 @@ function CertificateEditor({ config, templates, onBack }: EditorProps) {
         : api.createCertificateConfig(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['certificateConfigs'] })
-      onBack()
+      toast.success('Configuration saved successfully')
     },
     onError: (error) => {
       setSaveError(error instanceof Error ? error.message : 'Failed to save configuration')
@@ -748,7 +749,9 @@ function LogoManager({ logos, onChange }: LogoManagerProps) {
                   max={200}
                   value={logo.width}
                   onChange={(e) => handleWidthChange(logo.id, parseInt(e.target.value))}
-                  className="w-full h-1"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  className="w-full h-1 cursor-pointer"
                 />
                 <p className="text-xs text-muted-foreground">{logo.width}px</p>
               </div>

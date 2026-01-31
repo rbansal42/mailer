@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
+import { Toaster } from 'sonner'
 import { useAuthStore } from './hooks/useAuthStore'
 import { useThemeStore } from './hooks/useThemeStore'
 import { applyTheme } from './lib/theme'
@@ -53,6 +54,7 @@ export default function App() {
           <Route path="settings" element={<Settings />} />
         </Route>
       </Routes>
+      <Toaster position="top-right" richColors />
     </ThemeProvider>
   )
 }
