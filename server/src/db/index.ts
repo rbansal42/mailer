@@ -124,6 +124,38 @@ export function initializeDatabase() {
     )
   `)
 
+  // Attachments table
+  db.run(`
+    CREATE TABLE IF NOT EXISTS attachments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      campaign_id INTEGER REFERENCES campaigns(id),
+      draft_id INTEGER REFERENCES drafts(id),
+      filename TEXT NOT NULL,
+      original_filename TEXT NOT NULL,
+      filepath TEXT NOT NULL,
+      size_bytes INTEGER NOT NULL,
+      mime_type TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `)
+
+  // Recipient-attachment mapping
+  db.run(`
+    CREATE TABLE IF NOT EXISTS recipient_attachments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      campaign_id INTEGER REFERENCES campaigns(id),
+      draft_id INTEGER REFERENCES drafts(id),
+      recipient_email TEXT NOT NULL,
+      attachment_id INTEGER REFERENCES attachments(id),
+      matched_by TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(campaign_id, recipient_email, attachment_id)
+    )
+  `)
+
+  // Create attachments directory
+  mkdirSync(join(DATA_DIR, 'attachments'), { recursive: true })
+
   // Run migrations - add columns if they don't exist
   addColumnIfNotExists('drafts', 'cc', 'TEXT', '[]')
   addColumnIfNotExists('drafts', 'bcc', 'TEXT', '[]')
