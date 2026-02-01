@@ -86,8 +86,9 @@ draftsRouter.post('/', async (req, res) => {
       ]
     )
 
-    const row = await queryOne<DraftRow>('SELECT * FROM drafts WHERE id = ?', [result.lastInsertRowid])
-    logger.info('Draft created', { requestId: (req as any).requestId, draftId: result.lastInsertRowid })
+    const draftId = Number(result.lastInsertRowid)
+    const row = await queryOne<DraftRow>('SELECT * FROM drafts WHERE id = ?', [draftId])
+    logger.info('Draft created', { requestId: (req as any).requestId, draftId })
     res.status(201).json(formatDraft(row!))
   } catch (error) {
     logger.error('Failed to create draft', { requestId: (req as any).requestId }, error as Error)
