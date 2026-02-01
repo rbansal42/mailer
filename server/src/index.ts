@@ -21,6 +21,9 @@ import { sequencesRouter } from './routes/sequences'
 import { certificatesRouter } from './routes/certificates'
 import mailsRouter from './routes/mails'
 import mediaRoutes from './routes/media'
+import contactsListsRouter from './routes/contacts/lists'
+import contactsMembersRouter from './routes/contacts/members'
+import contactsRouter from './routes/contacts/index'
 import { authMiddleware } from './middleware/auth'
 import { startQueueProcessor } from './services/queue-processor'
 import { startScheduler } from './services/scheduler'
@@ -135,6 +138,9 @@ app.use('/api/sequences', authMiddleware, sequencesRouter)
 app.use('/api/certificates', authMiddleware, certificatesRouter)
 app.use('/api/mails', authMiddleware, mailsRouter)
 app.use('/api/media', authMiddleware, mediaRoutes)
+app.use('/api/contacts/lists/:listId/members', authMiddleware, contactsMembersRouter)
+app.use('/api/contacts/lists', authMiddleware, contactsListsRouter)
+app.use('/api/contacts', authMiddleware, contactsRouter)
 
 // Serve media files publicly (no auth - these are for emails)
 const DATA_DIR = process.env.DATA_DIR || join(process.cwd(), 'data')
