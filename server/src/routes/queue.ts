@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express'
-import { db } from '../db'
+import { queryAll } from '../db'
 import { processQueue } from '../services/queue-processor'
 
 export const queueRouter = Router()
@@ -15,9 +15,9 @@ interface QueueRow {
 }
 
 // GET / - List all queued emails
-queueRouter.get('/', (_req: Request, res: Response) => {
+queueRouter.get('/', async (_req: Request, res: Response) => {
   try {
-    const items = db.query('SELECT * FROM email_queue ORDER BY scheduled_for ASC').all() as QueueRow[]
+    const items = await queryAll<QueueRow>('SELECT * FROM email_queue ORDER BY scheduled_for ASC')
 
     const formatted = items.map((item) => ({
       id: item.id,

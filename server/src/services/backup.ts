@@ -1,6 +1,6 @@
 import { copyFileSync, readdirSync, unlinkSync, statSync, existsSync, mkdirSync } from 'fs'
 import { join } from 'path'
-import { db } from '../db'
+import { queryOne, execute } from '../db'
 import { logger } from '../lib/logger'
 
 const DATA_DIR = join(process.cwd(), 'data')
@@ -21,6 +21,9 @@ export interface BackupSettings {
 /**
  * Create a backup of the database.
  * Copies mailer.db to data/backups/mailer_YYYY-MM-DD_HH-mm.db
+ * 
+ * Note: With Turso, backups are managed by the Turso service.
+ * This function creates a local copy of the database file for emergency recovery.
  */
 export function createBackup(): string {
   // Ensure backup directory exists
@@ -43,8 +46,8 @@ export function createBackup(): string {
   const backupPath = join(BACKUP_DIR, filename)
 
   try {
-    // Checkpoint WAL to ensure all data is in main db file
-    db.run('PRAGMA wal_checkpoint(TRUNCATE)')
+    // Note: Turso handles WAL checkpointing automatically
+    // For local embedded replicas, the file can be copied directly
     
     copyFileSync(DB_PATH, backupPath)
     
@@ -146,6 +149,9 @@ export function pruneBackups(keepCount: number): number {
 /**
  * Restore database from a backup file.
  * Copies the backup over the current database.
+ * 
+ * Note: With Turso, restoring requires restarting the application
+ * after the file is replaced to reinitialize the connection.
  */
 export function restoreBackup(filename: string): void {
   const backupPath = join(BACKUP_DIR, filename)
@@ -166,9 +172,7 @@ export function restoreBackup(filename: string): void {
   }
 
   try {
-    // Close current database connection
-    db.run('PRAGMA wal_checkpoint(TRUNCATE)')
-    
+    // Note: Turso handles WAL checkpointing automatically
     // Copy backup over current database
     copyFileSync(backupPath, DB_PATH)
     
@@ -188,15 +192,11 @@ export function restoreBackup(filename: string): void {
 /**
  * Get backup settings from the settings table.
  */
-export function getBackupSettings(): BackupSettings {
+export async function getBackupSettings(): Promise<BackupSettings> {
   try {
-    const scheduleRow = db
-      .query('SELECT value FROM settings WHERE key = ?')
-      .get('backup_schedule') as { value: string } | null
+    const scheduleRow = await queryOne<{ value: string }>('SELECT value FROM settings WHERE key = ?', ['backup_schedule'])
     
-    const retentionRow = db
-      .query('SELECT value FROM settings WHERE key = ?')
-      .get('backup_retention') as { value: string } | null
+    const retentionRow = await queryOne<{ value: string }>('SELECT value FROM settings WHERE key = ?', ['backup_retention'])
 
     return {
       schedule: scheduleRow?.value || 'manual',
@@ -211,19 +211,19 @@ export function getBackupSettings(): BackupSettings {
 /**
  * Save backup settings to the settings table.
  */
-export function saveBackupSettings(schedule: string, retention: number): void {
+export async function saveBackupSettings(schedule: string, retention: number): Promise<void> {
   if (retention < 1) {
     throw new Error('Retention must be at least 1')
   }
 
   try {
-    db.run(
+    await execute(
       `INSERT INTO settings (key, value) VALUES (?, ?)
        ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
       ['backup_schedule', schedule]
     )
 
-    db.run(
+    await execute(
       `INSERT INTO settings (key, value) VALUES (?, ?)
        ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
       ['backup_retention', retention.toString()]

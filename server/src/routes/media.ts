@@ -1,7 +1,7 @@
 import { Router } from "express";
 import multer from "multer";
 import sharp from "sharp";
-import { db } from "../db";
+import { queryAll, queryOne, execute } from "../db";
 import { nanoid } from "nanoid";
 import { join } from "path";
 import { existsSync, mkdirSync, unlinkSync } from "fs";
@@ -62,13 +62,13 @@ router.post("/upload", upload.single("file"), async (req, res) => {
     const url = `/media/${filename}`;
 
     // Save to database
-    db.run(
+    await execute(
       `INSERT INTO media (id, url, filename, original_filename, size_bytes) 
        VALUES (?, ?, ?, ?, ?)`,
       [id, url, filename, originalName, sizeBytes]
     );
 
-    const media = db.query("SELECT * FROM media WHERE id = ?").get(id);
+    const media = await queryOne("SELECT * FROM media WHERE id = ?", [id]);
     res.status(201).json(media);
   } catch (error) {
     console.error("Upload error:", error);
@@ -77,20 +77,20 @@ router.post("/upload", upload.single("file"), async (req, res) => {
 });
 
 // List media (with optional deleted filter)
-router.get("/", (req, res) => {
+router.get("/", async (req, res) => {
   const showDeleted = req.query.deleted === "true";
   
   const query = showDeleted
     ? "SELECT * FROM media WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC"
     : "SELECT * FROM media WHERE deleted_at IS NULL ORDER BY uploaded_at DESC";
   
-  const media = db.query(query).all();
+  const media = await queryAll(query);
   res.json(media);
 });
 
 // Get single media item
-router.get("/:id", (req, res) => {
-  const media = db.query("SELECT * FROM media WHERE id = ?").get(req.params.id);
+router.get("/:id", async (req, res) => {
+  const media = await queryOne("SELECT * FROM media WHERE id = ?", [req.params.id]);
   if (!media) {
     return res.status(404).json({ error: "Media not found" });
   }
@@ -98,9 +98,9 @@ router.get("/:id", (req, res) => {
 });
 
 // Update media (filename, alt_text)
-router.patch("/:id", (req, res) => {
+router.patch("/:id", async (req, res) => {
   const { filename, alt_text } = req.body;
-  const media = db.query("SELECT * FROM media WHERE id = ?").get(req.params.id);
+  const media = await queryOne("SELECT * FROM media WHERE id = ?", [req.params.id]);
   
   if (!media) {
     return res.status(404).json({ error: "Media not found" });
@@ -120,22 +120,22 @@ router.patch("/:id", (req, res) => {
   
   if (updates.length > 0) {
     values.push(req.params.id);
-    db.run(`UPDATE media SET ${updates.join(", ")} WHERE id = ?`, values);
+    await execute(`UPDATE media SET ${updates.join(", ")} WHERE id = ?`, values);
   }
   
-  const updated = db.query("SELECT * FROM media WHERE id = ?").get(req.params.id);
+  const updated = await queryOne("SELECT * FROM media WHERE id = ?", [req.params.id]);
   res.json(updated);
 });
 
 // Soft delete
-router.delete("/:id", (req, res) => {
-  const media = db.query("SELECT * FROM media WHERE id = ?").get(req.params.id);
+router.delete("/:id", async (req, res) => {
+  const media = await queryOne("SELECT * FROM media WHERE id = ?", [req.params.id]);
   
   if (!media) {
     return res.status(404).json({ error: "Media not found" });
   }
   
-  db.run(
+  await execute(
     "UPDATE media SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?",
     [req.params.id]
   );
@@ -144,32 +144,32 @@ router.delete("/:id", (req, res) => {
 });
 
 // Restore soft-deleted item
-router.post("/:id/restore", (req, res) => {
-  const media = db.query("SELECT * FROM media WHERE id = ?").get(req.params.id);
+router.post("/:id/restore", async (req, res) => {
+  const media = await queryOne("SELECT * FROM media WHERE id = ?", [req.params.id]);
   
   if (!media) {
     return res.status(404).json({ error: "Media not found" });
   }
   
-  db.run("UPDATE media SET deleted_at = NULL WHERE id = ?", [req.params.id]);
+  await execute("UPDATE media SET deleted_at = NULL WHERE id = ?", [req.params.id]);
   
-  const restored = db.query("SELECT * FROM media WHERE id = ?").get(req.params.id);
+  const restored = await queryOne("SELECT * FROM media WHERE id = ?", [req.params.id]);
   res.json(restored);
 });
 
 // Get usage (which templates use this image)
-router.get("/:id/usage", (req, res) => {
-  const media = db.query("SELECT * FROM media WHERE id = ?").get(req.params.id) as { url: string } | null;
+router.get("/:id/usage", async (req, res) => {
+  const media = await queryOne<{ url: string }>("SELECT * FROM media WHERE id = ?", [req.params.id]);
   
   if (!media) {
     return res.status(404).json({ error: "Media not found" });
   }
   
-  const templates = db.query("SELECT id, name, blocks FROM templates").all() as Array<{
+  const templates = await queryAll<{
     id: string;
     name: string;
     blocks: string;
-  }>;
+  }>("SELECT id, name, blocks FROM templates");
   
   const usage = templates.filter((t) => {
     try {

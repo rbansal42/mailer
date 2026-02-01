@@ -3,7 +3,7 @@ import express from 'express'
 import cors from 'cors'
 import { join } from 'path'
 import { existsSync } from 'fs'
-import { initializeDatabase, checkDatabaseHealth, db } from './db'
+import { initializeDatabase, checkDatabaseHealth, queryOne, queryAll } from './db'
 import { authRouter } from './routes/auth'
 import { templatesRouter } from './routes/templates'
 import { draftsRouter } from './routes/drafts'
@@ -36,12 +36,9 @@ app.use(requestIdMiddleware)
 app.use(requestLogMiddleware)
 app.use(express.json({ limit: '10mb' })) // Increased for base64 images in certificates
 
-// Initialize database
-initializeDatabase()
-
 // Health check (no auth)
-app.get('/api/health', (_, res) => {
-  const dbHealth = checkDatabaseHealth()
+app.get('/api/health', async (_, res) => {
+  const dbHealth = await checkDatabaseHealth()
   
   // Check disk space (data directory)
   const dataDir = join(process.cwd(), 'data')
@@ -58,7 +55,7 @@ app.get('/api/health', (_, res) => {
   // Check queue status
   let queuePending = 0
   try {
-    const result = db.query("SELECT COUNT(*) as count FROM email_queue WHERE status = 'pending'").get() as any
+    const result = await queryOne<{ count: number }>("SELECT COUNT(*) as count FROM email_queue WHERE status = 'pending'")
     queuePending = result?.count || 0
   } catch {
     // Queue table might not exist yet
@@ -68,12 +65,12 @@ app.get('/api/health', (_, res) => {
   let accountsInfo = { total: 0, enabled: 0, atCap: 0 }
   try {
     const today = new Date().toISOString().split('T')[0]
-    const accounts = db.query(`
+    const accounts = await queryAll<{ id: number; daily_cap: number; enabled: number; sent_today: number }>(`
       SELECT sa.id, sa.daily_cap, sa.enabled,
              COALESCE(sc.count, 0) as sent_today
       FROM sender_accounts sa
       LEFT JOIN send_counts sc ON sa.id = sc.account_id AND sc.date = ?
-    `).all(today) as any[]
+    `, [today])
     
     accountsInfo.total = accounts.length
     accountsInfo.enabled = accounts.filter(a => a.enabled).length
@@ -153,12 +150,23 @@ if (existsSync(publicPath)) {
   })
 }
 
-// Start queue processor
-startQueueProcessor()
+// Main async entry point
+async function main() {
+  // Initialize database
+  await initializeDatabase()
+  
+  // Start queue processor
+  startQueueProcessor()
+  
+  // Start scheduler for recurring campaigns
+  await startScheduler()
+  
+  app.listen(PORT, () => {
+    logger.info('Server started', { port: PORT, env: process.env.NODE_ENV || 'development' })
+  })
+}
 
-// Start scheduler for recurring campaigns
-startScheduler()
-
-app.listen(PORT, () => {
-  logger.info('Server started', { port: PORT, env: process.env.NODE_ENV || 'development' })
+main().catch((err) => {
+  logger.error('Failed to start server', { error: err })
+  process.exit(1)
 })

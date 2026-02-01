@@ -1,4 +1,4 @@
-import { db } from '../db'
+import { queryAll, queryOne, execute } from '../db'
 import { logger } from '../lib/logger'
 import { compileTemplate, replaceVariables, injectTracking } from './template-compiler'
 import { getNextAvailableAccount, incrementSendCount } from './account-manager'
@@ -168,12 +168,11 @@ export async function processRecurringCampaigns(): Promise<number> {
   const now = new Date().toISOString()
 
   // Find due recurring campaigns
-  const dueCampaigns = db
-    .query<RecurringCampaign, [string]>(
-      `SELECT * FROM recurring_campaigns 
-       WHERE enabled = 1 AND next_run_at <= ?`
-    )
-    .all(now)
+  const dueCampaigns = await queryAll<RecurringCampaign>(
+    `SELECT * FROM recurring_campaigns 
+     WHERE enabled = 1 AND next_run_at <= ?`,
+    [now]
+  )
 
   if (dueCampaigns.length === 0) {
     return 0
@@ -188,7 +187,7 @@ export async function processRecurringCampaigns(): Promise<number> {
 
       // Update last_run_at and calculate next_run_at
       const nextRun = calculateNextRun(campaign.schedule_cron, campaign.timezone)
-      db.run(
+      await execute(
         `UPDATE recurring_campaigns 
          SET last_run_at = CURRENT_TIMESTAMP, next_run_at = ?
          WHERE id = ?`,
@@ -234,9 +233,7 @@ async function runRecurringCampaign(campaign: RecurringCampaign): Promise<void> 
   // Get template
   let templateBlocks: BlockInput[] = []
   if (campaign.template_id) {
-    const template = db
-      .query<TemplateRow, [number]>('SELECT id, blocks FROM templates WHERE id = ?')
-      .get(campaign.template_id)
+    const template = await queryOne<TemplateRow>('SELECT id, blocks FROM templates WHERE id = ?', [campaign.template_id])
 
     if (template) {
       templateBlocks = JSON.parse(template.blocks) as BlockInput[]
@@ -244,7 +241,7 @@ async function runRecurringCampaign(campaign: RecurringCampaign): Promise<void> 
   }
 
   // Create a regular campaign record for tracking
-  const result = db.run(
+  const result = await execute(
     `INSERT INTO campaigns (name, template_id, subject, total_recipients, cc, bcc, status, started_at)
      VALUES (?, ?, ?, ?, ?, ?, 'sending', CURRENT_TIMESTAMP)`,
     [
@@ -260,11 +257,11 @@ async function runRecurringCampaign(campaign: RecurringCampaign): Promise<void> 
 
   const cc = JSON.parse(campaign.cc || '[]') as string[]
   const bcc = JSON.parse(campaign.bcc || '[]') as string[]
-  const trackingSettings = getTrackingSettings()
+  const trackingSettings = await getTrackingSettings()
 
   // Send to each recipient
   for (const recipient of recipients) {
-    const account = getNextAvailableAccount(campaignId)
+    const account = await getNextAvailableAccount(campaignId)
     if (!account) continue
 
     try {
@@ -274,7 +271,7 @@ async function runRecurringCampaign(campaign: RecurringCampaign): Promise<void> 
 
       // Add tracking if enabled
       if (trackingSettings.enabled) {
-        const token = getOrCreateToken(campaignId, recipient.email)
+        const token = await getOrCreateToken(campaignId, recipient.email)
         html = injectTracking(html, token, trackingSettings.baseUrl, {
           openTracking: trackingSettings.openEnabled,
           clickTracking: trackingSettings.clickEnabled,
@@ -292,15 +289,15 @@ async function runRecurringCampaign(campaign: RecurringCampaign): Promise<void> 
       })
       await provider.disconnect()
 
-      incrementSendCount(account.id)
+      await incrementSendCount(account.id)
 
-      db.run(
+      await execute(
         `INSERT INTO send_logs (campaign_id, account_id, recipient_email, status)
          VALUES (?, ?, ?, 'sent')`,
         [campaignId, account.id, recipient.email]
       )
     } catch (error) {
-      db.run(
+      await execute(
         `INSERT INTO send_logs (campaign_id, recipient_email, status, error_message)
          VALUES (?, ?, 'failed', ?)`,
         [campaignId, recipient.email, (error as Error).message]
@@ -309,16 +306,15 @@ async function runRecurringCampaign(campaign: RecurringCampaign): Promise<void> 
   }
 
   // Update campaign stats
-  const stats = db
-    .query<{ sent: number; failed: number }, [number]>(
-      `SELECT 
-         SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END) as sent,
-         SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed
-       FROM send_logs WHERE campaign_id = ?`
-    )
-    .get(campaignId)
+  const stats = await queryOne<{ sent: number; failed: number }>(
+    `SELECT 
+       SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END) as sent,
+       SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed
+     FROM send_logs WHERE campaign_id = ?`,
+    [campaignId]
+  )
 
-  db.run(
+  await execute(
     `UPDATE campaigns 
      SET successful = ?, failed = ?, status = 'completed', completed_at = CURRENT_TIMESTAMP
      WHERE id = ?`,

@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express'
 import * as cron from 'node-cron'
-import { db } from '../db'
+import { queryAll, queryOne, execute } from '../db'
 import { logger } from '../lib/logger'
 import { processRecurringCampaigns, calculateNextRun } from '../services/recurring-processor'
 
@@ -24,11 +24,9 @@ interface RecurringCampaignRow {
 }
 
 // GET / - List all recurring campaigns
-recurringRouter.get('/', (_req: Request, res: Response) => {
+recurringRouter.get('/', async (_req: Request, res: Response) => {
   try {
-    const campaigns = db
-      .query<RecurringCampaignRow, []>('SELECT * FROM recurring_campaigns ORDER BY created_at DESC')
-      .all()
+    const campaigns = await queryAll<RecurringCampaignRow>('SELECT * FROM recurring_campaigns ORDER BY created_at DESC')
 
     res.json(campaigns.map(c => ({
       ...c,
@@ -43,12 +41,10 @@ recurringRouter.get('/', (_req: Request, res: Response) => {
 })
 
 // GET /:id - Get single recurring campaign
-recurringRouter.get('/:id', (req: Request<{ id: string }>, res: Response) => {
+recurringRouter.get('/:id', async (req: Request<{ id: string }>, res: Response) => {
   try {
     const id = parseInt(req.params.id, 10)
-    const campaign = db
-      .query<RecurringCampaignRow, [number]>('SELECT * FROM recurring_campaigns WHERE id = ?')
-      .get(id)
+    const campaign = await queryOne<RecurringCampaignRow>('SELECT * FROM recurring_campaigns WHERE id = ?', [id])
 
     if (!campaign) {
       res.status(404).json({ error: 'Recurring campaign not found' })
@@ -68,7 +64,7 @@ recurringRouter.get('/:id', (req: Request<{ id: string }>, res: Response) => {
 })
 
 // POST / - Create new recurring campaign
-recurringRouter.post('/', (req: Request, res: Response) => {
+recurringRouter.post('/', async (req: Request, res: Response) => {
   try {
     const { name, templateId, subject, recipientSource, recipientData, scheduleCron, timezone, cc, bcc, enabled } = req.body
 
@@ -99,7 +95,7 @@ recurringRouter.post('/', (req: Request, res: Response) => {
     // Calculate next run time
     const nextRunAt = calculateNextRun(scheduleCron, timezone || 'UTC')
 
-    const result = db.run(
+    const result = await execute(
       `INSERT INTO recurring_campaigns 
        (name, template_id, subject, recipient_source, recipient_data, schedule_cron, timezone, cc, bcc, enabled, next_run_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -129,7 +125,7 @@ recurringRouter.post('/', (req: Request, res: Response) => {
 })
 
 // PUT /:id - Update recurring campaign
-recurringRouter.put('/:id', (req: Request<{ id: string }>, res: Response) => {
+recurringRouter.put('/:id', async (req: Request<{ id: string }>, res: Response) => {
   try {
     const id = parseInt(req.params.id, 10)
     const { name, templateId, subject, recipientSource, recipientData, scheduleCron, timezone, cc, bcc, enabled } = req.body
@@ -168,7 +164,7 @@ recurringRouter.put('/:id', (req: Request<{ id: string }>, res: Response) => {
     }
 
     params.push(id)
-    db.run(`UPDATE recurring_campaigns SET ${updates.join(', ')} WHERE id = ?`, params)
+    await execute(`UPDATE recurring_campaigns SET ${updates.join(', ')} WHERE id = ?`, params)
 
     logger.info('Updated recurring campaign', { service: 'recurring', campaignId: id })
     res.json({ message: 'Recurring campaign updated' })
@@ -179,10 +175,10 @@ recurringRouter.put('/:id', (req: Request<{ id: string }>, res: Response) => {
 })
 
 // DELETE /:id - Delete recurring campaign
-recurringRouter.delete('/:id', (req: Request<{ id: string }>, res: Response) => {
+recurringRouter.delete('/:id', async (req: Request<{ id: string }>, res: Response) => {
   try {
     const id = parseInt(req.params.id, 10)
-    db.run('DELETE FROM recurring_campaigns WHERE id = ?', [id])
+    await execute('DELETE FROM recurring_campaigns WHERE id = ?', [id])
     
     logger.info('Deleted recurring campaign', { service: 'recurring', campaignId: id })
     res.json({ message: 'Recurring campaign deleted' })
@@ -198,7 +194,7 @@ recurringRouter.post('/:id/run', async (req: Request<{ id: string }>, res: Respo
     const id = parseInt(req.params.id, 10)
     
     // Update next_run_at to now to trigger immediate execution
-    db.run(
+    await execute(
       `UPDATE recurring_campaigns SET next_run_at = CURRENT_TIMESTAMP WHERE id = ?`,
       [id]
     )

@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express'
-import { db } from '../db'
+import { queryOne, execute } from '../db'
 
 export const settingsRouter = Router()
 
@@ -9,10 +9,10 @@ interface SettingRow {
 }
 
 // GET / - Get all settings
-settingsRouter.get('/', (_req: Request, res: Response) => {
+settingsRouter.get('/', async (_req: Request, res: Response) => {
   try {
-    const testEmail = db.query('SELECT value FROM settings WHERE key = ?').get('test_email') as SettingRow | null
-    const timezone = db.query('SELECT value FROM settings WHERE key = ?').get('timezone') as SettingRow | null
+    const testEmail = await queryOne<SettingRow>('SELECT value FROM settings WHERE key = ?', ['test_email'])
+    const timezone = await queryOne<SettingRow>('SELECT value FROM settings WHERE key = ?', ['timezone'])
 
     res.json({
       testEmail: testEmail?.value || null,
@@ -25,20 +25,20 @@ settingsRouter.get('/', (_req: Request, res: Response) => {
 })
 
 // PUT / - Update settings
-settingsRouter.put('/', (req: Request, res: Response) => {
+settingsRouter.put('/', async (req: Request, res: Response) => {
   try {
     const { testEmail, timezone } = req.body
 
     if (testEmail !== undefined) {
-      db.run('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', ['test_email', testEmail])
+      await execute('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', ['test_email', testEmail])
     }
     if (timezone !== undefined) {
-      db.run('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', ['timezone', timezone])
+      await execute('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', ['timezone', timezone])
     }
 
     // Return updated settings
-    const testEmailRow = db.query('SELECT value FROM settings WHERE key = ?').get('test_email') as SettingRow | null
-    const timezoneRow = db.query('SELECT value FROM settings WHERE key = ?').get('timezone') as SettingRow | null
+    const testEmailRow = await queryOne<SettingRow>('SELECT value FROM settings WHERE key = ?', ['test_email'])
+    const timezoneRow = await queryOne<SettingRow>('SELECT value FROM settings WHERE key = ?', ['timezone'])
 
     res.json({
       testEmail: testEmailRow?.value || null,
@@ -51,15 +51,15 @@ settingsRouter.put('/', (req: Request, res: Response) => {
 })
 
 // GET /tracking - Get tracking settings
-settingsRouter.get('/tracking', (_req: Request, res: Response) => {
+settingsRouter.get('/tracking', async (_req: Request, res: Response) => {
   try {
     const settings = {
-      enabled: db.query('SELECT value FROM settings WHERE key = ?').get('tracking_enabled') as SettingRow | null,
-      baseUrl: db.query('SELECT value FROM settings WHERE key = ?').get('tracking_base_url') as SettingRow | null,
-      openEnabled: db.query('SELECT value FROM settings WHERE key = ?').get('tracking_open_enabled') as SettingRow | null,
-      clickEnabled: db.query('SELECT value FROM settings WHERE key = ?').get('tracking_click_enabled') as SettingRow | null,
-      hashIps: db.query('SELECT value FROM settings WHERE key = ?').get('tracking_hash_ips') as SettingRow | null,
-      retentionDays: db.query('SELECT value FROM settings WHERE key = ?').get('tracking_retention_days') as SettingRow | null,
+      enabled: await queryOne<SettingRow>('SELECT value FROM settings WHERE key = ?', ['tracking_enabled']),
+      baseUrl: await queryOne<SettingRow>('SELECT value FROM settings WHERE key = ?', ['tracking_base_url']),
+      openEnabled: await queryOne<SettingRow>('SELECT value FROM settings WHERE key = ?', ['tracking_open_enabled']),
+      clickEnabled: await queryOne<SettingRow>('SELECT value FROM settings WHERE key = ?', ['tracking_click_enabled']),
+      hashIps: await queryOne<SettingRow>('SELECT value FROM settings WHERE key = ?', ['tracking_hash_ips']),
+      retentionDays: await queryOne<SettingRow>('SELECT value FROM settings WHERE key = ?', ['tracking_retention_days']),
     }
 
     res.json({
@@ -77,12 +77,12 @@ settingsRouter.get('/tracking', (_req: Request, res: Response) => {
 })
 
 // PUT /tracking - Update tracking settings
-settingsRouter.put('/tracking', (req: Request, res: Response) => {
+settingsRouter.put('/tracking', async (req: Request, res: Response) => {
   try {
     const { enabled, baseUrl, openEnabled, clickEnabled, hashIps, retentionDays } = req.body
 
     if (enabled !== undefined) {
-      db.run('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', ['tracking_enabled', String(enabled)])
+      await execute('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', ['tracking_enabled', String(enabled)])
     }
     if (baseUrl !== undefined) {
       // Validate baseUrl is a valid URL
@@ -96,29 +96,29 @@ settingsRouter.put('/tracking', (req: Request, res: Response) => {
         res.status(400).json({ error: 'Invalid base URL format' })
         return
       }
-      db.run('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', ['tracking_base_url', baseUrl])
+      await execute('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', ['tracking_base_url', baseUrl])
     }
     if (openEnabled !== undefined) {
-      db.run('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', ['tracking_open_enabled', String(openEnabled)])
+      await execute('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', ['tracking_open_enabled', String(openEnabled)])
     }
     if (clickEnabled !== undefined) {
-      db.run('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', ['tracking_click_enabled', String(clickEnabled)])
+      await execute('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', ['tracking_click_enabled', String(clickEnabled)])
     }
     if (hashIps !== undefined) {
-      db.run('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', ['tracking_hash_ips', String(hashIps)])
+      await execute('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', ['tracking_hash_ips', String(hashIps)])
     }
     if (retentionDays !== undefined) {
-      db.run('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', ['tracking_retention_days', String(retentionDays)])
+      await execute('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', ['tracking_retention_days', String(retentionDays)])
     }
 
     // Return updated settings (reuse GET logic)
     const settings = {
-      enabled: db.query('SELECT value FROM settings WHERE key = ?').get('tracking_enabled') as SettingRow | null,
-      baseUrl: db.query('SELECT value FROM settings WHERE key = ?').get('tracking_base_url') as SettingRow | null,
-      openEnabled: db.query('SELECT value FROM settings WHERE key = ?').get('tracking_open_enabled') as SettingRow | null,
-      clickEnabled: db.query('SELECT value FROM settings WHERE key = ?').get('tracking_click_enabled') as SettingRow | null,
-      hashIps: db.query('SELECT value FROM settings WHERE key = ?').get('tracking_hash_ips') as SettingRow | null,
-      retentionDays: db.query('SELECT value FROM settings WHERE key = ?').get('tracking_retention_days') as SettingRow | null,
+      enabled: await queryOne<SettingRow>('SELECT value FROM settings WHERE key = ?', ['tracking_enabled']),
+      baseUrl: await queryOne<SettingRow>('SELECT value FROM settings WHERE key = ?', ['tracking_base_url']),
+      openEnabled: await queryOne<SettingRow>('SELECT value FROM settings WHERE key = ?', ['tracking_open_enabled']),
+      clickEnabled: await queryOne<SettingRow>('SELECT value FROM settings WHERE key = ?', ['tracking_click_enabled']),
+      hashIps: await queryOne<SettingRow>('SELECT value FROM settings WHERE key = ?', ['tracking_hash_ips']),
+      retentionDays: await queryOne<SettingRow>('SELECT value FROM settings WHERE key = ?', ['tracking_retention_days']),
     }
 
     res.json({

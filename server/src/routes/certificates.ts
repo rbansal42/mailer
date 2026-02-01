@@ -2,7 +2,7 @@ import { Router } from 'express'
 import archiver from 'archiver'
 import { join } from 'path'
 import { mkdirSync, existsSync, writeFileSync, unlinkSync } from 'fs'
-import { db } from '../db'
+import { db, queryAll, queryOne, execute } from '../db'
 import { logger } from '../lib/logger'
 import { 
   generateCertificateId,
@@ -169,22 +169,23 @@ certificatesRouter.get('/templates', (_, res) => {
 })
 
 // GET /configs - List saved certificate configs
-certificatesRouter.get('/configs', (_, res) => {
+certificatesRouter.get('/configs', async (_, res) => {
   logger.info('Listing certificate configs', { service: 'certificates' })
-  const rows = db.query(
+  const rows = await queryAll<CertificateConfigRow>(
     'SELECT * FROM certificate_configs ORDER BY updated_at DESC'
-  ).all() as CertificateConfigRow[]
+  )
   res.json(rows.map(formatConfig))
 })
 
 // GET /configs/:id - Get single config
-certificatesRouter.get('/configs/:id', (req, res) => {
+certificatesRouter.get('/configs/:id', async (req, res) => {
   const { id } = req.params
   logger.info('Getting certificate config', { service: 'certificates', configId: id })
   
-  const row = db.query(
-    'SELECT * FROM certificate_configs WHERE id = ?'
-  ).get(id) as CertificateConfigRow | null
+  const row = await queryOne<CertificateConfigRow>(
+    'SELECT * FROM certificate_configs WHERE id = ?',
+    [id]
+  )
   
   if (!row) {
     logger.warn('Certificate config not found', { service: 'certificates', configId: id })
@@ -195,7 +196,7 @@ certificatesRouter.get('/configs/:id', (req, res) => {
 })
 
 // POST /configs - Create certificate config
-certificatesRouter.post('/configs', (req, res) => {
+certificatesRouter.post('/configs', async (req, res) => {
   const { name, templateId, colors, logos, signatories, titleText, subtitleText, descriptionTemplate } = req.body
   
   if (!name || !templateId || !colors) {
@@ -223,7 +224,7 @@ certificatesRouter.post('/configs', (req, res) => {
   
   logger.info('Creating certificate config', { service: 'certificates', name, templateId })
   
-  const result = db.run(
+  const result = await execute(
     `INSERT INTO certificate_configs 
      (name, template_id, colors, logos, signatories, title_text, subtitle_text, description_template)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -239,16 +240,17 @@ certificatesRouter.post('/configs', (req, res) => {
     ]
   )
   
-  const row = db.query(
-    'SELECT * FROM certificate_configs WHERE id = ?'
-  ).get(result.lastInsertRowid) as CertificateConfigRow
+  const row = await queryOne<CertificateConfigRow>(
+    'SELECT * FROM certificate_configs WHERE id = ?',
+    [result.lastInsertRowid]
+  )
   
-  logger.info('Certificate config created', { service: 'certificates', configId: row.id })
-  res.status(201).json(formatConfig(row))
+  logger.info('Certificate config created', { service: 'certificates', configId: row!.id })
+  res.status(201).json(formatConfig(row!))
 })
 
 // PUT /configs/:id - Update certificate config
-certificatesRouter.put('/configs/:id', (req, res) => {
+certificatesRouter.put('/configs/:id', async (req, res) => {
   const { id } = req.params
   const { name, templateId, colors, logos, signatories, titleText, subtitleText, descriptionTemplate } = req.body
   
@@ -314,11 +316,12 @@ certificatesRouter.put('/configs/:id', (req, res) => {
   updates.push('updated_at = CURRENT_TIMESTAMP')
   values.push(id)
   
-  db.run(`UPDATE certificate_configs SET ${updates.join(', ')} WHERE id = ?`, values)
+  await execute(`UPDATE certificate_configs SET ${updates.join(', ')} WHERE id = ?`, values)
   
-  const row = db.query(
-    'SELECT * FROM certificate_configs WHERE id = ?'
-  ).get(id) as CertificateConfigRow | null
+  const row = await queryOne<CertificateConfigRow>(
+    'SELECT * FROM certificate_configs WHERE id = ?',
+    [id]
+  )
   
   if (!row) {
     logger.warn('Certificate config not found for update', { service: 'certificates', configId: id })
@@ -330,11 +333,11 @@ certificatesRouter.put('/configs/:id', (req, res) => {
 })
 
 // DELETE /configs/:id - Delete certificate config
-certificatesRouter.delete('/configs/:id', (req, res) => {
+certificatesRouter.delete('/configs/:id', async (req, res) => {
   const { id } = req.params
   logger.info('Deleting certificate config', { service: 'certificates', configId: id })
   
-  db.run('DELETE FROM certificate_configs WHERE id = ?', [id])
+  await execute('DELETE FROM certificate_configs WHERE id = ?', [id])
   
   logger.info('Certificate config deleted', { service: 'certificates', configId: id })
   res.status(204).send()
@@ -351,9 +354,10 @@ certificatesRouter.post('/preview', async (req, res) => {
   logger.info('Generating certificate preview', { service: 'certificates', configId })
   
   try {
-    const configRow = db.query(
-      'SELECT * FROM certificate_configs WHERE id = ?'
-    ).get(configId) as CertificateConfigRow | null
+    const configRow = await queryOne<CertificateConfigRow>(
+      'SELECT * FROM certificate_configs WHERE id = ?',
+      [configId]
+    )
     
     if (!configRow) {
       return res.status(404).json({ error: 'Certificate config not found' })
@@ -462,9 +466,10 @@ certificatesRouter.post('/generate', async (req, res) => {
   })
   
   try {
-    const configRow = db.query(
-      'SELECT * FROM certificate_configs WHERE id = ?'
-    ).get(configId) as CertificateConfigRow | null
+    const configRow = await queryOne<CertificateConfigRow>(
+      'SELECT * FROM certificate_configs WHERE id = ?',
+      [configId]
+    )
     
     if (!configRow) {
       return res.status(404).json({ error: 'Certificate config not found' })
@@ -492,25 +497,25 @@ certificatesRouter.post('/generate', async (req, res) => {
     }
     
     // Use transaction for all database inserts
-    db.exec('BEGIN TRANSACTION')
+    const tx = await db.transaction('write')
     try {
       for (const { recipientData, certificateId, pdfBuffer } of generatedPdfs) {
         const base64 = pdfBuffer.toString('base64')
         
         // Save to database
         const dataWithId = { ...recipientData, certificate_id: certificateId }
-        db.run(
-          `INSERT INTO generated_certificates 
+        await tx.execute({
+          sql: `INSERT INTO generated_certificates 
            (certificate_id, config_id, recipient_name, recipient_email, data)
            VALUES (?, ?, ?, ?, ?)`,
-          [
+          args: [
             certificateId,
             configId,
             recipientData.name,
             recipientData.email || null,
             JSON.stringify(dataWithId),
           ]
-        )
+        })
         
         results.push({
           certificateId,
@@ -518,9 +523,9 @@ certificatesRouter.post('/generate', async (req, res) => {
           pdf: base64,
         })
       }
-      db.exec('COMMIT')
+      await tx.commit()
     } catch (error) {
-      db.exec('ROLLBACK')
+      await tx.rollback()
       throw error
     }
     
@@ -560,9 +565,10 @@ certificatesRouter.post('/generate/zip', async (req, res) => {
   })
   
   try {
-    const configRow = db.query(
-      'SELECT * FROM certificate_configs WHERE id = ?'
-    ).get(configId) as CertificateConfigRow | null
+    const configRow = await queryOne<CertificateConfigRow>(
+      'SELECT * FROM certificate_configs WHERE id = ?',
+      [configId]
+    )
     
     if (!configRow) {
       return res.status(404).json({ error: 'Certificate config not found' })
@@ -613,7 +619,7 @@ certificatesRouter.post('/generate/zip', async (req, res) => {
     }
     
     // Use transaction for all database inserts
-    db.exec('BEGIN TRANSACTION')
+    const tx = await db.transaction('write')
     try {
       for (const { recipientData, certificateId, pdfBuffer, filename } of generatedPdfs) {
         // Add to archive
@@ -621,22 +627,22 @@ certificatesRouter.post('/generate/zip', async (req, res) => {
         
         // Save to database
         const dataWithId = { ...recipientData, certificate_id: certificateId }
-        db.run(
-          `INSERT INTO generated_certificates 
+        await tx.execute({
+          sql: `INSERT INTO generated_certificates 
            (certificate_id, config_id, recipient_name, recipient_email, data)
            VALUES (?, ?, ?, ?, ?)`,
-          [
+          args: [
             certificateId,
             configId,
             recipientData.name,
             recipientData.email || null,
             JSON.stringify(dataWithId),
           ]
-        )
+        })
       }
-      db.exec('COMMIT')
+      await tx.commit()
     } catch (error) {
-      db.exec('ROLLBACK')
+      await tx.rollback()
       throw error
     }
     
@@ -693,9 +699,10 @@ certificatesRouter.post('/generate/campaign', async (req, res) => {
   })
   
   try {
-    const configRow = db.query(
-      'SELECT * FROM certificate_configs WHERE id = ?'
-    ).get(configId) as CertificateConfigRow | null
+    const configRow = await queryOne<CertificateConfigRow>(
+      'SELECT * FROM certificate_configs WHERE id = ?',
+      [configId]
+    )
     
     if (!configRow) {
       return res.status(404).json({ error: 'Certificate config not found' })
@@ -739,14 +746,14 @@ certificatesRouter.post('/generate/campaign', async (req, res) => {
     }
     
     // Use transaction for all database inserts
-    db.exec('BEGIN TRANSACTION')
+    const tx = await db.transaction('write')
     try {
       for (const { recipientData, certificateId, pdfBuffer, safeName, filename, filepath } of generatedPdfs) {
         // Create attachment record
-        const attachmentResult = db.run(
-          `INSERT INTO attachments (draft_id, filename, original_filename, filepath, size_bytes, mime_type)
+        const attachmentResult = await tx.execute({
+          sql: `INSERT INTO attachments (draft_id, filename, original_filename, filepath, size_bytes, mime_type)
            VALUES (?, ?, ?, ?, ?, ?)`,
-          [
+          args: [
             draftId ?? null,
             filename,
             `Certificate_${safeName}.pdf`,
@@ -754,7 +761,7 @@ certificatesRouter.post('/generate/campaign', async (req, res) => {
             pdfBuffer.length,
             'application/pdf',
           ]
-        )
+        })
         const attachmentId = Number(attachmentResult.lastInsertRowid)
         
         // Create recipient-attachment mapping
@@ -762,23 +769,23 @@ certificatesRouter.post('/generate/campaign', async (req, res) => {
         const name = recipientData.name!
         const dataWithId = { ...recipientData, certificate_id: certificateId }
         
-        db.run(
-          `INSERT INTO recipient_attachments (draft_id, recipient_email, attachment_id, matched_by)
+        await tx.execute({
+          sql: `INSERT INTO recipient_attachments (draft_id, recipient_email, attachment_id, matched_by)
            VALUES (?, ?, ?, ?)`,
-          [
+          args: [
             draftId ?? null,
             email,
             attachmentId,
             'certificate:auto-generated',
           ]
-        )
+        })
         
         // Save certificate record
-        db.run(
-          `INSERT INTO generated_certificates 
+        await tx.execute({
+          sql: `INSERT INTO generated_certificates 
            (certificate_id, config_id, recipient_name, recipient_email, data, pdf_path)
            VALUES (?, ?, ?, ?, ?, ?)`,
-          [
+          args: [
             certificateId,
             configId,
             name,
@@ -786,7 +793,7 @@ certificatesRouter.post('/generate/campaign', async (req, res) => {
             JSON.stringify(dataWithId),
             filepath,
           ]
-        )
+        })
         
         results.push({
           email: recipientData.email!,
@@ -794,9 +801,9 @@ certificatesRouter.post('/generate/campaign', async (req, res) => {
           attachmentId,
         })
       }
-      db.exec('COMMIT')
+      await tx.commit()
     } catch (error) {
-      db.exec('ROLLBACK')
+      await tx.rollback()
       // Clean up orphan PDF files on rollback
       for (const { filepath } of generatedPdfs) {
         try {
@@ -835,7 +842,7 @@ certificatesRouter.post('/generate/campaign', async (req, res) => {
 })
 
 // DELETE /campaign-attachments/:draftId - Clean up certificate attachments for a draft
-certificatesRouter.delete('/campaign-attachments/:draftId', (req, res) => {
+certificatesRouter.delete('/campaign-attachments/:draftId', async (req, res) => {
   const draftId = parseInt(req.params.draftId)
   
   if (isNaN(draftId)) {
@@ -849,11 +856,12 @@ certificatesRouter.delete('/campaign-attachments/:draftId', (req, res) => {
   
   try {
     // Get attachment filepaths before deleting
-    const attachments = db.query(
+    const attachments = await queryAll<{ filepath: string }>(
       `SELECT a.filepath FROM attachments a
        JOIN recipient_attachments ra ON ra.attachment_id = a.id
-       WHERE ra.draft_id = ? AND ra.matched_by = 'certificate:auto-generated'`
-    ).all(draftId) as { filepath: string }[]
+       WHERE ra.draft_id = ? AND ra.matched_by = 'certificate:auto-generated'`,
+      [draftId]
+    )
     
     // Delete files
     for (const attachment of attachments) {
@@ -870,12 +878,12 @@ certificatesRouter.delete('/campaign-attachments/:draftId', (req, res) => {
     }
     
     // Delete database records
-    db.run(
+    await execute(
       `DELETE FROM recipient_attachments WHERE draft_id = ? AND matched_by = 'certificate:auto-generated'`,
       [draftId]
     )
     
-    db.run(
+    await execute(
       `DELETE FROM attachments WHERE draft_id = ? AND id NOT IN (
         SELECT attachment_id FROM recipient_attachments WHERE draft_id = ?
       )`,

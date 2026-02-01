@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { db } from '../db'
+import { queryAll, queryOne, execute } from '../db'
 import { logger } from '../lib/logger'
 import { enrollRecipient, pauseEnrollment, cancelEnrollment, resumeEnrollment } from '../services/sequence-processor'
 
@@ -39,17 +39,15 @@ interface EnrollmentRow {
 }
 
 // GET / - List all sequences
-sequencesRouter.get('/', (_req, res) => {
+sequencesRouter.get('/', async (_req, res) => {
   try {
-    const sequences = db
-      .query(`
-        SELECT s.*, 
-          (SELECT COUNT(*) FROM sequence_steps WHERE sequence_id = s.id) as step_count,
-          (SELECT COUNT(*) FROM sequence_enrollments WHERE sequence_id = s.id AND status = 'active') as active_enrollments
-        FROM sequences s
-        ORDER BY s.created_at DESC
-      `)
-      .all() as (SequenceRow & { step_count: number; active_enrollments: number })[]
+    const sequences = await queryAll<SequenceRow & { step_count: number; active_enrollments: number }>(`
+      SELECT s.*, 
+        (SELECT COUNT(*) FROM sequence_steps WHERE sequence_id = s.id) as step_count,
+        (SELECT COUNT(*) FROM sequence_enrollments WHERE sequence_id = s.id AND status = 'active') as active_enrollments
+      FROM sequences s
+      ORDER BY s.created_at DESC
+    `)
 
     res.json(sequences.map(s => ({
       ...s,
@@ -62,22 +60,18 @@ sequencesRouter.get('/', (_req, res) => {
 })
 
 // GET /:id - Get sequence with steps
-sequencesRouter.get('/:id', (req, res) => {
+sequencesRouter.get('/:id', async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10)
     
-    const sequence = db
-      .query('SELECT * FROM sequences WHERE id = ?')
-      .get(id) as SequenceRow | null
+    const sequence = await queryOne<SequenceRow>('SELECT * FROM sequences WHERE id = ?', [id])
 
     if (!sequence) {
       res.status(404).json({ error: 'Sequence not found' })
       return
     }
 
-    const steps = db
-      .query('SELECT * FROM sequence_steps WHERE sequence_id = ? ORDER BY step_order')
-      .all(id) as SequenceStepRow[]
+    const steps = await queryAll<SequenceStepRow>('SELECT * FROM sequence_steps WHERE sequence_id = ? ORDER BY step_order', [id])
 
     res.json({
       ...sequence,
@@ -91,7 +85,7 @@ sequencesRouter.get('/:id', (req, res) => {
 })
 
 // POST / - Create new sequence
-sequencesRouter.post('/', (req, res) => {
+sequencesRouter.post('/', async (req, res) => {
   try {
     const { name, description, enabled } = req.body
 
@@ -101,7 +95,7 @@ sequencesRouter.post('/', (req, res) => {
       return
     }
 
-    const result = db.run(
+    const result = await execute(
       `INSERT INTO sequences (name, description, enabled) VALUES (?, ?, ?)`,
       [name.trim(), description || null, enabled !== false ? 1 : 0]
     )
@@ -117,7 +111,7 @@ sequencesRouter.post('/', (req, res) => {
 })
 
 // PUT /:id - Update sequence
-sequencesRouter.put('/:id', (req, res) => {
+sequencesRouter.put('/:id', async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10)
     const { name, description, enabled } = req.body
@@ -136,7 +130,7 @@ sequencesRouter.put('/:id', (req, res) => {
     }
 
     params.push(id)
-    db.run(`UPDATE sequences SET ${updates.join(', ')} WHERE id = ?`, params)
+    await execute(`UPDATE sequences SET ${updates.join(', ')} WHERE id = ?`, params)
 
     logger.info('Updated sequence', { service: 'sequences', sequenceId: id })
     res.json({ message: 'Sequence updated' })
@@ -147,10 +141,10 @@ sequencesRouter.put('/:id', (req, res) => {
 })
 
 // DELETE /:id - Delete sequence (cascades to steps and enrollments)
-sequencesRouter.delete('/:id', (req, res) => {
+sequencesRouter.delete('/:id', async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10)
-    db.run('DELETE FROM sequences WHERE id = ?', [id])
+    await execute('DELETE FROM sequences WHERE id = ?', [id])
     
     logger.info('Deleted sequence', { service: 'sequences', sequenceId: id })
     res.json({ message: 'Sequence deleted' })
@@ -161,7 +155,7 @@ sequencesRouter.delete('/:id', (req, res) => {
 })
 
 // POST /:id/steps - Add step to sequence
-sequencesRouter.post('/:id/steps', (req, res) => {
+sequencesRouter.post('/:id/steps', async (req, res) => {
   try {
     const sequenceId = parseInt(req.params.id, 10)
     const { templateId, subject, delayDays, delayHours, sendTime } = req.body
@@ -181,13 +175,11 @@ sequencesRouter.post('/:id/steps', (req, res) => {
     }
 
     // Get next step order
-    const maxOrder = db
-      .query('SELECT MAX(step_order) as max_order FROM sequence_steps WHERE sequence_id = ?')
-      .get(sequenceId) as { max_order: number | null } | null
+    const maxOrder = await queryOne<{ max_order: number | null }>('SELECT MAX(step_order) as max_order FROM sequence_steps WHERE sequence_id = ?', [sequenceId])
 
     const stepOrder = (maxOrder?.max_order || 0) + 1
 
-    const result = db.run(
+    const result = await execute(
       `INSERT INTO sequence_steps (sequence_id, step_order, template_id, subject, delay_days, delay_hours, send_time)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [sequenceId, stepOrder, templateId || null, subject, delayDays || 0, delayHours || 0, sendTime || null]
@@ -204,7 +196,7 @@ sequencesRouter.post('/:id/steps', (req, res) => {
 })
 
 // PUT /:id/steps/:stepId - Update step
-sequencesRouter.put('/:id/steps/:stepId', (req, res) => {
+sequencesRouter.put('/:id/steps/:stepId', async (req, res) => {
   try {
     const stepId = parseInt(req.params.stepId, 10)
     const { templateId, subject, delayDays, delayHours, sendTime, stepOrder } = req.body
@@ -225,7 +217,7 @@ sequencesRouter.put('/:id/steps/:stepId', (req, res) => {
     }
 
     params.push(stepId)
-    db.run(`UPDATE sequence_steps SET ${updates.join(', ')} WHERE id = ?`, params)
+    await execute(`UPDATE sequence_steps SET ${updates.join(', ')} WHERE id = ?`, params)
 
     logger.info('Updated step', { service: 'sequences', stepId })
     res.json({ message: 'Step updated' })
@@ -236,10 +228,10 @@ sequencesRouter.put('/:id/steps/:stepId', (req, res) => {
 })
 
 // DELETE /:id/steps/:stepId - Delete step
-sequencesRouter.delete('/:id/steps/:stepId', (req, res) => {
+sequencesRouter.delete('/:id/steps/:stepId', async (req, res) => {
   try {
     const stepId = parseInt(req.params.stepId, 10)
-    db.run('DELETE FROM sequence_steps WHERE id = ?', [stepId])
+    await execute('DELETE FROM sequence_steps WHERE id = ?', [stepId])
     
     logger.info('Deleted step', { service: 'sequences', stepId })
     res.json({ message: 'Step deleted' })
@@ -250,7 +242,7 @@ sequencesRouter.delete('/:id/steps/:stepId', (req, res) => {
 })
 
 // GET /:id/enrollments - List enrollments for sequence
-sequencesRouter.get('/:id/enrollments', (req, res) => {
+sequencesRouter.get('/:id/enrollments', async (req, res) => {
   try {
     const sequenceId = parseInt(req.params.id, 10)
     const status = req.query.status as string | undefined
@@ -258,13 +250,9 @@ sequencesRouter.get('/:id/enrollments', (req, res) => {
     let enrollments: EnrollmentRow[]
     
     if (status) {
-      enrollments = db
-        .query('SELECT * FROM sequence_enrollments WHERE sequence_id = ? AND status = ? ORDER BY enrolled_at DESC')
-        .all(sequenceId, status) as EnrollmentRow[]
+      enrollments = await queryAll<EnrollmentRow>('SELECT * FROM sequence_enrollments WHERE sequence_id = ? AND status = ? ORDER BY enrolled_at DESC', [sequenceId, status])
     } else {
-      enrollments = db
-        .query('SELECT * FROM sequence_enrollments WHERE sequence_id = ? ORDER BY enrolled_at DESC')
-        .all(sequenceId) as EnrollmentRow[]
+      enrollments = await queryAll<EnrollmentRow>('SELECT * FROM sequence_enrollments WHERE sequence_id = ? ORDER BY enrolled_at DESC', [sequenceId])
     }
 
     res.json(enrollments.map(e => ({
@@ -278,7 +266,7 @@ sequencesRouter.get('/:id/enrollments', (req, res) => {
 })
 
 // POST /:id/enroll - Enroll recipients
-sequencesRouter.post('/:id/enroll', (req, res) => {
+sequencesRouter.post('/:id/enroll', async (req, res) => {
   try {
     const sequenceId = parseInt(req.params.id, 10)
     const { recipients } = req.body // Array of { email, data }
@@ -291,7 +279,7 @@ sequencesRouter.post('/:id/enroll', (req, res) => {
     const enrolled: number[] = []
     for (const recipient of recipients) {
       try {
-        const id = enrollRecipient(sequenceId, recipient.email, recipient.data || {})
+        const id = await enrollRecipient(sequenceId, recipient.email, recipient.data || {})
         enrolled.push(id)
       } catch (_e) {
         logger.warn('Failed to enroll recipient', { 
@@ -311,20 +299,20 @@ sequencesRouter.post('/:id/enroll', (req, res) => {
 })
 
 // PUT /:id/enrollments/:enrollmentId - Update enrollment (pause/cancel/resume)
-sequencesRouter.put('/:id/enrollments/:enrollmentId', (req, res) => {
+sequencesRouter.put('/:id/enrollments/:enrollmentId', async (req, res) => {
   try {
     const enrollmentId = parseInt(req.params.enrollmentId, 10)
     const { action } = req.body // 'pause' | 'cancel' | 'resume'
 
     switch (action) {
       case 'pause':
-        pauseEnrollment(enrollmentId)
+        await pauseEnrollment(enrollmentId)
         break
       case 'cancel':
-        cancelEnrollment(enrollmentId)
+        await cancelEnrollment(enrollmentId)
         break
       case 'resume':
-        resumeEnrollment(enrollmentId)
+        await resumeEnrollment(enrollmentId)
         break
       default:
         res.status(400).json({ error: 'Invalid action. Use pause, cancel, or resume.' })
