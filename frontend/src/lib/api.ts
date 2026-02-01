@@ -116,6 +116,7 @@ export const api = {
   // Campaigns (History)
   getCampaigns: () => request<Campaign[]>('/campaigns'),
   getCampaign: (id: number) => request<CampaignDetail>(`/campaigns/${id}`),
+  getCampaignAnalytics: (id: number) => request<CampaignAnalytics>(`/campaigns/${id}/analytics`),
   deleteCampaign: (id: number) =>
     request<void>(`/campaigns/${id}`, { method: 'DELETE' }),
 
@@ -325,6 +326,32 @@ export interface SendLog {
   status: 'success' | 'failed' | 'queued'
   errorMessage?: string
   sentAt: string
+}
+
+export interface CampaignAnalytics {
+  campaignId: number
+  campaignName: string
+  delivery: {
+    sent: number
+    failed: number
+    queued: number
+  }
+  engagement: {
+    opens: number
+    uniqueOpens: number
+    openRate: number
+    clicks: number
+    uniqueClicks: number
+    clickRate: number
+  }
+  topLinks: Array<{ url: string; clicks: number }>
+  opensOverTime: Array<{ hour: string; count: number }>
+  recipients: Array<{
+    email: string
+    status: string
+    opens: number
+    clicks: string[]
+  }>
 }
 
 export interface SenderAccount {

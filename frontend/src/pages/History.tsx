@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api, Campaign } from '../lib/api'
+import { api, Campaign, CampaignAnalytics } from '../lib/api'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
-import { ChevronLeft, Download, RefreshCw, Trash2, CheckCircle2, XCircle, Clock, Loader2 } from 'lucide-react'
+import { ChevronLeft, Download, RefreshCw, Trash2, CheckCircle2, XCircle, Clock, Loader2, Eye, MousePointer, Mail } from 'lucide-react'
 
 
 export default function History() {
@@ -113,6 +113,11 @@ function CampaignDetails({ id, onBack }: { id: number; onBack: () => void }) {
     queryFn: () => api.getCampaign(id),
   })
 
+  const { data: analytics } = useQuery({
+    queryKey: ['campaign-analytics', id],
+    queryFn: () => api.getCampaignAnalytics(id),
+  })
+
   const deleteMutation = useMutation({
     mutationFn: () => api.deleteCampaign(id),
     onSuccess: () => {
@@ -188,6 +193,44 @@ function CampaignDetails({ id, onBack }: { id: number; onBack: () => void }) {
         </CardContent>
       </Card>
 
+      {/* Engagement Stats */}
+      {analytics && (
+        <Card className="mb-4">
+          <CardHeader className="p-3 pb-2">
+            <CardTitle className="text-sm">Engagement</CardTitle>
+          </CardHeader>
+          <CardContent className="p-4 pt-0 grid grid-cols-3 gap-4 text-sm">
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-full bg-blue-100">
+                <Mail className="h-4 w-4 text-blue-600" />
+              </div>
+              <div>
+                <p className="text-muted-foreground text-xs">Delivered</p>
+                <p className="font-semibold">{analytics.delivery.sent}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-full bg-green-100">
+                <Eye className="h-4 w-4 text-green-600" />
+              </div>
+              <div>
+                <p className="text-muted-foreground text-xs">Opens</p>
+                <p className="font-semibold">{analytics.engagement.uniqueOpens} <span className="text-muted-foreground font-normal">({analytics.engagement.openRate}%)</span></p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-full bg-purple-100">
+                <MousePointer className="h-4 w-4 text-purple-600" />
+              </div>
+              <div>
+                <p className="text-muted-foreground text-xs">Clicks</p>
+                <p className="font-semibold">{analytics.engagement.uniqueClicks} <span className="text-muted-foreground font-normal">({analytics.engagement.clickRate}%)</span></p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Failed Recipients */}
       {failedLogs.length > 0 && (
         <Card className="mb-4">
@@ -221,24 +264,67 @@ function CampaignDetails({ id, onBack }: { id: number; onBack: () => void }) {
         </Card>
       )}
 
-      {/* Successful Recipients (collapsed by default) */}
+      {/* Recipients with Tracking */}
       <Card>
         <CardHeader className="p-3 pb-2">
-          <CardTitle className="text-sm text-green-600">
-            Successful Recipients ({successLogs.length})
+          <CardTitle className="text-sm">
+            Recipients ({successLogs.length + failedLogs.length})
           </CardTitle>
         </CardHeader>
-        <CardContent className="p-3 pt-0">
-          <details>
-            <summary className="text-xs text-muted-foreground cursor-pointer">
-              Click to expand
-            </summary>
-            <div className="mt-2 max-h-48 overflow-y-auto text-xs font-mono">
-              {successLogs.map((log) => (
-                <p key={log.id} className="py-0.5">{log.recipientEmail}</p>
+        <CardContent className="p-0">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/50">
+              <tr>
+                <th className="text-left p-2 font-medium">Email</th>
+                <th className="text-left p-2 font-medium">Status</th>
+                <th className="text-center p-2 font-medium">Opens</th>
+                <th className="text-center p-2 font-medium">Clicks</th>
+              </tr>
+            </thead>
+            <tbody>
+              {analytics?.recipients?.map((r) => (
+                <tr key={r.email} className="border-t">
+                  <td className="p-2 font-mono text-xs">{r.email}</td>
+                  <td className="p-2">
+                    {r.status === 'success' ? (
+                      <span className="text-green-600 text-xs">Sent</span>
+                    ) : (
+                      <span className="text-destructive text-xs">Failed</span>
+                    )}
+                  </td>
+                  <td className="p-2 text-center">
+                    {r.opens > 0 ? (
+                      <span className="inline-flex items-center gap-1 text-green-600">
+                        <Eye className="h-3 w-3" />
+                        {r.opens}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
+                    )}
+                  </td>
+                  <td className="p-2 text-center">
+                    {r.clicks.length > 0 ? (
+                      <span className="inline-flex items-center gap-1 text-purple-600">
+                        <MousePointer className="h-3 w-3" />
+                        {r.clicks.length}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
+                    )}
+                  </td>
+                </tr>
+              )) || successLogs.map((log) => (
+                <tr key={log.id} className="border-t">
+                  <td className="p-2 font-mono text-xs">{log.recipientEmail}</td>
+                  <td className="p-2">
+                    <span className="text-green-600 text-xs">Sent</span>
+                  </td>
+                  <td className="p-2 text-center text-muted-foreground">-</td>
+                  <td className="p-2 text-center text-muted-foreground">-</td>
+                </tr>
               ))}
-            </div>
-          </details>
+            </tbody>
+          </table>
         </CardContent>
       </Card>
     </div>
