@@ -138,7 +138,7 @@ app.use('/api/certificates', authMiddleware, certificatesRouter)
 app.use('/api/media', authMiddleware, mediaRoutes)
 
 // Serve media files publicly (no auth - these are for emails)
-const DATA_DIR = process.env.DATA_DIR || join(process.cwd(), '..', 'data')
+const DATA_DIR = process.env.DATA_DIR || join(process.cwd(), 'data')
 const mediaPath = join(DATA_DIR, 'media')
 app.use('/media', express.static(mediaPath))
 

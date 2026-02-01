@@ -9,7 +9,7 @@ import { existsSync, mkdirSync, unlinkSync } from "fs";
 const router = Router();
 
 // Use same DATA_DIR as db module for consistency
-const DATA_DIR = process.env.DATA_DIR || join(process.cwd(), "..", "data");
+const DATA_DIR = process.env.DATA_DIR || join(process.cwd(), "data");
 const MEDIA_DIR = join(DATA_DIR, "media");
 if (!existsSync(MEDIA_DIR)) {
   mkdirSync(MEDIA_DIR, { recursive: true });

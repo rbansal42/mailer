@@ -2,7 +2,7 @@ import { Database } from 'bun:sqlite'
 import { existsSync, mkdirSync, readdirSync } from 'fs'
 import { join, dirname } from 'path'
 
-const DATA_DIR = process.env.DATA_DIR || join(process.cwd(), '..', 'data')
+const DATA_DIR = process.env.DATA_DIR || join(process.cwd(), 'data')
 const DB_PATH = join(DATA_DIR, 'mailer.db')
 
 // Ensure data directory exists
