@@ -1,5 +1,4 @@
 import { createRouteHandler } from "uploadthing/express";
-import { Router } from "express";
 import { uploadRouter } from "../lib/uploadthing";
 
 // TEMPORARY: Hardcoded token for debugging
@@ -7,32 +6,23 @@ const HARDCODED_TOKEN = "eyJhcGlLZXkiOiJza19saXZlXzNiNzYzYzgyNmMxZjQ1N2RhNDlkZTI
 
 // Create router lazily to ensure env vars are loaded
 export function createUploadthingRouter() {
-  const envToken = process.env.UPLOADTHING_TOKEN;
-  const token = HARDCODED_TOKEN; // Use hardcoded for now
+  const token = HARDCODED_TOKEN;
   
   console.log('[UT DEBUG] Creating uploadthing router');
-  console.log('[UT DEBUG] Env token available:', !!envToken);
-  console.log('[UT DEBUG] Using hardcoded token:', !!token);
-  console.log('[UT DEBUG] Token preview:', token?.slice(0, 20));
+  console.log('[UT DEBUG] Token:', token);
   
-  const router = Router();
-  
-  // Debug middleware - log all requests
-  router.use((req, res, next) => {
-    console.log('[UT DEBUG] Request:', req.method, req.path);
-    next();
-  });
-  
-  // Mount the actual uploadthing handler
-  const utHandler = createRouteHandler({
+  const handlerOptions = {
     router: uploadRouter,
     config: {
       token: token,
-      logLevel: "Debug",
+      logLevel: "Debug" as const,
     },
-  });
+  };
   
-  router.use(utHandler);
+  console.log('[UT DEBUG] Handler options:', JSON.stringify({
+    hasRouter: !!handlerOptions.router,
+    config: handlerOptions.config,
+  }, null, 2));
   
-  return router;
+  return createRouteHandler(handlerOptions);
 }
