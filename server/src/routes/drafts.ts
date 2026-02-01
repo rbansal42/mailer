@@ -13,6 +13,7 @@ interface DraftRow {
   subject: string | null
   test_email: string | null
   recipients: string
+  recipients_text: string | null
   variables: string
   cc: string
   bcc: string
@@ -29,6 +30,7 @@ function formatDraft(row: DraftRow) {
     subject: row.subject,
     testEmail: row.test_email,
     recipients: JSON.parse(row.recipients || '[]'),
+    recipientsText: row.recipients_text || '',
     variables: JSON.parse(row.variables || '{}'),
     cc: JSON.parse(row.cc || '[]'),
     bcc: JSON.parse(row.bcc || '[]'),
@@ -73,12 +75,12 @@ draftsRouter.post('/', async (req, res) => {
     return res.status(400).json({ error: validation.error })
   }
 
-  const { name, templateId, mailId, subject, testEmail, recipients, variables, cc, bcc } = validation.data
+  const { name, templateId, mailId, subject, testEmail, recipients, recipientsText, variables, cc, bcc } = validation.data
 
   try {
 
     const result = await execute(
-      'INSERT INTO drafts (name, template_id, mail_id, subject, test_email, recipients, variables, cc, bcc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO drafts (name, template_id, mail_id, subject, test_email, recipients, recipients_text, variables, cc, bcc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         name,
         templateId ?? null,
@@ -86,6 +88,7 @@ draftsRouter.post('/', async (req, res) => {
         subject ?? null,
         testEmail ?? null,
         JSON.stringify(recipients || []),
+        recipientsText ?? null,
         JSON.stringify(variables || {}),
         JSON.stringify(cc || []),
         JSON.stringify(bcc || [])
@@ -110,7 +113,7 @@ draftsRouter.put('/:id', async (req, res) => {
     return res.status(400).json({ error: validation.error })
   }
 
-  const { name, templateId, mailId, subject, testEmail, recipients, variables, cc, bcc } = validation.data
+  const { name, templateId, mailId, subject, testEmail, recipients, recipientsText, variables, cc, bcc } = validation.data
 
   try {
     // Check if draft exists
@@ -147,6 +150,10 @@ draftsRouter.put('/:id', async (req, res) => {
     if (recipients !== undefined) {
       updates.push('recipients = ?')
       values.push(JSON.stringify(recipients))
+    }
+    if (recipientsText !== undefined) {
+      updates.push('recipients_text = ?')
+      values.push(recipientsText ?? null)
     }
     if (variables !== undefined) {
       updates.push('variables = ?')

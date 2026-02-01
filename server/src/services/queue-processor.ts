@@ -177,7 +177,7 @@ export async function processQueue(): Promise<ProcessResult> {
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-      console.error(`[QueueProcessor] Error processing queue item ${queueItem.id}:`, errorMessage)
+      logger.error('Error processing queue item', { service: 'queue-processor', campaignId: queueItem.campaign_id, recipientEmail: queueItem.recipient_email, queueItemId: queueItem.id, error: errorMessage })
 
       await updateQueueStatus(queueItem.id, 'failed')
       await logSend(queueItem.campaign_id, null, queueItem.recipient_email, 'failed', errorMessage)

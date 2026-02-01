@@ -287,6 +287,7 @@ export interface Draft {
   subject: string
   testEmail: string | null
   recipients: Recipient[]
+  recipientsText: string
   variables?: Record<string, string>
   createdAt: string
   updatedAt: string

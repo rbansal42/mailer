@@ -130,7 +130,7 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
   const [mailId, setMailId] = useState<number | null>(draft?.mailId || null)
   const [templateId, setTemplateId] = useState<number | null>(draft?.templateId || null)
   const [subject, setSubject] = useState(draft?.subject || '')
-  const [recipientsText, setRecipientsText] = useState('')
+  const [recipientsText, setRecipientsText] = useState(draft?.recipientsText || '')
   const [recipients, setRecipients] = useState<Recipient[]>(draft?.recipients || [])
   const [previewIndex, setPreviewIndex] = useState(0)
   const [sending, setSending] = useState(false)
@@ -263,6 +263,7 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
       subject,
       testEmail: testEmails || null,
       recipients,
+      recipientsText: recipientsText || null,
     })
   }
 

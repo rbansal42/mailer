@@ -81,6 +81,7 @@ export const createDraftSchema = z.object({
     email: emailSchema,
     data: z.record(z.string(), z.string()).optional()
   })).optional(),
+  recipientsText: z.string().nullable().optional(),
   variables: z.record(z.string(), z.string()).optional(),
   cc: emailArraySchema,
   bcc: emailArraySchema
