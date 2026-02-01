@@ -418,6 +418,44 @@ export async function initializeDatabase() {
     )
   `)
 
+  // Contacts - global contact storage
+  await execute(`
+    CREATE TABLE IF NOT EXISTS contacts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT UNIQUE NOT NULL,
+      name TEXT,
+      first_name TEXT,
+      last_name TEXT,
+      company TEXT,
+      phone TEXT,
+      country TEXT,
+      custom_fields TEXT DEFAULT '{}',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `)
+
+  // Lists - named collections
+  await execute(`
+    CREATE TABLE IF NOT EXISTS lists (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      description TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `)
+
+  // List memberships - junction table
+  await execute(`
+    CREATE TABLE IF NOT EXISTS list_contacts (
+      list_id INTEGER REFERENCES lists(id) ON DELETE CASCADE,
+      contact_id INTEGER REFERENCES contacts(id) ON DELETE CASCADE,
+      added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (list_id, contact_id)
+    )
+  `)
+
   // Create attachments directory
   mkdirSync(join(DATA_DIR, 'attachments'), { recursive: true })
 
@@ -449,6 +487,9 @@ export async function initializeDatabase() {
   await execute('CREATE INDEX IF NOT EXISTS idx_generated_certificates_config ON generated_certificates(config_id)')
   await execute('CREATE INDEX IF NOT EXISTS idx_generated_certificates_campaign ON generated_certificates(campaign_id)')
   await execute('CREATE INDEX IF NOT EXISTS idx_media_deleted_at ON media(deleted_at)')
+  await execute('CREATE INDEX IF NOT EXISTS idx_contacts_email ON contacts(email)')
+  await execute('CREATE INDEX IF NOT EXISTS idx_list_contacts_list ON list_contacts(list_id)')
+  await execute('CREATE INDEX IF NOT EXISTS idx_list_contacts_contact ON list_contacts(contact_id)')
 
   // Initialize default tracking settings
   const trackingDefaults = [

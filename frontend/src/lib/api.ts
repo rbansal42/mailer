@@ -466,3 +466,83 @@ export const mails = {
   saveAsTemplate: (id: number, data: { name?: string; description?: string }) =>
     request<{ id: number }>(`/mails/${id}/save-as-template`, { method: 'POST', body: JSON.stringify(data) }),
 }
+
+// Contact types
+export interface Contact {
+  id: number
+  email: string
+  name?: string
+  first_name?: string
+  last_name?: string
+  company?: string
+  phone?: string
+  country?: string
+  custom_fields: Record<string, string>
+  created_at: string
+  updated_at: string
+  list_count?: number
+}
+
+export interface ContactList {
+  id: number
+  name: string
+  description?: string
+  contact_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface PaginatedResponse<T> {
+  contacts: T[]
+  pagination: {
+    page: number
+    limit: number
+    total: number
+    totalPages: number
+  }
+}
+
+// Lists API - uses request() helper for auth headers
+export const listsApi = {
+  getAll: () => request<ContactList[]>('/contacts/lists'),
+  
+  get: (id: number) => request<ContactList>(`/contacts/lists/${id}`),
+  
+  create: (data: { name: string; description?: string }) =>
+    request<ContactList>('/contacts/lists', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }),
+  
+  update: (id: number, data: { name?: string; description?: string }) =>
+    request<ContactList>(`/contacts/lists/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    }),
+  
+  delete: (id: number) =>
+    request<void>(`/contacts/lists/${id}`, { method: 'DELETE' }),
+  
+  getMembers: (listId: number, page = 1, limit = 50, search = '') => {
+    const params = new URLSearchParams({ page: String(page), limit: String(limit) })
+    if (search) params.set('search', search)
+    return request<PaginatedResponse<Contact>>(`/contacts/lists/${listId}/members?${params}`)
+  },
+  
+  addMembers: (listId: number, contacts: Partial<Contact>[]) =>
+    request<{ created: number; updated: number; added: number }>(`/contacts/lists/${listId}/members`, {
+      method: 'POST',
+      body: JSON.stringify({ contacts })
+    }),
+  
+  removeMember: (listId: number, contactId: number) =>
+    request<void>(`/contacts/lists/${listId}/members/${contactId}`, { method: 'DELETE' }),
+  
+  import: (listId: number, csv: string, mapping?: Record<string, string>) =>
+    request<{ created: number; updated: number; added: number; errors?: string[] }>(`/contacts/lists/${listId}/import`, {
+      method: 'POST',
+      body: JSON.stringify({ csv, mapping })
+    }),
+  
+  exportUrl: (listId: number): string => `${API_BASE}/contacts/lists/${listId}/export`
+}

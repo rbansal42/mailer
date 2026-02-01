@@ -8,6 +8,8 @@ import Layout from './components/Layout'
 import Login from './pages/Login'
 import Campaigns from './pages/Campaigns'
 import MailLibrary from './pages/MailLibrary'
+import Lists from './pages/Lists'
+import ListDetail from './pages/ListDetail'
 import History from './pages/History'
 import Settings from './pages/Settings'
 import Certificates from './pages/Certificates'
@@ -49,6 +51,8 @@ export default function App() {
           <Route index element={<Navigate to="/campaigns" replace />} />
           <Route path="campaigns" element={<Campaigns />} />
           <Route path="templates" element={<MailLibrary />} />
+          <Route path="lists" element={<Lists />} />
+          <Route path="lists/:id" element={<ListDetail />} />
           <Route path="certificates" element={<Certificates />} />
           <Route path="history" element={<History />} />
           <Route path="settings" element={<Settings />} />
