@@ -1,8 +1,12 @@
-import 'dotenv/config';
+import { config } from 'dotenv';
+import { join } from 'path';
+import { existsSync } from 'fs'
+
+// Load .env from project root
+config({ path: join(__dirname, '../../.env') });
+
 import express from 'express'
 import cors from 'cors'
-import { join } from 'path'
-import { existsSync } from 'fs'
 import { initializeDatabase, checkDatabaseHealth, queryOne, queryAll } from './db'
 import { authRouter } from './routes/auth'
 import { templatesRouter } from './routes/templates'
