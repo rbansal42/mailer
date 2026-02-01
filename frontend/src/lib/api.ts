@@ -502,77 +502,47 @@ export interface PaginatedResponse<T> {
   }
 }
 
-// Lists API
+// Lists API - uses request() helper for auth headers
 export const listsApi = {
-  getAll: async (): Promise<ContactList[]> => {
-    const res = await fetch(`${API_BASE}/contacts/lists`)
-    if (!res.ok) throw new Error('Failed to fetch lists')
-    return res.json()
-  },
+  getAll: () => request<ContactList[]>('/contacts/lists'),
   
-  get: async (id: number): Promise<ContactList> => {
-    const res = await fetch(`${API_BASE}/contacts/lists/${id}`)
-    if (!res.ok) throw new Error('Failed to fetch list')
-    return res.json()
-  },
+  get: (id: number) => request<ContactList>(`/contacts/lists/${id}`),
   
-  create: async (data: { name: string; description?: string }): Promise<ContactList> => {
-    const res = await fetch(`${API_BASE}/contacts/lists`, {
+  create: (data: { name: string; description?: string }) =>
+    request<ContactList>('/contacts/lists', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
-    })
-    if (!res.ok) throw new Error('Failed to create list')
-    return res.json()
-  },
+    }),
   
-  update: async (id: number, data: { name?: string; description?: string }): Promise<ContactList> => {
-    const res = await fetch(`${API_BASE}/contacts/lists/${id}`, {
+  update: (id: number, data: { name?: string; description?: string }) =>
+    request<ContactList>(`/contacts/lists/${id}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
-    })
-    if (!res.ok) throw new Error('Failed to update list')
-    return res.json()
-  },
+    }),
   
-  delete: async (id: number): Promise<void> => {
-    const res = await fetch(`${API_BASE}/contacts/lists/${id}`, { method: 'DELETE' })
-    if (!res.ok) throw new Error('Failed to delete list')
-  },
+  delete: (id: number) =>
+    request<void>(`/contacts/lists/${id}`, { method: 'DELETE' }),
   
-  getMembers: async (listId: number, page = 1, limit = 50, search = ''): Promise<PaginatedResponse<Contact>> => {
+  getMembers: (listId: number, page = 1, limit = 50, search = '') => {
     const params = new URLSearchParams({ page: String(page), limit: String(limit) })
     if (search) params.set('search', search)
-    const res = await fetch(`${API_BASE}/contacts/lists/${listId}/members?${params}`)
-    if (!res.ok) throw new Error('Failed to fetch members')
-    return res.json()
+    return request<PaginatedResponse<Contact>>(`/contacts/lists/${listId}/members?${params}`)
   },
   
-  addMembers: async (listId: number, contacts: Partial<Contact>[]): Promise<{ created: number; updated: number; added: number }> => {
-    const res = await fetch(`${API_BASE}/contacts/lists/${listId}/members`, {
+  addMembers: (listId: number, contacts: Partial<Contact>[]) =>
+    request<{ created: number; updated: number; added: number }>(`/contacts/lists/${listId}/members`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ contacts })
-    })
-    if (!res.ok) throw new Error('Failed to add members')
-    return res.json()
-  },
+    }),
   
-  removeMember: async (listId: number, contactId: number): Promise<void> => {
-    const res = await fetch(`${API_BASE}/contacts/lists/${listId}/members/${contactId}`, { method: 'DELETE' })
-    if (!res.ok) throw new Error('Failed to remove member')
-  },
+  removeMember: (listId: number, contactId: number) =>
+    request<void>(`/contacts/lists/${listId}/members/${contactId}`, { method: 'DELETE' }),
   
-  import: async (listId: number, csv: string, mapping?: Record<string, string>): Promise<{ created: number; updated: number; added: number; errors?: string[] }> => {
-    const res = await fetch(`${API_BASE}/contacts/lists/${listId}/import`, {
+  import: (listId: number, csv: string, mapping?: Record<string, string>) =>
+    request<{ created: number; updated: number; added: number; errors?: string[] }>(`/contacts/lists/${listId}/import`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ csv, mapping })
-    })
-    if (!res.ok) throw new Error('Failed to import')
-    return res.json()
-  },
+    }),
   
   exportUrl: (listId: number): string => `${API_BASE}/contacts/lists/${listId}/export`
 }

@@ -33,8 +33,8 @@ router.get('/', async (req, res) => {
     const { listId } = req.params
     const { page = '1', limit = '50', search = '' } = req.query
     
-    const pageNum = parseInt(page as string)
-    const limitNum = parseInt(limit as string)
+    const pageNum = Math.max(1, parseInt(page as string) || 1)
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit as string) || 50))
     const offset = (pageNum - 1) * limitNum
     
     // Verify list exists
