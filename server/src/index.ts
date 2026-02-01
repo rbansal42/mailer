@@ -139,7 +139,11 @@ app.use('/api/certificates', authMiddleware, certificatesRouter)
 app.use('/api/media', authMiddleware, mediaRoutes)
 
 // Uploadthing routes (uses its own auth via UPLOADTHING_TOKEN)
-app.use('/api/uploadthing', createUploadthingRouter())
+app.use('/api/uploadthing', (req, res, next) => {
+  console.log('[UT MIDDLEWARE] Incoming request:', req.method, req.url);
+  console.log('[UT MIDDLEWARE] Headers:', JSON.stringify(req.headers, null, 2));
+  next();
+}, createUploadthingRouter())
 
 // Serve static frontend in production
 const publicPath = join(process.cwd(), 'public')
