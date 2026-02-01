@@ -8,8 +8,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import {
   Plus, ChevronLeft, Save, Trash2, Type, Image, MousePointer,
   Minus, Square, Columns, FileText, GripVertical, Loader2, Undo2, Redo2, Copy,
-  Monitor, Smartphone, Moon, Code
+  Monitor, Smartphone, Moon, Code, ImageIcon
 } from 'lucide-react'
+import { MediaLibrarySidebar } from '@/components/media-library'
 import { cn } from '../lib/utils'
 import { useBlockHistory } from '../stores/history'
 import { useKeyboardShortcuts, createSaveShortcut, createUndoShortcut, createRedoShortcut } from '../hooks/useKeyboardShortcuts'
@@ -111,6 +112,11 @@ function TemplateEditor({ template, onBack }: EditorProps) {
   const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>('desktop')
   const [darkMode, setDarkMode] = useState(false)
   const [showSource, setShowSource] = useState(false)
+  const [mediaLibraryOpen, setMediaLibraryOpen] = useState(false)
+  const [mediaSelectionTarget, setMediaSelectionTarget] = useState<{
+    blockId: string;
+    prop: "url" | "imageUrl";
+  } | null>(null)
   
   const { set: recordHistory, undo, redo, canUndo, canRedo, clear: clearHistory } = useBlockHistory()
 
@@ -231,6 +237,22 @@ function TemplateEditor({ template, onBack }: EditorProps) {
       const newBlocks = [...blocks]
       ;[newBlocks[index], newBlocks[index + 1]] = [newBlocks[index + 1], newBlocks[index]]
       updateBlocks(newBlocks)
+    }
+  }
+
+  const updateBlockProp = (blockId: string, prop: string, value: string) => {
+    updateBlock(blockId, { [prop]: value })
+  }
+
+  const handleMediaSelect = (url: string) => {
+    if (mediaSelectionTarget) {
+      updateBlockProp(
+        mediaSelectionTarget.blockId,
+        mediaSelectionTarget.prop,
+        url
+      )
+      setMediaLibraryOpen(false)
+      setMediaSelectionTarget(null)
     }
   }
 
@@ -422,6 +444,10 @@ function TemplateEditor({ template, onBack }: EditorProps) {
               <BlockProperties
                 block={selectedBlock}
                 onChange={(props) => updateBlock(selectedBlock.id, props)}
+                onOpenMediaLibrary={(prop: "url" | "imageUrl") => {
+                  setMediaSelectionTarget({ blockId: selectedBlock.id, prop })
+                  setMediaLibraryOpen(true)
+                }}
               />
               <div className="mt-4 pt-4 border-t flex gap-1">
                 <Button
@@ -449,6 +475,16 @@ function TemplateEditor({ template, onBack }: EditorProps) {
           )}
         </div>
       </div>
+
+      <MediaLibrarySidebar
+        isOpen={mediaLibraryOpen}
+        onClose={() => {
+          setMediaLibraryOpen(false)
+          setMediaSelectionTarget(null)
+        }}
+        selectionMode={!!mediaSelectionTarget}
+        onSelect={handleMediaSelect}
+      />
     </div>
   )
 }
@@ -538,7 +574,11 @@ function BlockPreview({ block, darkMode: _darkMode }: { block: Block; darkMode?:
   }
 }
 
-function BlockProperties({ block, onChange }: { block: Block; onChange: (props: Record<string, unknown>) => void }) {
+function BlockProperties({ block, onChange, onOpenMediaLibrary }: { 
+  block: Block; 
+  onChange: (props: Record<string, unknown>) => void;
+  onOpenMediaLibrary: (prop: "url" | "imageUrl") => void;
+}) {
   const { type, props } = block
 
   switch (type) {
@@ -547,12 +587,23 @@ function BlockProperties({ block, onChange }: { block: Block; onChange: (props: 
         <div className="space-y-3">
           <div className="space-y-1">
             <Label className="text-xs">Image URL</Label>
-            <Input
-              value={String(props.imageUrl || '')}
-              onChange={(e) => onChange({ imageUrl: e.target.value })}
-              placeholder="https://..."
-              className="h-8 text-xs"
-            />
+            <div className="flex gap-2">
+              <Input
+                value={String(props.imageUrl || '')}
+                onChange={(e) => onChange({ imageUrl: e.target.value })}
+                placeholder="https://..."
+                className="h-8 text-xs flex-1"
+              />
+              <Button
+                variant="outline"
+                size="icon"
+                type="button"
+                className="h-8 w-8 shrink-0"
+                onClick={() => onOpenMediaLibrary("imageUrl")}
+              >
+                <ImageIcon className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Background Color</Label>
@@ -607,12 +658,23 @@ function BlockProperties({ block, onChange }: { block: Block; onChange: (props: 
         <div className="space-y-3">
           <div className="space-y-1">
             <Label className="text-xs">Image URL</Label>
-            <Input
-              value={String(props.url || '')}
-              onChange={(e) => onChange({ url: e.target.value })}
-              placeholder="https://..."
-              className="h-8 text-xs"
-            />
+            <div className="flex gap-2">
+              <Input
+                value={String(props.url || '')}
+                onChange={(e) => onChange({ url: e.target.value })}
+                placeholder="https://..."
+                className="h-8 text-xs flex-1"
+              />
+              <Button
+                variant="outline"
+                size="icon"
+                type="button"
+                className="h-8 w-8 shrink-0"
+                onClick={() => onOpenMediaLibrary("url")}
+              >
+                <ImageIcon className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Alt Text</Label>
