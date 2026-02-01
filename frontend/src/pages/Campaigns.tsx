@@ -113,6 +113,9 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
   const [previewIndex, setPreviewIndex] = useState(0)
   const [sending, setSending] = useState(false)
   const [sendProgress, setSendProgress] = useState<{ current: number; total: number; logs: string[] } | null>(null)
+  const [testEmails, setTestEmails] = useState('')
+  const [sendingTest, setSendingTest] = useState(false)
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
 
   const selectedMail = mails.find((m) => m.id === mailId)
   const selectedTemplate = templates.find((t) => t.id === templateId)
@@ -154,6 +157,54 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
   }
 
   const canSend = validation.hasName && validation.hasContent && validation.hasSubject && validation.hasRecipients && validation.invalidEmails.length === 0
+
+  // Parse test emails (comma, semicolon, or newline separated)
+  const parseTestEmails = (text: string): string[] => {
+    return text
+      .split(/[,;\n]/)
+      .map(e => e.trim())
+      .filter(e => e.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/))
+  }
+
+  const parsedTestEmails = parseTestEmails(testEmails)
+  const canSendTest = validation.hasContent && validation.hasSubject && parsedTestEmails.length > 0
+
+  const handleSendTest = async () => {
+    if (!canSendTest) return
+    setSendingTest(true)
+    setTestResult(null)
+
+    try {
+      // Use first recipient data for variable substitution, or empty object
+      const sampleData = recipients[0] || { email: parsedTestEmails[0], name: 'Test User' }
+      
+      // Create test recipients with sample data
+      const testRecipients = parsedTestEmails.map(email => ({
+        ...sampleData,
+        email,
+      }))
+
+      // Build URL with either templateId or mailId
+      const contentParam = contentSource === 'mail' && mailId 
+        ? `mailId=${mailId}` 
+        : `templateId=${templateId}`
+      
+      const response = await fetch(
+        `/api/send?${contentParam}&subject=${encodeURIComponent('[TEST] ' + subject)}&recipients=${encodeURIComponent(JSON.stringify(testRecipients))}&name=${encodeURIComponent('Test: ' + (name || 'Unnamed'))}`
+      )
+
+      if (response.ok) {
+        setTestResult({ success: true, message: `Test sent to ${parsedTestEmails.length} address(es)` })
+      } else {
+        const data = await response.json()
+        setTestResult({ success: false, message: data.error || 'Failed to send test' })
+      }
+    } catch (error) {
+      setTestResult({ success: false, message: 'Failed to send test email' })
+    } finally {
+      setSendingTest(false)
+    }
+  }
 
   const saveDraftMutation = useMutation({
     mutationFn: (data: Partial<Draft>) => draft
@@ -336,6 +387,46 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
               className="h-8 text-sm"
             />
           </div>
+
+          {/* Test Email Section */}
+          <Card className="bg-muted/30">
+            <CardContent className="p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-medium">Send Test Email</Label>
+                {testResult && (
+                  <span className={`text-xs ${testResult.success ? 'text-green-600' : 'text-destructive'}`}>
+                    {testResult.message}
+                  </span>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  value={testEmails}
+                  onChange={(e) => setTestEmails(e.target.value)}
+                  placeholder="test@example.com, another@example.com"
+                  className="h-8 text-sm flex-1"
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSendTest}
+                  disabled={!canSendTest || sendingTest}
+                >
+                  {sendingTest ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      <Send className="h-3 w-3 mr-1" />
+                      Test
+                    </>
+                  )}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Separate multiple addresses with commas. Uses first recipient's data for variables.
+              </p>
+            </CardContent>
+          </Card>
 
           <div className="space-y-1">
             <Label className="text-xs">Recipients (CSV/TSV)</Label>
