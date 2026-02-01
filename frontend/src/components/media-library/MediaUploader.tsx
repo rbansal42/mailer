@@ -4,6 +4,23 @@ import { Upload, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/hooks/useAuthStore";
 
+// Get token with fallback to localStorage (handles Zustand hydration race)
+function getToken(): string | null {
+  const storeToken = useAuthStore.getState().token;
+  if (storeToken) return storeToken;
+  
+  try {
+    const stored = localStorage.getItem('mailer-auth');
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      return parsed?.state?.token || null;
+    }
+  } catch {
+    // Ignore parse errors
+  }
+  return null;
+}
+
 interface MediaUploaderProps {
   onUploadComplete: (data: { url: string; name: string; size: number }) => void;
   onUploadError?: (error: Error) => void;
@@ -11,10 +28,10 @@ interface MediaUploaderProps {
 
 export function MediaUploader({ onUploadComplete, onUploadError }: MediaUploaderProps) {
   const [isUploading, setIsUploading] = useState(false);
-  const token = useAuthStore((s) => s.token);
 
   const uploadFile = async (file: File) => {
     setIsUploading(true);
+    const token = getToken();
     try {
       const formData = new FormData();
       formData.append("file", file);
@@ -52,7 +69,7 @@ export function MediaUploader({ onUploadComplete, onUploadError }: MediaUploader
         uploadFile(acceptedFiles[0]);
       }
     },
-    [token]
+    []
   );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({

@@ -1,6 +1,24 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, Template, Draft, Mail, mails as mailsApi } from '../lib/api'
+import { useAuthStore } from '../hooks/useAuthStore'
+
+// Get token with fallback to localStorage (handles Zustand hydration race)
+function getToken(): string | null {
+  const storeToken = useAuthStore.getState().token;
+  if (storeToken) return storeToken;
+  
+  try {
+    const stored = localStorage.getItem('mailer-auth');
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      return parsed?.state?.token || null;
+    }
+  } catch {
+    // Ignore parse errors
+  }
+  return null;
+}
 import DOMPurify from 'isomorphic-dompurify'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
@@ -189,8 +207,14 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
         ? `mailId=${mailId}` 
         : `templateId=${templateId}`
       
+      const token = getToken()
       const response = await fetch(
-        `/api/send?${contentParam}&subject=${encodeURIComponent('[TEST] ' + subject)}&recipients=${encodeURIComponent(JSON.stringify(testRecipients))}&name=${encodeURIComponent('Test: ' + (name || 'Unnamed'))}`
+        `/api/send?${contentParam}&subject=${encodeURIComponent('[TEST] ' + subject)}&recipients=${encodeURIComponent(JSON.stringify(testRecipients))}&name=${encodeURIComponent('Test: ' + (name || 'Unnamed'))}`,
+        {
+          headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+        }
       )
 
       if (response.ok) {
