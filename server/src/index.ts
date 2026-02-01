@@ -1,6 +1,4 @@
 import 'dotenv/config';
-console.log('[DEBUG] UPLOADTHING_TOKEN present:', !!process.env.UPLOADTHING_TOKEN);
-console.log('[DEBUG] Token starts with:', process.env.UPLOADTHING_TOKEN?.slice(0, 10));
 import express from 'express'
 import cors from 'cors'
 import { join } from 'path'
