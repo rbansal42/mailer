@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api, Template, Draft, Mail, mails as mailsApi } from '../lib/api'
+import { api, Template, Draft, Mail, mails as mailsApi, listsApi, ContactList } from '../lib/api'
 import { useAuthStore } from '../hooks/useAuthStore'
 
 // Get token with fallback to localStorage (handles Zustand hydration race)
@@ -24,6 +24,7 @@ import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
 import { Card, CardContent, CardHeader } from '../components/ui/card'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog'
 import { Plus, Send, Save, ChevronLeft, ChevronRight, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react'
 import type { Recipient } from '../lib/api'
 
@@ -134,10 +135,22 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
   const [testEmails, setTestEmails] = useState('')
   const [sendingTest, setSendingTest] = useState(false)
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
+  
+  // List picker state
+  const [lists, setLists] = useState<ContactList[]>([])
+  const [selectedListId, setSelectedListId] = useState<number | null>(null)
+  const [showManualEntry, setShowManualEntry] = useState(false)
+  const [saveListOpen, setSaveListOpen] = useState(false)
+  const [newListName, setNewListName] = useState('')
 
   const selectedMail = mails.find((m) => m.id === mailId)
   const selectedTemplate = templates.find((t) => t.id === templateId)
   const selectedContent = contentSource === 'mail' ? selectedMail : selectedTemplate
+
+  // Load lists on mount
+  useEffect(() => {
+    listsApi.getAll().then(setLists).catch(console.error)
+  }, [])
 
   // Parse recipients from text
   const parseRecipients = (text: string): Recipient[] => {
@@ -452,14 +465,83 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
             </CardContent>
           </Card>
 
-          <div className="space-y-1">
-            <Label className="text-xs">Recipients (CSV/TSV)</Label>
-            <textarea
-              className="w-full h-40 text-xs font-mono rounded-md border border-input bg-background px-3 py-2 resize-none"
-              value={recipientsText}
-              onChange={(e) => handleRecipientsChange(e.target.value)}
-              placeholder="name,email,company&#10;John,john@example.com,ACME&#10;Sara,sara@example.com,Beta"
-            />
+          <div className="space-y-2">
+            <Label className="text-xs">Recipients</Label>
+            
+            {!showManualEntry ? (
+              <div className="space-y-2">
+                <select
+                  className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm"
+                  value={selectedListId || ''}
+                  onChange={(e) => {
+                    const id = e.target.value ? parseInt(e.target.value) : null
+                    setSelectedListId(id)
+                    if (id) {
+                      // Load list contacts as recipients
+                      listsApi.getMembers(id, 1, 10000).then(data => {
+                        const text = ['email,name,company,phone,country',
+                          ...data.contacts.map(c => 
+                            [c.email, c.name || '', c.company || '', c.phone || '', c.country || ''].join(',')
+                          )
+                        ].join('\n')
+                        handleRecipientsChange(text)
+                      })
+                    }
+                  }}
+                >
+                  <option value="">Select a list...</option>
+                  {lists.map(list => (
+                    <option key={list.id} value={list.id}>
+                      {list.name} ({list.contact_count} contacts)
+                    </option>
+                  ))}
+                </select>
+                
+                {selectedListId && recipients.length > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    {recipients.length} recipients from selected list
+                  </p>
+                )}
+                
+                <button
+                  type="button"
+                  className="text-xs text-primary hover:underline"
+                  onClick={() => setShowManualEntry(true)}
+                >
+                  Or paste recipients manually
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  className="text-xs text-primary hover:underline"
+                  onClick={() => {
+                    setShowManualEntry(false)
+                    setSelectedListId(null)
+                    handleRecipientsChange('')
+                  }}
+                >
+                  Use a saved list instead
+                </button>
+                <textarea
+                  className="w-full h-40 text-xs font-mono rounded-md border border-input bg-background px-3 py-2 resize-none"
+                  value={recipientsText}
+                  onChange={(e) => handleRecipientsChange(e.target.value)}
+                  placeholder="email,name,company&#10;john@example.com,John,ACME&#10;sara@example.com,Sara,Beta"
+                />
+                
+                {recipients.length > 0 && !selectedListId && (
+                  <button
+                    type="button"
+                    className="text-xs text-primary hover:underline"
+                    onClick={() => setSaveListOpen(true)}
+                  >
+                    Save these {recipients.length} contacts as a new list?
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Validation */}
@@ -628,6 +710,54 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
           </Card>
         </div>
       </div>
+
+      {/* Save as List Dialog */}
+      <Dialog open={saveListOpen} onOpenChange={setSaveListOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Save as List</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <p className="text-sm text-muted-foreground">
+              Save these {recipients.length} contacts as a reusable list.
+            </p>
+            <div className="space-y-2">
+              <Label>List Name</Label>
+              <Input
+                value={newListName}
+                onChange={(e) => setNewListName(e.target.value)}
+                placeholder="e.g., Q1 Newsletter Recipients"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSaveListOpen(false)}>Cancel</Button>
+            <Button
+              disabled={!newListName.trim()}
+              onClick={async () => {
+                try {
+                  const list = await listsApi.create({ name: newListName })
+                  await listsApi.addMembers(list.id, recipients.map(r => ({
+                    email: r.email,
+                    name: r.name,
+                    company: r.company,
+                    ...r
+                  })))
+                  setLists([list, ...lists])
+                  setSelectedListId(list.id)
+                  setShowManualEntry(false)
+                  setSaveListOpen(false)
+                  setNewListName('')
+                } catch (error) {
+                  console.error('Failed to save list:', error)
+                }
+              }}
+            >
+              Save List
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
