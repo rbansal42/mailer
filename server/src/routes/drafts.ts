@@ -10,6 +10,7 @@ interface DraftRow {
   name: string
   template_id: number | null
   mail_id: number | null
+  list_id: number | null
   subject: string | null
   test_email: string | null
   recipients: string
@@ -27,6 +28,7 @@ function formatDraft(row: DraftRow) {
     name: row.name,
     templateId: row.template_id,
     mailId: row.mail_id,
+    listId: row.list_id,
     subject: row.subject,
     testEmail: row.test_email,
     recipients: JSON.parse(row.recipients || '[]'),
@@ -75,16 +77,17 @@ draftsRouter.post('/', async (req, res) => {
     return res.status(400).json({ error: validation.error })
   }
 
-  const { name, templateId, mailId, subject, testEmail, recipients, recipientsText, variables, cc, bcc } = validation.data
+  const { name, templateId, mailId, listId, subject, testEmail, recipients, recipientsText, variables, cc, bcc } = validation.data
 
   try {
 
     const result = await execute(
-      'INSERT INTO drafts (name, template_id, mail_id, subject, test_email, recipients, recipients_text, variables, cc, bcc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO drafts (name, template_id, mail_id, list_id, subject, test_email, recipients, recipients_text, variables, cc, bcc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         name,
         templateId ?? null,
         mailId ?? null,
+        listId ?? null,
         subject ?? null,
         testEmail ?? null,
         JSON.stringify(recipients || []),
@@ -113,7 +116,7 @@ draftsRouter.put('/:id', async (req, res) => {
     return res.status(400).json({ error: validation.error })
   }
 
-  const { name, templateId, mailId, subject, testEmail, recipients, recipientsText, variables, cc, bcc } = validation.data
+  const { name, templateId, mailId, listId, subject, testEmail, recipients, recipientsText, variables, cc, bcc } = validation.data
 
   try {
     // Check if draft exists
@@ -138,6 +141,10 @@ draftsRouter.put('/:id', async (req, res) => {
     if (mailId !== undefined) {
       updates.push('mail_id = ?')
       values.push(mailId ?? null)
+    }
+    if (listId !== undefined) {
+      updates.push('list_id = ?')
+      values.push(listId ?? null)
     }
     if (subject !== undefined) {
       updates.push('subject = ?')

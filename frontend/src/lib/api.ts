@@ -284,6 +284,7 @@ export interface Draft {
   name: string
   templateId: number | null
   mailId: number | null
+  listId: number | null
   subject: string
   testEmail: string | null
   recipients: Recipient[]

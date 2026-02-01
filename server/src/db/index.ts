@@ -467,6 +467,7 @@ export async function initializeDatabase() {
   await addColumnIfNotExists('drafts', 'cc', 'TEXT', '[]')
   await addColumnIfNotExists('drafts', 'bcc', 'TEXT', '[]')
   await addColumnIfNotExists('drafts', 'mail_id', 'INTEGER', '')
+  await addColumnIfNotExists('drafts', 'list_id', 'INTEGER', '')
   await addColumnIfNotExists('drafts', 'test_email', 'TEXT', '')
   await addColumnIfNotExists('drafts', 'recipients_text', 'TEXT', '')
   await addColumnIfNotExists('campaigns', 'cc', 'TEXT', '[]')

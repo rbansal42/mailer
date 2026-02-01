@@ -141,7 +141,7 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
   
   // List picker state
   const [lists, setLists] = useState<ContactList[]>([])
-  const [selectedListId, setSelectedListId] = useState<number | null>(null)
+  const [selectedListId, setSelectedListId] = useState<number | null>(draft?.listId || null)
   const [showManualEntry, setShowManualEntry] = useState(false)
   const [saveListOpen, setSaveListOpen] = useState(false)
   const [newListName, setNewListName] = useState('')
@@ -260,6 +260,7 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
       name,
       templateId: contentSource === 'template' ? templateId : null,
       mailId: contentSource === 'mail' ? mailId : null,
+      listId: selectedListId,
       subject,
       testEmail: testEmails || null,
       recipients,
