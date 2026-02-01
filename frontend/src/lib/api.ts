@@ -211,6 +211,36 @@ export const api = {
     request<{ success: boolean; deleted: number }>(`/certificates/campaign-attachments/${draftId}`, {
       method: 'DELETE',
     }),
+
+  // Media
+  getMedia: (showDeleted = false) =>
+    request<Media[]>(showDeleted ? '/media?deleted=true' : '/media'),
+  
+  createMedia: (data: {
+    uploadthing_key: string
+    url: string
+    filename: string
+    size_bytes?: number
+  }) =>
+    request<Media>('/media', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  
+  updateMedia: (id: string, data: { filename?: string; alt_text?: string }) =>
+    request<Media>(`/media/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+  
+  deleteMedia: (id: string) =>
+    request<void>(`/media/${id}`, { method: 'DELETE' }),
+  
+  restoreMedia: (id: string) =>
+    request<Media>(`/media/${id}/restore`, { method: 'POST' }),
+  
+  getMediaUsage: (id: string) =>
+    request<MediaUsage[]>(`/media/${id}/usage`),
 }
 
 // Types
@@ -386,4 +416,21 @@ export interface GenerateResponse {
   success: boolean
   generated: number
   certificates: GeneratedCertificate[]
+}
+
+// Media types
+export interface Media {
+  id: string
+  uploadthing_key: string
+  url: string
+  filename: string
+  alt_text: string
+  size_bytes: number | null
+  uploaded_at: string
+  deleted_at: string | null
+}
+
+export interface MediaUsage {
+  id: string
+  name: string
 }
