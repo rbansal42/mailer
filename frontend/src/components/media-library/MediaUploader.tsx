@@ -10,8 +10,11 @@ interface MediaUploaderProps {
 }
 
 export function MediaUploader({ onUploadComplete, onUploadError }: MediaUploaderProps) {
+  console.log('[UT CLIENT] MediaUploader mounted');
+  
   const { startUpload, isUploading } = useUploadThing("mediaUploader", {
     onClientUploadComplete: (res) => {
+      console.log('[UT CLIENT] Upload complete:', res);
       if (res?.[0]) {
         const file = res[0];
         onUploadComplete({
@@ -23,8 +26,13 @@ export function MediaUploader({ onUploadComplete, onUploadError }: MediaUploader
       }
     },
     onUploadError: (error) => {
-      console.error("Upload error:", error);
+      console.error("[UT CLIENT] Upload error:", error);
+      console.error("[UT CLIENT] Error message:", error.message);
+      console.error("[UT CLIENT] Error cause:", (error as any).cause);
       onUploadError?.(error);
+    },
+    onUploadBegin: (name) => {
+      console.log('[UT CLIENT] Upload beginning:', name);
     },
   });
 
