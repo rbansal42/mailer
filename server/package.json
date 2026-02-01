@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "mkdir -p dist/assets && cp -r assets/fonts dist/assets/ && bun run --watch src/index.ts",
-    "build": "bun build src/index.ts --target=bun --outdir=dist && bun build src/services/pdf/pdf-worker.ts --target=bun --outdir=dist && mkdir -p dist/assets && cp -r assets/fonts dist/assets/",
+    "build": "bun build src/index.ts --target=bun --outdir=dist --external @libsql/client --external sharp && bun build src/services/pdf/pdf-worker.ts --target=bun --outdir=dist && mkdir -p dist/assets && cp -r assets/fonts dist/assets/",
     "start": "bun run dist/index.js",
     "db:migrate": "bun run src/db/migrate.ts"
   },
