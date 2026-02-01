@@ -1,9 +1,9 @@
 -- Media library table for uploaded images
 CREATE TABLE IF NOT EXISTS media (
   id TEXT PRIMARY KEY,
-  uploadthing_key TEXT NOT NULL,
   url TEXT NOT NULL,
   filename TEXT NOT NULL,
+  original_filename TEXT NOT NULL,
   alt_text TEXT DEFAULT '',
   size_bytes INTEGER,
   uploaded_at TEXT DEFAULT CURRENT_TIMESTAMP,

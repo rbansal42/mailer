@@ -42,13 +42,8 @@ export function MediaLibrarySidebar({
     }
   }, [isOpen]);
 
-  const handleUploadComplete = async (data: { key: string; url: string; name: string; size: number }) => {
-    await api.createMedia({
-      uploadthing_key: data.key,
-      url: data.url,
-      filename: data.name,
-      size_bytes: data.size,
-    });
+  const handleUploadComplete = async () => {
+    // Upload endpoint already creates the media entry, just refresh the list
     fetchMedia();
   };
 

@@ -19,7 +19,6 @@ import { analyticsRouter } from './routes/analytics'
 import { recurringRouter } from './routes/recurring'
 import { sequencesRouter } from './routes/sequences'
 import { certificatesRouter } from './routes/certificates'
-import { createUploadthingRouter } from './routes/uploadthing'
 import mediaRoutes from './routes/media'
 import { authMiddleware } from './middleware/auth'
 import { startQueueProcessor } from './services/queue-processor'
@@ -138,11 +137,10 @@ app.use('/api/sequences', authMiddleware, sequencesRouter)
 app.use('/api/certificates', authMiddleware, certificatesRouter)
 app.use('/api/media', authMiddleware, mediaRoutes)
 
-// Uploadthing routes (uses its own auth via UPLOADTHING_TOKEN)
-console.log('[UT DEBUG] About to create uploadthing router...');
-const utRouter = createUploadthingRouter();
-console.log('[UT DEBUG] Router created, mounting at /api/uploadthing');
-app.use('/api/uploadthing', utRouter);
+// Serve media files publicly (no auth - these are for emails)
+const DATA_DIR = process.env.DATA_DIR || join(process.cwd(), '..', 'data')
+const mediaPath = join(DATA_DIR, 'media')
+app.use('/media', express.static(mediaPath))
 
 // Serve static frontend in production
 const publicPath = join(process.cwd(), 'public')

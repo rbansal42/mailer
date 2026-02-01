@@ -1,48 +1,58 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import { Upload, Loader2 } from "lucide-react";
-import { useUploadThing } from "@/lib/uploadthing";
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/hooks/useAuthStore";
 
 interface MediaUploaderProps {
-  onUploadComplete: (data: { key: string; url: string; name: string; size: number }) => void;
+  onUploadComplete: (data: { url: string; name: string; size: number }) => void;
   onUploadError?: (error: Error) => void;
 }
 
 export function MediaUploader({ onUploadComplete, onUploadError }: MediaUploaderProps) {
-  console.log('[UT CLIENT] MediaUploader mounted');
-  
-  const { startUpload, isUploading } = useUploadThing("mediaUploader", {
-    onClientUploadComplete: (res) => {
-      console.log('[UT CLIENT] Upload complete:', res);
-      if (res?.[0]) {
-        const file = res[0];
-        onUploadComplete({
-          key: file.key,
-          url: file.ufsUrl,
-          name: file.name,
-          size: file.size,
-        });
+  const [isUploading, setIsUploading] = useState(false);
+  const token = useAuthStore((s) => s.token);
+
+  const uploadFile = async (file: File) => {
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await fetch("/api/media/upload", {
+        method: "POST",
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: "Upload failed" }));
+        throw new Error(error.error || "Upload failed");
       }
-    },
-    onUploadError: (error) => {
-      console.error("[UT CLIENT] Upload error:", error);
-      console.error("[UT CLIENT] Error message:", error.message);
-      console.error("[UT CLIENT] Error cause:", (error as any).cause);
-      onUploadError?.(error);
-    },
-    onUploadBegin: (name) => {
-      console.log('[UT CLIENT] Upload beginning:', name);
-    },
-  });
+
+      const media = await response.json();
+      onUploadComplete({
+        url: media.url,
+        name: media.original_filename,
+        size: media.size_bytes,
+      });
+    } catch (error) {
+      console.error("Upload error:", error);
+      onUploadError?.(error instanceof Error ? error : new Error("Upload failed"));
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   const onDrop = useCallback(
     (acceptedFiles: File[]) => {
       if (acceptedFiles.length > 0) {
-        startUpload(acceptedFiles);
+        uploadFile(acceptedFiles[0]);
       }
     },
-    [startUpload]
+    [token]
   );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({

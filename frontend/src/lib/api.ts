@@ -216,17 +216,6 @@ export const api = {
   getMedia: (showDeleted = false) =>
     request<Media[]>(showDeleted ? '/media?deleted=true' : '/media'),
   
-  createMedia: (data: {
-    uploadthing_key: string
-    url: string
-    filename: string
-    size_bytes?: number
-  }) =>
-    request<Media>('/media', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
-  
   updateMedia: (id: string, data: { filename?: string; alt_text?: string }) =>
     request<Media>(`/media/${id}`, {
       method: 'PATCH',
@@ -421,9 +410,9 @@ export interface GenerateResponse {
 // Media types
 export interface Media {
   id: string
-  uploadthing_key: string
   url: string
   filename: string
+  original_filename: string
   alt_text: string
   size_bytes: number | null
   uploaded_at: string

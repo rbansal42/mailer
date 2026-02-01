@@ -1,4 +1,4 @@
-import { EmailProvider } from './base'
+import { EmailProvider, SendOptions } from './base'
 import { GmailProvider } from './gmail'
 import { SmtpProvider } from './smtp'
 

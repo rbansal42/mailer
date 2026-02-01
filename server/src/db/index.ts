@@ -29,7 +29,14 @@ function addColumnIfNotExists(table: string, column: string, type: string, defau
 
 // Run SQL migrations from the migrations directory
 function runMigrations() {
-  const migrationsDir = join(process.cwd(), 'server', 'src', 'db', 'migrations')
+  // Try multiple possible locations for migrations
+  const possiblePaths = [
+    join(process.cwd(), 'src', 'db', 'migrations'),           // Running from server/
+    join(process.cwd(), 'server', 'src', 'db', 'migrations'), // Running from root
+    join(dirname(import.meta.path), 'migrations'),            // Relative to this file
+  ]
+  
+  const migrationsDir = possiblePaths.find(p => existsSync(p))
   
   if (!existsSync(migrationsDir)) {
     return

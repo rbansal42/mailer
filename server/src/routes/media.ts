@@ -1,8 +1,80 @@
 import { Router } from "express";
+import multer from "multer";
+import sharp from "sharp";
 import { db } from "../db";
 import { nanoid } from "nanoid";
+import { join } from "path";
+import { existsSync, mkdirSync, unlinkSync } from "fs";
 
 const router = Router();
+
+// Use same DATA_DIR as db module for consistency
+const DATA_DIR = process.env.DATA_DIR || join(process.cwd(), "..", "data");
+const MEDIA_DIR = join(DATA_DIR, "media");
+if (!existsSync(MEDIA_DIR)) {
+  mkdirSync(MEDIA_DIR, { recursive: true });
+}
+
+// Configure multer for memory storage (we'll process with sharp before saving)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB max
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Invalid file type. Only JPEG, PNG, GIF, and WebP are allowed."));
+    }
+  },
+});
+
+// Upload and optimize image
+router.post("/upload", upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+
+    const id = nanoid();
+    const originalName = req.file.originalname;
+    const ext = ".webp"; // Always save as WebP
+    const filename = `${id}${ext}`;
+    const filepath = join(MEDIA_DIR, filename);
+
+    // Process image with Sharp - convert to WebP and optimize
+    await sharp(req.file.buffer)
+      .webp({ quality: 85 })
+      .resize(2000, 2000, { 
+        fit: "inside", 
+        withoutEnlargement: true 
+      })
+      .toFile(filepath);
+
+    // Get file size after optimization
+    const stats = await sharp(filepath).metadata();
+    const optimizedBuffer = await sharp(filepath).toBuffer();
+    const sizeBytes = optimizedBuffer.length;
+
+    // Generate public URL
+    const url = `/media/${filename}`;
+
+    // Save to database
+    db.run(
+      `INSERT INTO media (id, url, filename, original_filename, size_bytes) 
+       VALUES (?, ?, ?, ?, ?)`,
+      [id, url, filename, originalName, sizeBytes]
+    );
+
+    const media = db.query("SELECT * FROM media WHERE id = ?").get(id);
+    res.status(201).json(media);
+  } catch (error) {
+    console.error("Upload error:", error);
+    res.status(500).json({ error: "Failed to process image" });
+  }
+});
 
 // List media (with optional deleted filter)
 router.get("/", (req, res) => {
@@ -25,25 +97,6 @@ router.get("/:id", (req, res) => {
   res.json(media);
 });
 
-// Create media record (after Uploadthing upload)
-router.post("/", (req, res) => {
-  const { uploadthing_key, url, filename, size_bytes } = req.body;
-  
-  if (!uploadthing_key || !url || !filename) {
-    return res.status(400).json({ error: "Missing required fields" });
-  }
-  
-  const id = nanoid();
-  db.run(
-    `INSERT INTO media (id, uploadthing_key, url, filename, size_bytes) 
-     VALUES (?, ?, ?, ?, ?)`,
-    [id, uploadthing_key, url, filename, size_bytes || null]
-  );
-  
-  const media = db.query("SELECT * FROM media WHERE id = ?").get(id);
-  res.status(201).json(media);
-});
-
 // Update media (filename, alt_text)
 router.patch("/:id", (req, res) => {
   const { filename, alt_text } = req.body;
@@ -57,7 +110,7 @@ router.patch("/:id", (req, res) => {
   const values: any[] = [];
   
   if (filename !== undefined) {
-    updates.push("filename = ?");
+    updates.push("original_filename = ?");
     values.push(filename);
   }
   if (alt_text !== undefined) {
