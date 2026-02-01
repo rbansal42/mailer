@@ -1,5 +1,6 @@
 import { ImageIcon } from "lucide-react";
 import { MediaItem } from "./MediaItem";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import type { Media, MediaUsage } from "@/lib/api";
 
 interface MediaGridProps {
@@ -38,20 +39,22 @@ export function MediaGrid({
   }
 
   return (
-    <div className="grid grid-cols-2 gap-3">
-      {media.map((item) => (
-        <MediaItem
-          key={item.id}
-          media={item}
-          isDeleted={isDeleted}
-          selectionMode={selectionMode}
-          onSelect={onSelect}
-          onDelete={() => onDelete?.(item.id)}
-          onRestore={() => onRestore?.(item.id)}
-          onUpdate={onUpdate ? (data) => onUpdate(item.id, data) : undefined}
-          onGetUsage={onGetUsage ? () => onGetUsage(item.id) : undefined}
-        />
-      ))}
-    </div>
+    <TooltipProvider>
+      <div className="grid grid-cols-2 gap-3">
+        {media.map((item) => (
+          <MediaItem
+            key={item.id}
+            media={item}
+            isDeleted={isDeleted}
+            selectionMode={selectionMode}
+            onSelect={onSelect}
+            onDelete={() => onDelete?.(item.id)}
+            onRestore={() => onRestore?.(item.id)}
+            onUpdate={onUpdate ? (data) => onUpdate(item.id, data) : undefined}
+            onGetUsage={onGetUsage ? () => onGetUsage(item.id) : undefined}
+          />
+        ))}
+      </div>
+    </TooltipProvider>
   );
 }
