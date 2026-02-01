@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { queryOne, execute } from '../db'
-import { generateToken } from '../middleware/auth'
+import { generateToken, markSetupComplete } from '../middleware/auth'
 
 export const authRouter = Router()
 
@@ -29,6 +29,9 @@ authRouter.post('/setup', async (req, res) => {
   
   await execute('INSERT INTO settings (key, value) VALUES (?, ?)', ['password_hash', hash])
 
+  // Update auth cache so subsequent requests work immediately
+  markSetupComplete()
+  
   const token = generateToken()
   res.json({ token })
 })
