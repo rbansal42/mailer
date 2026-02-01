@@ -22,6 +22,27 @@ export const createTemplateSchema = z.object({
 
 export const updateTemplateSchema = createTemplateSchema.partial()
 
+// Mail schemas
+export const createMailSchema = z.object({
+  name: z.string().min(1, { message: 'Name is required' }).max(200),
+  description: z.string().max(1000).optional(),
+  blocks: z.array(blockSchema).default([]),
+  templateId: z.number().int().positive().optional(),
+  status: z.enum(['draft', 'sent', 'archived']).default('draft')
+})
+
+export const updateMailSchema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  description: z.string().max(1000).optional(),
+  blocks: z.array(blockSchema).optional(),
+  status: z.enum(['draft', 'sent', 'archived']).optional()
+})
+
+export const saveAsTemplateSchema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  description: z.string().max(1000).optional()
+})
+
 // Provider-specific config schemas
 const gmailConfigSchema = z.object({
   email: z.string().email(),

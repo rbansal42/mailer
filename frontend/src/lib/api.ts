@@ -242,6 +242,18 @@ export interface Template {
   updatedAt: string
 }
 
+export interface Mail {
+  id: number
+  name: string
+  description: string | null
+  blocks: Block[]
+  templateId: number | null
+  campaignId: number | null
+  status: 'draft' | 'sent'
+  createdAt: string
+  updatedAt: string
+}
+
 export interface Block {
   id: string
   type: 'header' | 'text' | 'image' | 'button' | 'divider' | 'spacer' | 'columns' | 'footer'
@@ -422,4 +434,16 @@ export interface Media {
 export interface MediaUsage {
   id: string
   name: string
+}
+
+export const mails = {
+  list: () => request<Mail[]>('/mails'),
+  get: (id: number) => request<Mail>(`/mails/${id}`),
+  create: (data: { name: string; description?: string; blocks?: Block[]; templateId?: number; status?: string }) =>
+    request<Mail>('/mails', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: number, data: { name: string; description?: string; blocks?: Block[]; status?: string }) =>
+    request<Mail>(`/mails/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  delete: (id: number) => request<void>(`/mails/${id}`, { method: 'DELETE' }),
+  saveAsTemplate: (id: number, data: { name?: string; description?: string }) =>
+    request<{ id: number }>(`/mails/${id}/save-as-template`, { method: 'POST', body: JSON.stringify(data) }),
 }

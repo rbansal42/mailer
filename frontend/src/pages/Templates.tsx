@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api, Template, Block } from '../lib/api'
+import { api, Template, Block, mails } from '../lib/api'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
@@ -103,9 +103,11 @@ export default function Templates() {
 interface EditorProps {
   template: Template | null
   onBack: () => void
+  isMail?: boolean
+  onSaveAsTemplate?: (name: string) => void
 }
 
-function TemplateEditor({ template, onBack }: EditorProps) {
+export function TemplateEditor({ template, onBack, isMail, onSaveAsTemplate }: EditorProps) {
   const queryClient = useQueryClient()
   const [name, setName] = useState(template?.name || 'Untitled Template')
   const [_description, _setDescription] = useState(template?.description || '')
@@ -150,19 +152,26 @@ function TemplateEditor({ template, onBack }: EditorProps) {
   }
 
   const saveMutation = useMutation({
-    mutationFn: (data: Partial<Template>) => template
-      ? api.updateTemplate(template.id, data)
-      : api.createTemplate(data as Omit<Template, 'id' | 'createdAt' | 'updatedAt'>),
+    mutationFn: async (data: Partial<Template>) => {
+      if (isMail) {
+        return template
+          ? mails.update(template.id, { name: data.name!, blocks: data.blocks })
+          : mails.create({ name: data.name!, blocks: data.blocks })
+      }
+      return template
+        ? api.updateTemplate(template.id, data)
+        : api.createTemplate(data as Omit<Template, 'id' | 'createdAt' | 'updatedAt'>)
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['templates'] })
+      queryClient.invalidateQueries({ queryKey: isMail ? ['mails'] : ['templates'] })
       onBack()
     },
   })
 
   const deleteMutation = useMutation({
-    mutationFn: () => api.deleteTemplate(template!.id),
+    mutationFn: () => isMail ? mails.delete(template!.id) : api.deleteTemplate(template!.id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['templates'] })
+      queryClient.invalidateQueries({ queryKey: isMail ? ['mails'] : ['templates'] })
       onBack()
     },
   })
@@ -303,12 +312,23 @@ function TemplateEditor({ template, onBack }: EditorProps) {
               size="sm"
               className="text-destructive"
               onClick={() => deleteMutation.mutate()}
-              aria-label="Delete template"
+              aria-label={isMail ? "Delete mail" : "Delete template"}
             >
               <Trash2 className="h-4 w-4" />
             </Button>
           )}
-          <Button size="sm" onClick={handleSave} disabled={saveMutation.isPending} aria-label="Save template">
+          {isMail && template && onSaveAsTemplate && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onSaveAsTemplate(name)}
+              aria-label="Save as template"
+            >
+              <FileText className="h-4 w-4 mr-1" />
+              Save as Template
+            </Button>
+          )}
+          <Button size="sm" onClick={handleSave} disabled={saveMutation.isPending} aria-label={isMail ? "Save mail" : "Save template"}>
             <Save className="h-4 w-4 mr-1" />
             Save
           </Button>
