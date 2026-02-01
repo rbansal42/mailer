@@ -71,6 +71,11 @@ export const createAccountSchema = z.object({
 })
 
 // Draft schemas
+// Flat recipient schema for drafts (email + any additional fields)
+const draftRecipientSchema = z.object({
+  email: emailSchema,
+}).passthrough()
+
 export const createDraftSchema = z.object({
   name: z.string().min(1).max(200),
   templateId: z.number().int().positive().nullable().optional(),
@@ -78,10 +83,7 @@ export const createDraftSchema = z.object({
   listId: z.number().int().positive().nullable().optional(),
   subject: z.string().max(500).optional(),
   testEmail: z.string().max(1000).nullable().optional(),
-  recipients: z.array(z.object({
-    email: emailSchema,
-    data: z.record(z.string(), z.string()).optional()
-  })).optional(),
+  recipients: z.array(draftRecipientSchema).optional(),
   recipientsText: z.string().nullable().optional(),
   variables: z.record(z.string(), z.string()).optional(),
   cc: emailArraySchema,
