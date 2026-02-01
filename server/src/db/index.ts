@@ -404,6 +404,20 @@ export async function initializeDatabase() {
     )
   `)
 
+  // Media library table for uploaded images
+  await execute(`
+    CREATE TABLE IF NOT EXISTS media (
+      id TEXT PRIMARY KEY,
+      url TEXT NOT NULL,
+      filename TEXT NOT NULL,
+      original_filename TEXT NOT NULL,
+      alt_text TEXT DEFAULT '',
+      size_bytes INTEGER,
+      uploaded_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      deleted_at TEXT DEFAULT NULL
+    )
+  `)
+
   // Create attachments directory
   mkdirSync(join(DATA_DIR, 'attachments'), { recursive: true })
 
@@ -434,6 +448,7 @@ export async function initializeDatabase() {
   await execute('CREATE INDEX IF NOT EXISTS idx_generated_certificates_id ON generated_certificates(certificate_id)')
   await execute('CREATE INDEX IF NOT EXISTS idx_generated_certificates_config ON generated_certificates(config_id)')
   await execute('CREATE INDEX IF NOT EXISTS idx_generated_certificates_campaign ON generated_certificates(campaign_id)')
+  await execute('CREATE INDEX IF NOT EXISTS idx_media_deleted_at ON media(deleted_at)')
 
   // Initialize default tracking settings
   const trackingDefaults = [
