@@ -103,6 +103,45 @@ export const sendCampaignSchema = z.object({
   message: 'Either templateId or mailId must be provided'
 })
 
+// Contact schemas
+export const contactSchema = z.object({
+  email: emailSchema,
+  name: z.string().optional(),
+  first_name: z.string().optional(),
+  last_name: z.string().optional(),
+  company: z.string().optional(),
+  phone: z.string().optional(),
+  country: z.string().optional(),
+  custom_fields: z.record(z.string(), z.string()).optional(),
+})
+
+export const createContactSchema = contactSchema
+
+export const updateContactSchema = contactSchema.partial().omit({ email: true })
+
+// List schemas
+export const createListSchema = z.object({
+  name: z.string().min(1, 'List name is required'),
+  description: z.string().optional(),
+})
+
+export const updateListSchema = createListSchema.partial()
+
+// Add contacts to list schema
+export const addContactsToListSchema = z.object({
+  contacts: z.array(contactSchema).min(1, 'At least one contact required'),
+})
+
+// Import CSV schema
+export const importCsvSchema = z.object({
+  csv: z.string().min(1, 'CSV data is required'),
+  mapping: z.record(z.string(), z.string()).optional(),
+})
+
+export type Contact = z.infer<typeof contactSchema>
+export type CreateList = z.infer<typeof createListSchema>
+export type UpdateList = z.infer<typeof updateListSchema>
+
 // Validation helper
 export function validate<T>(schema: z.ZodSchema<T>, data: unknown): { success: true; data: T } | { success: false; error: string } {
   const result = schema.safeParse(data)
