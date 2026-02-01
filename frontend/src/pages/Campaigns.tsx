@@ -209,8 +209,10 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
     setTestResult(null)
 
     try {
-      // Use first recipient data for variable substitution, or empty object
-      const sampleData = recipients[0] || { email: parsedTestEmails[0], name: 'Test User' }
+      // Use first recipient data for variable substitution, or create sample data
+      const sampleData = recipients[0] 
+        ? { ...recipients[0] }  // Copy first recipient's data
+        : { email: parsedTestEmails[0], name: 'Test User', firstname: 'Test', lastname: 'User' }
       
       // Create test recipients with sample data
       const testRecipients = parsedTestEmails.map(email => ({
@@ -223,9 +225,15 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
         ? `mailId=${mailId}` 
         : `templateId=${templateId}`
       
+      // Build descriptive test name
+      const contentName = contentSource === 'mail' 
+        ? selectedMail?.name 
+        : selectedTemplate?.name
+      const testName = `Test: ${name || 'Unnamed'}${contentName ? ` (${contentName})` : ''}`
+      
       const token = getToken()
       const response = await fetch(
-        `/api/send?${contentParam}&subject=${encodeURIComponent('[TEST] ' + subject)}&recipients=${encodeURIComponent(JSON.stringify(testRecipients))}&name=${encodeURIComponent('Test: ' + (name || 'Unnamed'))}`,
+        `/api/send?${contentParam}&subject=${encodeURIComponent('[TEST] ' + subject)}&recipients=${encodeURIComponent(JSON.stringify(testRecipients))}&name=${encodeURIComponent(testName)}`,
         {
           headers: {
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
