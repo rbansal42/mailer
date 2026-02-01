@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import { MediaLibrarySidebar } from '@/components/media-library'
 import { cn } from '../lib/utils'
+import { RichTextEditor } from '../components/ui/rich-text-editor'
 import { useBlockHistory } from '../stores/history'
 import { useKeyboardShortcuts, createSaveShortcut, createUndoShortcut, createRedoShortcut } from '../hooks/useKeyboardShortcuts'
 
@@ -511,12 +512,11 @@ function BlockPreview({ block, darkMode: _darkMode }: { block: Block; darkMode?:
       )
     case 'text':
       return (
-        <p
-          className="p-3"
+        <div
+          className="p-3 prose prose-sm max-w-none"
           style={{ fontSize: Number(props.fontSize) || 14, textAlign: (props.align as 'left' | 'center' | 'right') || 'left' }}
-        >
-          {String(props.content) || 'Enter text content...'}
-        </p>
+          dangerouslySetInnerHTML={{ __html: String(props.content) || '<p>Enter text content...</p>' }}
+        />
       )
     case 'image':
       return (
@@ -621,11 +621,11 @@ function BlockProperties({ block, onChange, onOpenMediaLibrary }: {
         <div className="space-y-3">
           <div className="space-y-1">
             <Label className="text-xs">Content</Label>
-            <textarea
+            <RichTextEditor
               value={String(props.content || '')}
-              onChange={(e) => onChange({ content: e.target.value })}
+              onChange={(content) => onChange({ content })}
               placeholder="Hello {{name}}..."
-              className="w-full h-24 text-xs rounded-md border border-input bg-background text-foreground px-2 py-1 resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+              className="min-h-[120px]"
             />
           </div>
           <div className="grid grid-cols-2 gap-2">

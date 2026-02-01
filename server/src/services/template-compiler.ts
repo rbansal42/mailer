@@ -1,3 +1,5 @@
+import DOMPurify from 'isomorphic-dompurify'
+
 // Block structure from frontend
 interface BlockInput {
   id: string
@@ -44,7 +46,16 @@ function compileHeader(props: Record<string, unknown>): string {
 function compileText(props: Record<string, unknown>, data: Record<string, string>): string {
   const fontSize = Number(props.fontSize) || 16
   const align = String(props.align || 'left')
-  const content = replaceVariables(String(props.content || ''), data)
+  let content = String(props.content || '')
+  
+  // Replace variables first
+  content = replaceVariables(content, data)
+  
+  // Sanitize HTML
+  content = DOMPurify.sanitize(content, {
+    ALLOWED_TAGS: ['p', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'a', 'h1', 'h2', 'h3', 'ul', 'ol', 'li', 'blockquote', 'span'],
+    ALLOWED_ATTR: ['href', 'style', 'class'],
+  })
 
   return `
     <table width="100%" cellpadding="0" cellspacing="0" border="0">
