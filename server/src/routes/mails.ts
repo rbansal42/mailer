@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { db } from '../db'
+import { queryAll, queryOne, execute } from '../db'
 import { createMailSchema, updateMailSchema, saveAsTemplateSchema, validate } from '../lib/validation'
 import { logger } from '../lib/logger'
 
@@ -13,6 +13,15 @@ interface MailRow {
   template_id: number | null
   campaign_id: number | null
   status: string
+  created_at: string
+  updated_at: string
+}
+
+interface TemplateRow {
+  id: number
+  name: string
+  description: string | null
+  blocks: string
   created_at: string
   updated_at: string
 }
@@ -32,16 +41,16 @@ function formatMail(row: MailRow) {
 }
 
 // List all mails
-mailsRouter.get('/', (_, res) => {
+mailsRouter.get('/', async (_, res) => {
   logger.info('Listing mails', { service: 'mails' })
-  const rows = db.query('SELECT * FROM mails ORDER BY updated_at DESC').all() as MailRow[]
+  const rows = await queryAll<MailRow>('SELECT * FROM mails ORDER BY updated_at DESC')
   res.json(rows.map(formatMail))
 })
 
 // Get single mail
-mailsRouter.get('/:id', (req, res) => {
+mailsRouter.get('/:id', async (req, res) => {
   logger.info('Getting mail', { service: 'mails', mailId: req.params.id })
-  const row = db.query('SELECT * FROM mails WHERE id = ?').get(req.params.id) as MailRow | null
+  const row = await queryOne<MailRow>('SELECT * FROM mails WHERE id = ?', [req.params.id])
   if (!row) {
     logger.warn('Mail not found', { service: 'mails', mailId: req.params.id })
     return res.status(404).json({ message: 'Mail not found' })
@@ -50,7 +59,7 @@ mailsRouter.get('/:id', (req, res) => {
 })
 
 // Create new mail
-mailsRouter.post('/', (req, res) => {
+mailsRouter.post('/', async (req, res) => {
   const validation = validate(createMailSchema, req.body)
   if (!validation.success) {
     logger.warn('Mail validation failed', { service: 'mails', error: validation.error })
@@ -60,18 +69,18 @@ mailsRouter.post('/', (req, res) => {
 
   logger.info('Creating mail', { service: 'mails', name })
 
-  const result = db.run(
+  const result = await execute(
     'INSERT INTO mails (name, description, blocks, template_id, status) VALUES (?, ?, ?, ?, ?)',
     [name, description || null, JSON.stringify(blocks), templateId || null, status || 'draft']
   )
 
-  const row = db.query('SELECT * FROM mails WHERE id = ?').get(result.lastInsertRowid) as MailRow
-  logger.info('Mail created', { service: 'mails', mailId: row.id, name })
-  res.status(201).json(formatMail(row))
+  const row = await queryOne<MailRow>('SELECT * FROM mails WHERE id = ?', [result.lastInsertRowid])
+  logger.info('Mail created', { service: 'mails', mailId: row!.id, name })
+  res.status(201).json(formatMail(row!))
 })
 
 // Update mail
-mailsRouter.put('/:id', (req, res) => {
+mailsRouter.put('/:id', async (req, res) => {
   const validation = validate(updateMailSchema, req.body)
   if (!validation.success) {
     logger.warn('Mail update validation failed', { service: 'mails', mailId: req.params.id, error: validation.error })
@@ -105,10 +114,10 @@ mailsRouter.put('/:id', (req, res) => {
   if (updates.length > 0) {
     updates.push('updated_at = CURRENT_TIMESTAMP')
     values.push(req.params.id)
-    db.run(`UPDATE mails SET ${updates.join(', ')} WHERE id = ?`, values)
+    await execute(`UPDATE mails SET ${updates.join(', ')} WHERE id = ?`, values)
   }
 
-  const row = db.query('SELECT * FROM mails WHERE id = ?').get(req.params.id) as MailRow | null
+  const row = await queryOne<MailRow>('SELECT * FROM mails WHERE id = ?', [req.params.id])
   if (!row) {
     logger.warn('Mail not found for update', { service: 'mails', mailId: req.params.id })
     return res.status(404).json({ message: 'Mail not found' })
@@ -118,23 +127,23 @@ mailsRouter.put('/:id', (req, res) => {
 })
 
 // Delete mail
-mailsRouter.delete('/:id', (req, res) => {
+mailsRouter.delete('/:id', async (req, res) => {
   logger.info('Deleting mail', { service: 'mails', mailId: req.params.id })
   
   // Check if mail exists first
-  const existing = db.query('SELECT id FROM mails WHERE id = ?').get(req.params.id)
+  const existing = await queryOne<{ id: number }>('SELECT id FROM mails WHERE id = ?', [req.params.id])
   if (!existing) {
     logger.warn('Mail not found for deletion', { service: 'mails', mailId: req.params.id })
     return res.status(404).json({ error: 'Mail not found' })
   }
   
-  db.run('DELETE FROM mails WHERE id = ?', [req.params.id])
+  await execute('DELETE FROM mails WHERE id = ?', [req.params.id])
   logger.info('Mail deleted', { service: 'mails', mailId: req.params.id })
   res.status(204).send()
 })
 
 // Save mail as template
-mailsRouter.post('/:id/save-as-template', (req, res) => {
+mailsRouter.post('/:id/save-as-template', async (req, res) => {
   const validation = validate(saveAsTemplateSchema, req.body)
   if (!validation.success) {
     logger.warn('Save as template validation failed', { service: 'mails', mailId: req.params.id, error: validation.error })
@@ -142,7 +151,7 @@ mailsRouter.post('/:id/save-as-template', (req, res) => {
   }
 
   // Get the mail
-  const mail = db.query('SELECT * FROM mails WHERE id = ?').get(req.params.id) as MailRow | null
+  const mail = await queryOne<MailRow>('SELECT * FROM mails WHERE id = ?', [req.params.id])
   if (!mail) {
     logger.warn('Mail not found for save-as-template', { service: 'mails', mailId: req.params.id })
     return res.status(404).json({ message: 'Mail not found' })
@@ -154,30 +163,21 @@ mailsRouter.post('/:id/save-as-template', (req, res) => {
 
   logger.info('Saving mail as template', { service: 'mails', mailId: req.params.id, templateName })
 
-  const result = db.run(
+  const result = await execute(
     'INSERT INTO templates (name, description, blocks) VALUES (?, ?, ?)',
     [templateName, templateDescription, mail.blocks]
   )
 
-  interface TemplateRow {
-    id: number
-    name: string
-    description: string | null
-    blocks: string
-    created_at: string
-    updated_at: string
-  }
-
-  const template = db.query('SELECT * FROM templates WHERE id = ?').get(result.lastInsertRowid) as TemplateRow
-  logger.info('Template created from mail', { service: 'mails', mailId: req.params.id, templateId: template.id })
+  const template = await queryOne<TemplateRow>('SELECT * FROM templates WHERE id = ?', [result.lastInsertRowid])
+  logger.info('Template created from mail', { service: 'mails', mailId: req.params.id, templateId: template!.id })
 
   res.status(201).json({
-    id: template.id,
-    name: template.name,
-    description: template.description,
-    blocks: JSON.parse(template.blocks || '[]'),
-    createdAt: template.created_at,
-    updatedAt: template.updated_at,
+    id: template!.id,
+    name: template!.name,
+    description: template!.description,
+    blocks: JSON.parse(template!.blocks || '[]'),
+    createdAt: template!.created_at,
+    updatedAt: template!.updated_at,
   })
 })
 
