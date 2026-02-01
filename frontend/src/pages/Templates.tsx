@@ -8,11 +8,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import {
   Plus, ChevronLeft, Save, Trash2, Type, Image, MousePointer,
   Minus, Square, Columns, FileText, GripVertical, Loader2, Undo2, Redo2, Copy,
-  Monitor, Smartphone, Moon, Code, ImageIcon
+  Monitor, Smartphone, Moon, Code, ImageIcon, Crop
 } from 'lucide-react'
 import { MediaLibrarySidebar } from '@/components/media-library'
 import { cn } from '../lib/utils'
 import { RichTextEditor } from '../components/ui/rich-text-editor'
+import { ImageCropModal } from '../components/ui/image-crop-modal'
 import { useBlockHistory } from '../stores/history'
 import { useKeyboardShortcuts, createSaveShortcut, createUndoShortcut, createRedoShortcut } from '../hooks/useKeyboardShortcuts'
 
@@ -117,6 +118,12 @@ function TemplateEditor({ template, onBack }: EditorProps) {
   const [mediaSelectionTarget, setMediaSelectionTarget] = useState<{
     blockId: string;
     prop: "url" | "imageUrl";
+  } | null>(null)
+  const [cropModalOpen, setCropModalOpen] = useState(false)
+  const [cropTarget, setCropTarget] = useState<{
+    blockId: string;
+    url: string;
+    initialCrop?: { x: number; y: number; width: number; height: number };
   } | null>(null)
   
   const { set: recordHistory, undo, redo, canUndo, canRedo, clear: clearHistory } = useBlockHistory()
@@ -449,6 +456,19 @@ function TemplateEditor({ template, onBack }: EditorProps) {
                   setMediaSelectionTarget({ blockId: selectedBlock.id, prop })
                   setMediaLibraryOpen(true)
                 }}
+                onOpenCropModal={selectedBlock.type === 'image' && selectedBlock.props.url ? () => {
+                  setCropTarget({
+                    blockId: selectedBlock.id,
+                    url: String(selectedBlock.props.url),
+                    initialCrop: selectedBlock.props.cropWidth ? {
+                      x: Number(selectedBlock.props.cropX) || 0,
+                      y: Number(selectedBlock.props.cropY) || 0,
+                      width: Number(selectedBlock.props.cropWidth) || 0,
+                      height: Number(selectedBlock.props.cropHeight) || 0,
+                    } : undefined,
+                  })
+                  setCropModalOpen(true)
+                } : undefined}
               />
               <div className="mt-4 pt-4 border-t flex gap-1">
                 <Button
@@ -486,6 +506,24 @@ function TemplateEditor({ template, onBack }: EditorProps) {
         selectionMode={!!mediaSelectionTarget}
         onSelect={handleMediaSelect}
       />
+
+      <ImageCropModal
+        open={cropModalOpen}
+        onOpenChange={setCropModalOpen}
+        imageUrl={cropTarget?.url || ''}
+        initialCrop={cropTarget?.initialCrop}
+        onCropComplete={(crop) => {
+          if (cropTarget) {
+            updateBlock(cropTarget.blockId, {
+              cropX: crop.x,
+              cropY: crop.y,
+              cropWidth: crop.width,
+              cropHeight: crop.height,
+            })
+          }
+          setCropTarget(null)
+        }}
+      />
     </div>
   )
 }
@@ -522,7 +560,14 @@ function BlockPreview({ block, darkMode: _darkMode }: { block: Block; darkMode?:
       return (
         <div className="p-3" style={{ textAlign: (props.align as 'left' | 'center' | 'right') || 'center' }}>
           {props.url ? (
-            <img src={String(props.url)} alt={String(props.alt) || ''} style={{ maxWidth: props.width ? `${props.width}%` : '100%' }} />
+            <img 
+              src={String(props.url)} 
+              alt={String(props.alt) || ''} 
+              style={{ 
+                maxWidth: props.width ? `${props.width}%` : '100%',
+                objectFit: (props.objectFit as 'contain' | 'cover' | 'fill') || 'contain',
+              }} 
+            />
           ) : (
             <div className="h-24 bg-muted rounded flex items-center justify-center text-xs text-muted-foreground">
               Image placeholder
@@ -574,10 +619,11 @@ function BlockPreview({ block, darkMode: _darkMode }: { block: Block; darkMode?:
   }
 }
 
-function BlockProperties({ block, onChange, onOpenMediaLibrary }: { 
+function BlockProperties({ block, onChange, onOpenMediaLibrary, onOpenCropModal }: { 
   block: Block; 
   onChange: (props: Record<string, unknown>) => void;
   onOpenMediaLibrary: (prop: "url" | "imageUrl") => void;
+  onOpenCropModal?: () => void;
 }) {
   const { type, props } = block
 
@@ -707,6 +753,29 @@ function BlockProperties({ block, onChange, onOpenMediaLibrary }: {
               </select>
             </div>
           </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Fit</Label>
+            <select
+              value={String(props.objectFit || 'contain')}
+              onChange={(e) => onChange({ objectFit: e.target.value })}
+              className="w-full h-8 text-xs rounded-md border border-input bg-background text-foreground px-2 focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+              <option value="contain">Contain (show all)</option>
+              <option value="cover">Cover (fill, may crop)</option>
+              <option value="fill">Fill (stretch)</option>
+            </select>
+          </div>
+          {Boolean(props.url) && onOpenCropModal && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full"
+              onClick={onOpenCropModal}
+            >
+              <Crop className="h-4 w-4 mr-2" />
+              Crop Image
+            </Button>
+          )}
         </div>
       )
     case 'button':
@@ -831,7 +900,7 @@ function getDefaultProps(type: Block['type']): Record<string, unknown> {
     case 'text':
       return { content: '', fontSize: 14, align: 'left' }
     case 'image':
-      return { url: '', alt: '', width: 100, align: 'center' }
+      return { url: '', alt: '', width: 100, align: 'center', objectFit: 'contain', cropX: 0, cropY: 0, cropWidth: 0, cropHeight: 0 }
     case 'button':
       return { label: 'Click Here', url: '', color: '#0f172a', align: 'center' }
     case 'divider':
