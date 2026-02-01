@@ -6,23 +6,14 @@ const HARDCODED_TOKEN = "eyJhcGlLZXkiOiJza19saXZlXzNiNzYzYzgyNmMxZjQ1N2RhNDlkZTI
 
 // Create router lazily to ensure env vars are loaded
 export function createUploadthingRouter() {
-  const token = HARDCODED_TOKEN;
+  // Force set the env var at runtime - bypasses any bundler issues
+  process.env.UPLOADTHING_TOKEN = HARDCODED_TOKEN;
   
-  console.log('[UT DEBUG] Creating uploadthing router');
-  console.log('[UT DEBUG] Token:', token);
+  console.log('[UT DEBUG] Set UPLOADTHING_TOKEN in process.env');
+  console.log('[UT DEBUG] Verify:', process.env.UPLOADTHING_TOKEN?.slice(0, 30));
   
-  const handlerOptions = {
+  // Create handler WITHOUT passing token in config - let it read from env
+  return createRouteHandler({
     router: uploadRouter,
-    config: {
-      token: token,
-      logLevel: "Debug" as const,
-    },
-  };
-  
-  console.log('[UT DEBUG] Handler options:', JSON.stringify({
-    hasRouter: !!handlerOptions.router,
-    config: handlerOptions.config,
-  }, null, 2));
-  
-  return createRouteHandler(handlerOptions);
+  });
 }
