@@ -1,4 +1,4 @@
-import { db } from '../db'
+import { queryAll, queryOne, execute } from '../db'
 import { decrypt } from '../utils/crypto'
 
 export interface Account {
@@ -57,10 +57,10 @@ function formatAccount(row: AccountRow): Account {
  * If campaignId is not provided, only daily cap is checked.
  * Optional excludeAccountIds parameter to skip certain accounts (e.g., those with open circuits).
  */
-export function getNextAvailableAccount(campaignId?: number, excludeAccountIds?: number[]): Account | null {
-  const accounts = db
-    .query('SELECT * FROM sender_accounts WHERE enabled = 1 ORDER BY priority ASC')
-    .all() as AccountRow[]
+export async function getNextAvailableAccount(campaignId?: number, excludeAccountIds?: number[]): Promise<Account | null> {
+  const accounts = await queryAll<AccountRow>(
+    'SELECT * FROM sender_accounts WHERE enabled = 1 ORDER BY priority ASC'
+  )
 
   const today = getToday()
   const excludeSet = new Set(excludeAccountIds || [])
@@ -72,9 +72,10 @@ export function getNextAvailableAccount(campaignId?: number, excludeAccountIds?:
     }
 
     // Get today's send count for this account
-    const todayResult = db
-      .query('SELECT count FROM send_counts WHERE account_id = ? AND date = ?')
-      .get(account.id, today) as SendCountRow | null
+    const todayResult = await queryOne<SendCountRow>(
+      'SELECT count FROM send_counts WHERE account_id = ? AND date = ?',
+      [account.id, today]
+    )
     const todayCount = todayResult?.count || 0
 
     // Check daily cap first
@@ -84,10 +85,11 @@ export function getNextAvailableAccount(campaignId?: number, excludeAccountIds?:
 
     // If campaignId provided, also check campaign cap
     if (campaignId !== undefined) {
-      const campaignResult = db
-        .query('SELECT COUNT(*) as count FROM send_logs WHERE campaign_id = ? AND account_id = ?')
-        .get(campaignId, account.id) as CampaignCountRow
-      const campaignCount = campaignResult.count
+      const campaignResult = await queryOne<CampaignCountRow>(
+        'SELECT COUNT(*) as count FROM send_logs WHERE campaign_id = ? AND account_id = ?',
+        [campaignId, account.id]
+      )
+      const campaignCount = campaignResult?.count || 0
 
       if (account.campaign_cap <= campaignCount) {
         continue
@@ -104,10 +106,10 @@ export function getNextAvailableAccount(campaignId?: number, excludeAccountIds?:
  * Increment the send count for an account for today.
  * Creates a new record if one doesn't exist for today.
  */
-export function incrementSendCount(accountId: number): void {
+export async function incrementSendCount(accountId: number): Promise<void> {
   const today = getToday()
 
-  db.run(
+  await execute(
     `INSERT INTO send_counts (account_id, date, count)
      VALUES (?, ?, 1)
      ON CONFLICT(account_id, date) DO UPDATE SET count = count + 1`,
@@ -118,12 +120,13 @@ export function incrementSendCount(accountId: number): void {
 /**
  * Get today's send count for an account.
  */
-export function getTodayCount(accountId: number): number {
+export async function getTodayCount(accountId: number): Promise<number> {
   const today = getToday()
 
-  const result = db
-    .query('SELECT count FROM send_counts WHERE account_id = ? AND date = ?')
-    .get(accountId, today) as SendCountRow | null
+  const result = await queryOne<SendCountRow>(
+    'SELECT count FROM send_counts WHERE account_id = ? AND date = ?',
+    [accountId, today]
+  )
 
   return result?.count || 0
 }

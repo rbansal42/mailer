@@ -1,4 +1,4 @@
-import { db } from '../db'
+import { queryAll, queryOne, execute } from '../db'
 import { randomUUID } from 'crypto'
 import { createHash } from 'crypto'
 
@@ -68,28 +68,29 @@ interface SettingRow {
 }
 
 // Get tracking settings from database
-export function getTrackingSettings(): TrackingSettings {
-  const getValue = (key: string, defaultVal: string): string => {
-    const row = db.query('SELECT value FROM settings WHERE key = ?').get(key) as SettingRow | null
+export async function getTrackingSettings(): Promise<TrackingSettings> {
+  const getValue = async (key: string, defaultVal: string): Promise<string> => {
+    const row = await queryOne<SettingRow>('SELECT value FROM settings WHERE key = ?', [key])
     return row?.value ?? defaultVal
   }
 
   return {
-    enabled: getValue('tracking_enabled', 'true') === 'true',
-    baseUrl: getValue('tracking_base_url', 'https://mailer.rbansal.xyz'),
-    openEnabled: getValue('tracking_open_enabled', 'true') === 'true',
-    clickEnabled: getValue('tracking_click_enabled', 'true') === 'true',
-    hashIps: getValue('tracking_hash_ips', 'true') === 'true',
-    retentionDays: parseInt(getValue('tracking_retention_days', '90'), 10),
+    enabled: (await getValue('tracking_enabled', 'true')) === 'true',
+    baseUrl: await getValue('tracking_base_url', 'https://mailer.rbansal.xyz'),
+    openEnabled: (await getValue('tracking_open_enabled', 'true')) === 'true',
+    clickEnabled: (await getValue('tracking_click_enabled', 'true')) === 'true',
+    hashIps: (await getValue('tracking_hash_ips', 'true')) === 'true',
+    retentionDays: parseInt(await getValue('tracking_retention_days', '90'), 10),
   }
 }
 
 // Generate or get existing token for a campaign/recipient
-export function getOrCreateToken(campaignId: number, recipientEmail: string): string {
+export async function getOrCreateToken(campaignId: number, recipientEmail: string): Promise<string> {
   // Check if token exists
-  const existing = db.query<TokenRow, [number, string]>(
-    'SELECT token FROM tracking_tokens WHERE campaign_id = ? AND recipient_email = ?'
-  ).get(campaignId, recipientEmail)
+  const existing = await queryOne<TokenRow>(
+    'SELECT token FROM tracking_tokens WHERE campaign_id = ? AND recipient_email = ?',
+    [campaignId, recipientEmail]
+  )
 
   if (existing) {
     return existing.token
@@ -97,7 +98,7 @@ export function getOrCreateToken(campaignId: number, recipientEmail: string): st
 
   // Create new token
   const token = randomUUID()
-  db.run(
+  await execute(
     'INSERT INTO tracking_tokens (campaign_id, recipient_email, token) VALUES (?, ?, ?)',
     [campaignId, recipientEmail, token]
   )
@@ -106,10 +107,11 @@ export function getOrCreateToken(campaignId: number, recipientEmail: string): st
 }
 
 // Get token details by token string
-export function getTokenDetails(token: string): TrackingToken | null {
-  const row = db.query<TokenRow, [string]>(
-    'SELECT id, campaign_id, recipient_email, token, created_at FROM tracking_tokens WHERE token = ?'
-  ).get(token)
+export async function getTokenDetails(token: string): Promise<TrackingToken | null> {
+  const row = await queryOne<TokenRow>(
+    'SELECT id, campaign_id, recipient_email, token, created_at FROM tracking_tokens WHERE token = ?',
+    [token]
+  )
 
   if (!row) return null
 
@@ -128,14 +130,14 @@ export function hashIpAddress(ip: string): string {
 }
 
 // Record an open event
-export function recordOpen(token: string, ipAddress?: string, userAgent?: string): boolean {
-  const tokenDetails = getTokenDetails(token)
+export async function recordOpen(token: string, ipAddress?: string, userAgent?: string): Promise<boolean> {
+  const tokenDetails = await getTokenDetails(token)
   if (!tokenDetails) return false
 
-  const settings = getTrackingSettings()
+  const settings = await getTrackingSettings()
   const ip = ipAddress && settings.hashIps ? hashIpAddress(ipAddress) : ipAddress
 
-  db.run(
+  await execute(
     `INSERT INTO tracking_events (token_id, event_type, ip_address, user_agent) VALUES (?, 'open', ?, ?)`,
     [tokenDetails.id, ip || null, userAgent || null]
   )
@@ -144,20 +146,20 @@ export function recordOpen(token: string, ipAddress?: string, userAgent?: string
 }
 
 // Record a click event
-export function recordClick(
+export async function recordClick(
   token: string,
   linkUrl: string,
   linkIndex: number,
   ipAddress?: string,
   userAgent?: string
-): boolean {
-  const tokenDetails = getTokenDetails(token)
+): Promise<boolean> {
+  const tokenDetails = await getTokenDetails(token)
   if (!tokenDetails) return false
 
-  const settings = getTrackingSettings()
+  const settings = await getTrackingSettings()
   const ip = ipAddress && settings.hashIps ? hashIpAddress(ipAddress) : ipAddress
 
-  db.run(
+  await execute(
     `INSERT INTO tracking_events (token_id, event_type, link_url, link_index, ip_address, user_agent) VALUES (?, 'click', ?, ?, ?, ?)`,
     [tokenDetails.id, linkUrl, linkIndex, ip || null, userAgent || null]
   )
@@ -166,38 +168,39 @@ export function recordClick(
 }
 
 // Get campaign analytics
-export function getCampaignAnalytics(campaignId: number): CampaignAnalytics {
+export async function getCampaignAnalytics(campaignId: number): Promise<CampaignAnalytics> {
   // Get delivery stats from send_logs
-  const deliveryStats = db.query<{ status: string; count: number }, [number]>(
-    `SELECT status, COUNT(*) as count FROM send_logs WHERE campaign_id = ? GROUP BY status`
-  ).all(campaignId)
+  const deliveryStats = await queryAll<{ status: string; count: number }>(
+    `SELECT status, COUNT(*) as count FROM send_logs WHERE campaign_id = ? GROUP BY status`,
+    [campaignId]
+  )
 
-  const sent = deliveryStats.find(s => s.status === 'sent')?.count || 0
-  const failed = deliveryStats.find(s => s.status === 'failed')?.count || 0
-  const queued = deliveryStats.find(s => s.status === 'queued')?.count || 0
+  const sent = deliveryStats.find((s: { status: string; count: number }) => s.status === 'sent')?.count || 0
+  const failed = deliveryStats.find((s: { status: string; count: number }) => s.status === 'failed')?.count || 0
+  const queued = deliveryStats.find((s: { status: string; count: number }) => s.status === 'queued')?.count || 0
 
   // Get open stats
-  const openStats = db.query<{ total: number; unique_count: number }, [number]>(`
+  const openStats = await queryOne<{ total: number; unique_count: number }>(`
     SELECT 
       COUNT(*) as total,
       COUNT(DISTINCT te.token_id) as unique_count
     FROM tracking_events te
     JOIN tracking_tokens tt ON te.token_id = tt.id
     WHERE tt.campaign_id = ? AND te.event_type = 'open'
-  `).get(campaignId)
+  `, [campaignId])
 
   // Get click stats
-  const clickStats = db.query<{ total: number; unique_count: number }, [number]>(`
+  const clickStats = await queryOne<{ total: number; unique_count: number }>(`
     SELECT 
       COUNT(*) as total,
       COUNT(DISTINCT te.token_id) as unique_count
     FROM tracking_events te
     JOIN tracking_tokens tt ON te.token_id = tt.id
     WHERE tt.campaign_id = ? AND te.event_type = 'click'
-  `).get(campaignId)
+  `, [campaignId])
 
   // Get top links
-  const topLinks = db.query<{ link_url: string; clicks: number }, [number]>(`
+  const topLinks = await queryAll<{ link_url: string; clicks: number }>(`
     SELECT te.link_url, COUNT(*) as clicks
     FROM tracking_events te
     JOIN tracking_tokens tt ON te.token_id = tt.id
@@ -205,10 +208,10 @@ export function getCampaignAnalytics(campaignId: number): CampaignAnalytics {
     GROUP BY te.link_url
     ORDER BY clicks DESC
     LIMIT 10
-  `).all(campaignId)
+  `, [campaignId])
 
   // Get opens over time (hourly for last 48 hours)
-  const opensOverTime = db.query<{ hour: string; count: number }, [number]>(`
+  const opensOverTime = await queryAll<{ hour: string; count: number }>(`
     SELECT 
       strftime('%Y-%m-%d %H:00', te.created_at) as hour,
       COUNT(*) as count
@@ -219,15 +222,15 @@ export function getCampaignAnalytics(campaignId: number): CampaignAnalytics {
       AND te.created_at >= datetime('now', '-48 hours')
     GROUP BY hour
     ORDER BY hour
-  `).all(campaignId)
+  `, [campaignId])
 
   // Get per-recipient data
-  const recipients = db.query<{ 
+  const recipients = await queryAll<{ 
     email: string; 
     status: string; 
     opens: number; 
     click_urls: string | null 
-  }, [number]>(`
+  }>(`
     SELECT 
       sl.recipient_email as email,
       sl.status,
@@ -251,7 +254,7 @@ export function getCampaignAnalytics(campaignId: number): CampaignAnalytics {
     WHERE sl.campaign_id = ?
     GROUP BY sl.recipient_email
     ORDER BY sl.sent_at DESC
-  `).all(campaignId)
+  `, [campaignId])
 
   const totalSent = sent // Rate calculation based on successfully sent emails only
   const opens = openStats?.total || 0
@@ -269,9 +272,9 @@ export function getCampaignAnalytics(campaignId: number): CampaignAnalytics {
       uniqueClicks,
       clickRate: totalSent > 0 ? Math.round((uniqueClicks / totalSent) * 100 * 10) / 10 : 0,
     },
-    topLinks: topLinks.map(l => ({ url: l.link_url, clicks: l.clicks })),
-    opensOverTime: opensOverTime.map(o => ({ hour: o.hour, count: o.count })),
-    recipients: recipients.map(r => ({
+    topLinks: topLinks.map((l: { link_url: string; clicks: number }) => ({ url: l.link_url, clicks: l.clicks })),
+    opensOverTime: opensOverTime.map((o: { hour: string; count: number }) => ({ hour: o.hour, count: o.count })),
+    recipients: recipients.map((r: { email: string; status: string; opens: number; click_urls: string | null }) => ({
       email: r.email,
       status: r.status,
       opens: r.opens,

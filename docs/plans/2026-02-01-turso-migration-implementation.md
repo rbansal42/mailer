@@ -1,34 +1,56 @@
+# Turso Migration Implementation Plan
+
+> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+
+**Goal:** Migrate from bun:sqlite to Turso cloud database for multi-instance deployment.
+
+**Architecture:** Replace synchronous bun:sqlite calls with async @libsql/client calls. All database operations become async/await.
+
+**Tech Stack:** @libsql/client, TypeScript, Express
+
+---
+
+## Phase 1: Core Database Setup
+
+### Task 1.1: Add @libsql/client dependency
+
+**Files:**
+- Modify: `server/package.json`
+
+**Steps:**
+
+1. Run: `bun add @libsql/client` in server directory
+2. Verify package.json has the dependency
+
+---
+
+### Task 1.2: Rewrite database connection module
+
+**Files:**
+- Modify: `server/src/db/index.ts`
+
+**Changes:**
+
+Replace the entire file with async Turso client:
+
+```typescript
 import { createClient, Client } from '@libsql/client'
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'fs'
 import { join, dirname } from 'path'
 
-// Data directory for local file storage (attachments, backups)
 const DATA_DIR = process.env.DATA_DIR || join(process.cwd(), 'data')
 
-// Validate required environment variables
-const TURSO_DATABASE_URL = process.env.TURSO_DATABASE_URL
-const TURSO_AUTH_TOKEN = process.env.TURSO_AUTH_TOKEN
+// Turso client - requires env vars
+const url = process.env.TURSO_DATABASE_URL
+const authToken = process.env.TURSO_AUTH_TOKEN
 
-if (!TURSO_DATABASE_URL) {
-  throw new Error('TURSO_DATABASE_URL environment variable is required')
+if (!url || !authToken) {
+  throw new Error('TURSO_DATABASE_URL and TURSO_AUTH_TOKEN must be set')
 }
 
-if (!TURSO_AUTH_TOKEN) {
-  throw new Error('TURSO_AUTH_TOKEN environment variable is required')
-}
+export const db: Client = createClient({ url, authToken })
 
-// Ensure data directory exists for local file storage
-if (!existsSync(DATA_DIR)) {
-  mkdirSync(DATA_DIR, { recursive: true })
-}
-
-// Create Turso client
-export const db: Client = createClient({
-  url: TURSO_DATABASE_URL,
-  authToken: TURSO_AUTH_TOKEN,
-})
-
-// Helper functions for cleaner async queries
+// Helper function for queries that return rows
 export async function queryAll<T>(sql: string, args: any[] = []): Promise<T[]> {
   const result = await db.execute({ sql, args })
   return result.rows as T[]
@@ -43,14 +65,27 @@ export async function execute(sql: string, args: any[] = []): Promise<{ rowsAffe
   const result = await db.execute({ sql, args })
   return {
     rowsAffected: result.rowsAffected,
-    lastInsertRowid: result.lastInsertRowid,
+    lastInsertRowid: result.lastInsertRowid !== undefined ? BigInt(result.lastInsertRowid) : undefined
   }
 }
+```
 
+**Note:** The initialization and migrations are handled separately in Task 1.3.
+
+---
+
+### Task 1.3: Rewrite database initialization as async
+
+**Files:**
+- Modify: `server/src/db/index.ts` (continuation)
+
+**Add these async functions:**
+
+```typescript
 // Migration helper - add columns if they don't exist
 async function addColumnIfNotExists(table: string, column: string, type: string, defaultValue: string) {
   try {
-    const columns = await queryAll<any>(`PRAGMA table_info(${table})`)
+    const columns = await queryAll<{ name: string }>(`PRAGMA table_info(${table})`)
     if (!columns.find(c => c.name === column)) {
       await execute(`ALTER TABLE ${table} ADD COLUMN ${column} ${type} DEFAULT '${defaultValue}'`)
     }
@@ -59,9 +94,8 @@ async function addColumnIfNotExists(table: string, column: string, type: string,
   }
 }
 
-// Run SQL migrations from the migrations directory (with tracking)
+// Run SQL migrations from the migrations directory
 async function runMigrations() {
-  // Create migrations tracking table if it doesn't exist
   await execute(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       filename TEXT PRIMARY KEY,
@@ -69,11 +103,10 @@ async function runMigrations() {
     )
   `)
 
-  // Try multiple possible locations for migrations
   const possiblePaths = [
-    join(process.cwd(), 'src', 'db', 'migrations'),           // Running from server/
-    join(process.cwd(), 'server', 'src', 'db', 'migrations'), // Running from root
-    join(dirname(import.meta.path), 'migrations'),            // Relative to this file
+    join(process.cwd(), 'src', 'db', 'migrations'),
+    join(process.cwd(), 'server', 'src', 'db', 'migrations'),
+    join(dirname(import.meta.path), 'migrations'),
   ]
   
   const migrationsDir = possiblePaths.find(p => existsSync(p))
@@ -82,24 +115,21 @@ async function runMigrations() {
     return
   }
 
-  // Get already applied migrations
-  const appliedRows = await queryAll<{ filename: string }>('SELECT filename FROM schema_migrations')
-  const applied = new Set(appliedRows.map(r => r.filename))
+  const applied = new Set(
+    (await queryAll<{ filename: string }>('SELECT filename FROM schema_migrations'))
+      .map(r => r.filename)
+  )
 
   const files = readdirSync(migrationsDir)
     .filter(f => f.endsWith('.sql'))
     .sort()
 
   for (const file of files) {
-    // Skip if already applied
-    if (applied.has(file)) {
-      continue
-    }
+    if (applied.has(file)) continue
 
     const filePath = join(migrationsDir, file)
     const content = readFileSync(filePath, 'utf-8')
     
-    // Split by semicolons to handle multiple statements
     const statements = content
       .split(';')
       .map((s: string) => s.trim())
@@ -109,26 +139,25 @@ async function runMigrations() {
       for (const statement of statements) {
         await execute(statement)
       }
-      
-      // Record successful migration
       await execute('INSERT INTO schema_migrations (filename) VALUES (?)', [file])
       console.log(`Migration applied: ${file}`)
     } catch (err) {
       console.error(`Migration failed: ${file}`, err)
-      throw err // Stop on migration failure
+      throw err
     }
   }
 }
 
-// Initialize schema
+// Initialize schema - NOW ASYNC
 export async function initializeDatabase() {
-  await execute(`
-    CREATE TABLE IF NOT EXISTS settings (
-      key TEXT PRIMARY KEY,
-      value TEXT NOT NULL
-    )
-  `)
+  // Ensure local directories exist (for attachments, etc.)
+  if (!existsSync(DATA_DIR)) {
+    mkdirSync(DATA_DIR, { recursive: true })
+  }
 
+  // Create all tables...
+  await execute(`CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)`)
+  
   await execute(`
     CREATE TABLE IF NOT EXISTS sender_accounts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -218,7 +247,6 @@ export async function initializeDatabase() {
     )
   `)
 
-  // Attachments table
   await execute(`
     CREATE TABLE IF NOT EXISTS attachments (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -233,7 +261,6 @@ export async function initializeDatabase() {
     )
   `)
 
-  // Recipient-attachment mapping
   await execute(`
     CREATE TABLE IF NOT EXISTS recipient_attachments (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -247,7 +274,6 @@ export async function initializeDatabase() {
     )
   `)
 
-  // Tracking tokens for email analytics
   await execute(`
     CREATE TABLE IF NOT EXISTS tracking_tokens (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -259,7 +285,6 @@ export async function initializeDatabase() {
     )
   `)
 
-  // Tracking events for opens, clicks, etc.
   await execute(`
     CREATE TABLE IF NOT EXISTS tracking_events (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -273,7 +298,6 @@ export async function initializeDatabase() {
     )
   `)
 
-  // Scheduled batches for timezone-aware delivery
   await execute(`
     CREATE TABLE IF NOT EXISTS scheduled_batches (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -285,7 +309,6 @@ export async function initializeDatabase() {
     )
   `)
 
-  // Recurring campaigns for scheduled sends
   await execute(`
     CREATE TABLE IF NOT EXISTS recurring_campaigns (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -305,7 +328,6 @@ export async function initializeDatabase() {
     )
   `)
 
-  // Certificate configuration (user-customized templates)
   await execute(`
     CREATE TABLE IF NOT EXISTS certificate_configs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -322,7 +344,6 @@ export async function initializeDatabase() {
     )
   `)
 
-  // Generated certificates (tracking)
   await execute(`
     CREATE TABLE IF NOT EXISTS generated_certificates (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -337,7 +358,6 @@ export async function initializeDatabase() {
     )
   `)
 
-  // Drip sequences
   await execute(`
     CREATE TABLE IF NOT EXISTS sequences (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -349,7 +369,6 @@ export async function initializeDatabase() {
     )
   `)
 
-  // Sequence steps
   await execute(`
     CREATE TABLE IF NOT EXISTS sequence_steps (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -364,7 +383,6 @@ export async function initializeDatabase() {
     )
   `)
 
-  // Sequence enrollments
   await execute(`
     CREATE TABLE IF NOT EXISTS sequence_enrollments (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -380,13 +398,11 @@ export async function initializeDatabase() {
     )
   `)
 
-  // Create attachments directory
+  // Create directories for local file storage
   mkdirSync(join(DATA_DIR, 'attachments'), { recursive: true })
-
-  // Create backups directory
   mkdirSync(join(DATA_DIR, 'backups'), { recursive: true })
 
-  // Run migrations - add columns if they don't exist
+  // Run column migrations
   await addColumnIfNotExists('drafts', 'cc', 'TEXT', '[]')
   await addColumnIfNotExists('drafts', 'bcc', 'TEXT', '[]')
   await addColumnIfNotExists('campaigns', 'cc', 'TEXT', '[]')
@@ -427,7 +443,7 @@ export async function initializeDatabase() {
 
   console.log('Database initialized')
 
-  // Seed starter templates
+  // Seed templates
   await seedTemplates()
 
   // Run SQL migrations
@@ -437,7 +453,7 @@ export async function initializeDatabase() {
 export async function checkDatabaseHealth(): Promise<{ ok: boolean; latencyMs: number }> {
   const start = Date.now()
   try {
-    await queryOne<{ 1: number }>('SELECT 1')
+    await db.execute('SELECT 1')
     return { ok: true, latencyMs: Date.now() - start }
   } catch {
     return { ok: false, latencyMs: Date.now() - start }
@@ -445,94 +461,178 @@ export async function checkDatabaseHealth(): Promise<{ ok: boolean; latencyMs: n
 }
 
 async function seedTemplates(): Promise<void> {
-  // Check if templates already exist
-  const count = await queryOne<{ count: number }>('SELECT COUNT(*) as count FROM templates')
+  const countResult = await queryOne<{ count: number }>('SELECT COUNT(*) as count FROM templates')
   
-  if (count && count.count > 0) {
-    return // Templates already exist, skip seeding
+  if (countResult && countResult.count > 0) {
+    return
   }
 
   console.log('Seeding starter templates...')
 
-  const templates = [
-    {
-      name: 'Marketing: Newsletter',
-      description: 'Monthly updates, news, and featured content',
-      blocks: [
-        { id: 'header_1', type: 'header', props: { backgroundColor: '#3b82f6', imageUrl: '' } },
-        { id: 'text_1', type: 'text', props: { content: 'Hello {{name}},\n\nHere\'s what\'s new this month at {{company}}. We\'ve been working hard to bring you exciting updates and valuable content.', fontSize: 16, align: 'left' } },
-        { id: 'divider_1', type: 'divider', props: { style: 'solid', color: '#e5e7eb' } },
-        { id: 'text_2', type: 'text', props: { content: '📰 Featured This Month\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.', fontSize: 15, align: 'left' } },
-        { id: 'button_1', type: 'button', props: { label: 'Read More', url: '{{read_more_url}}', color: '#3b82f6', align: 'center' } },
-        { id: 'footer_1', type: 'footer', props: { text: '© 2026 {{company}} · You received this because you subscribed.\nUnsubscribe | View in browser' } },
-      ],
-    },
-    {
-      name: 'Marketing: Promotional',
-      description: 'Special offers, discounts, and product promotions',
-      blocks: [
-        { id: 'header_1', type: 'header', props: { backgroundColor: '#f97316', imageUrl: '' } },
-        { id: 'text_1', type: 'text', props: { content: 'Hey {{name}}! 🎉\n\nWe have a special offer just for you. For a limited time, enjoy exclusive savings on our most popular products.', fontSize: 16, align: 'left' } },
-        { id: 'image_1', type: 'image', props: { url: '', alt: 'Promotional offer', width: 100, align: 'center' } },
-        { id: 'text_2', type: 'text', props: { content: '🏷️ LIMITED TIME OFFER\n\nGet 20% off your next purchase with code SAVE20.\n\n✓ Free shipping on orders over $50\n✓ 30-day money-back guarantee', fontSize: 15, align: 'center' } },
-        { id: 'button_1', type: 'button', props: { label: 'Shop Now', url: '{{shop_url}}', color: '#f97316', align: 'center' } },
-        { id: 'footer_1', type: 'footer', props: { text: 'Terms and conditions apply. Offer valid until {{expiry_date}}.\n© 2026 {{company}} · Unsubscribe' } },
-      ],
-    },
-    {
-      name: 'Transactional: Welcome',
-      description: 'Onboarding emails for new users and customers',
-      blocks: [
-        { id: 'header_1', type: 'header', props: { backgroundColor: '#10b981', imageUrl: '' } },
-        { id: 'text_1', type: 'text', props: { content: 'Welcome to {{company}}, {{name}}! 👋\n\nWe\'re thrilled to have you on board. You\'ve just joined a community of thousands who are already benefiting from our platform.', fontSize: 16, align: 'left' } },
-        { id: 'spacer_1', type: 'spacer', props: { height: 20 } },
-        { id: 'text_2', type: 'text', props: { content: '🚀 Getting Started\n\n1. Complete your profile - Add your details\n2. Explore features - Discover all the tools\n3. Connect with us - Follow us for tips and updates', fontSize: 15, align: 'left' } },
-        { id: 'button_1', type: 'button', props: { label: 'Get Started', url: '{{dashboard_url}}', color: '#10b981', align: 'center' } },
-        { id: 'footer_1', type: 'footer', props: { text: 'Need help? Reply to this email or visit our Help Center.\n© 2026 {{company}}' } },
-      ],
-    },
-    {
-      name: 'Transactional: Meeting Request',
-      description: 'Schedule meetings and appointments',
-      blocks: [
-        { id: 'text_1', type: 'text', props: { content: 'Hi {{name}},\n\nI hope this email finds you well. I\'d like to schedule a meeting to discuss {{meeting_topic}}.\n\nPlease find the proposed details below:', fontSize: 16, align: 'left' } },
-        { id: 'divider_1', type: 'divider', props: { style: 'solid', color: '#e5e7eb' } },
-        { id: 'text_2', type: 'text', props: { content: '📅 Date: {{date}}\n⏰ Time: {{time}}\n📍 Location: {{location}}\n⏱️ Duration: {{duration}}', fontSize: 15, align: 'left' } },
-        { id: 'divider_2', type: 'divider', props: { style: 'solid', color: '#e5e7eb' } },
-        { id: 'text_3', type: 'text', props: { content: 'Please let me know if this time works for you, or suggest an alternative.', fontSize: 15, align: 'left' } },
-        { id: 'button_1', type: 'button', props: { label: 'Confirm Availability', url: '{{calendar_url}}', color: '#6366f1', align: 'center' } },
-        { id: 'footer_1', type: 'footer', props: { text: '{{sender_name}}\n{{sender_title}} · {{company}}\n{{sender_email}}' } },
-      ],
-    },
-    {
-      name: 'Communication: Announcement',
-      description: 'Company news, product updates, and important notices',
-      blocks: [
-        { id: 'header_1', type: 'header', props: { backgroundColor: '#6366f1', imageUrl: '' } },
-        { id: 'text_1', type: 'text', props: { content: '📢 Important Announcement\n\nDear {{name}},\n\nWe\'re excited to share some important news with you.', fontSize: 16, align: 'left' } },
-        { id: 'image_1', type: 'image', props: { url: '', alt: 'Announcement', width: 100, align: 'center' } },
-        { id: 'text_2', type: 'text', props: { content: 'What This Means For You\n\n• New features and improvements\n• Enhanced user experience\n• Better performance and reliability', fontSize: 15, align: 'left' } },
-        { id: 'button_1', type: 'button', props: { label: 'Learn More', url: '{{announcement_url}}', color: '#6366f1', align: 'center' } },
-        { id: 'footer_1', type: 'footer', props: { text: 'Thank you for being part of our journey.\n© 2026 {{company}}' } },
-      ],
-    },
-    {
-      name: 'Communication: Simple Text',
-      description: 'Clean, minimal text-only emails for personal outreach',
-      blocks: [
-        { id: 'text_1', type: 'text', props: { content: 'Hi {{name}},\n\nI hope you\'re doing well. I wanted to reach out regarding {{subject}}.\n\n[Your message here]\n\nLet me know if you have any questions.\n\nBest regards,\n{{sender_name}}', fontSize: 16, align: 'left' } },
-        { id: 'spacer_1', type: 'spacer', props: { height: 10 } },
-        { id: 'footer_1', type: 'footer', props: { text: '{{sender_name}} · {{sender_title}}\n{{sender_email}} · {{sender_phone}}' } },
-      ],
-    },
-  ]
-
-  for (const template of templates) {
-    await execute(
-      'INSERT INTO templates (name, description, blocks) VALUES (?, ?, ?)',
-      [template.name, template.description, JSON.stringify(template.blocks)]
-    )
-  }
-
-  console.log(`Seeded ${templates.length} starter templates`)
+  // ... seed templates (same as before, but using await execute())
+  const templates = [/* templates array - same as original */]
+  
+  // Template seeding handled by SQL migration or manual seeding
 }
+```
+
+---
+
+### Task 1.4: Add .env.example with Turso variables
+
+**Files:**
+- Create: `server/.env.example`
+
+**Content:**
+```
+TURSO_DATABASE_URL=libsql://your-database.turso.io
+TURSO_AUTH_TOKEN=your-auth-token
+```
+
+---
+
+## Phase 2: Convert Routes to Async
+
+Each route file needs these changes:
+1. Import `queryAll`, `queryOne`, `execute` from `../db`
+2. Make route handlers async
+3. Replace `db.query().all()` with `await queryAll()`
+4. Replace `db.query().get()` with `await queryOne()`
+5. Replace `db.run()` with `await execute()`
+
+### Task 2.1: Convert routes/templates.ts
+
+**Files:**
+- Modify: `server/src/routes/templates.ts`
+
+**Pattern:**
+```typescript
+// Before
+router.get('/', (req, res) => {
+  const rows = db.query('SELECT * FROM templates').all() as TemplateRow[]
+  res.json(rows.map(formatTemplate))
+})
+
+// After
+router.get('/', async (req, res) => {
+  const rows = await queryAll<TemplateRow>('SELECT * FROM templates ORDER BY updated_at DESC')
+  res.json(rows.map(formatTemplate))
+})
+```
+
+---
+
+### Task 2.2: Convert routes/campaigns.ts
+
+### Task 2.3: Convert routes/drafts.ts
+
+### Task 2.4: Convert routes/settings.ts
+
+### Task 2.5: Convert routes/send.ts
+
+### Task 2.6: Convert routes/accounts.ts
+
+### Task 2.7: Convert routes/analytics.ts
+
+### Task 2.8: Convert routes/attachments.ts
+
+### Task 2.9: Convert routes/auth.ts
+
+### Task 2.10: Convert routes/certificates.ts
+
+### Task 2.11: Convert routes/media.ts
+
+### Task 2.12: Convert routes/queue.ts
+
+### Task 2.13: Convert routes/recurring.ts
+
+### Task 2.14: Convert routes/sequences.ts
+
+---
+
+## Phase 3: Convert Services to Async
+
+### Task 3.1: Convert services/tracking.ts
+
+### Task 3.2: Convert services/account-manager.ts
+
+### Task 3.3: Convert services/attachment-matcher.ts
+
+### Task 3.4: Convert services/backup.ts
+
+**Special:** Remove SQLite-specific PRAGMA commands. Turso handles backups.
+
+### Task 3.5: Convert services/circuit-breaker.ts
+
+### Task 3.6: Convert services/queue-processor.ts
+
+### Task 3.7: Convert services/recurring-processor.ts
+
+### Task 3.8: Convert services/scheduler.ts
+
+### Task 3.9: Convert services/sequence-processor.ts
+
+### Task 3.10: Convert services/timezone-processor.ts
+
+---
+
+## Phase 4: Update Entry Point and Build
+
+### Task 4.1: Update server entry point for async init
+
+**Files:**
+- Modify: `server/src/index.ts`
+
+**Change:**
+```typescript
+// Before
+initializeDatabase()
+app.listen(PORT)
+
+// After
+async function main() {
+  await initializeDatabase()
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`)
+  })
+}
+main()
+```
+
+---
+
+### Task 4.2: Verify build passes
+
+Run: `bun run build`
+
+Expected: Build succeeds with no TypeScript errors.
+
+---
+
+### Task 4.3: Create migration commit
+
+```bash
+git add -A
+git commit -m "feat: migrate from bun:sqlite to Turso cloud database
+
+- Replace bun:sqlite with @libsql/client
+- Convert all database operations to async/await
+- Add queryAll, queryOne, execute helper functions
+- Update all routes and services for async database access
+- Add TURSO_DATABASE_URL and TURSO_AUTH_TOKEN env vars
+- Simplify backup service (Turso handles backups)"
+```
+
+---
+
+## Summary
+
+| Phase | Tasks | Parallelizable |
+|-------|-------|----------------|
+| 1 | Core database (4 tasks) | No - must complete first |
+| 2 | Routes (14 tasks) | Yes - all can run in parallel |
+| 3 | Services (10 tasks) | Yes - all can run in parallel |
+| 4 | Entry point + build (3 tasks) | No - must complete last |
+
+**Total tasks:** 31
+**Parallelizable:** 24 (Phase 2 + 3)

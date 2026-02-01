@@ -1,5 +1,5 @@
 import cron from 'node-cron'
-import { db } from '../db'
+import { queryAll, queryOne, execute } from '../db'
 import { getNextAvailableAccount, incrementSendCount } from './account-manager'
 import { compileTemplate } from './template-compiler'
 import { createProvider } from '../providers'
@@ -73,13 +73,12 @@ export async function processQueue(): Promise<ProcessResult> {
   const today = new Date().toISOString().split('T')[0] // YYYY-MM-DD
 
   // Get pending emails scheduled for today or earlier
-  const pendingEmails = db
-    .query<QueueItem, [string]>(
-      `SELECT id, campaign_id, recipient_email, recipient_data, scheduled_for, status
-       FROM email_queue
-       WHERE status = 'pending' AND scheduled_for <= ?`
-    )
-    .all(today)
+  const pendingEmails = await queryAll<QueueItem>(
+    `SELECT id, campaign_id, recipient_email, recipient_data, scheduled_for, status
+     FROM email_queue
+     WHERE status = 'pending' AND scheduled_for <= ?`,
+    [today]
+  )
 
   let processed = 0
   let failed = 0
@@ -87,17 +86,16 @@ export async function processQueue(): Promise<ProcessResult> {
   for (const queueItem of pendingEmails) {
     try {
       // Get campaign details
-      const campaign = db
-        .query<Campaign, [number]>(
-          `SELECT id, name, template_id, subject, total_recipients, successful, failed, queued
-           FROM campaigns
-           WHERE id = ?`
-        )
-        .get(queueItem.campaign_id)
+      const campaign = await queryOne<Campaign>(
+        `SELECT id, name, template_id, subject, total_recipients, successful, failed, queued
+         FROM campaigns
+         WHERE id = ?`,
+        [queueItem.campaign_id]
+      )
 
       if (!campaign) {
         console.error(`[QueueProcessor] Campaign not found for queue item ${queueItem.id}`)
-        updateQueueStatus(queueItem.id, 'failed')
+        await updateQueueStatus(queueItem.id, 'failed')
         failed++
         continue
       }
@@ -105,9 +103,7 @@ export async function processQueue(): Promise<ProcessResult> {
       // Get template if exists
       let templateBlocks: BlockInput[] = []
       if (campaign.template_id) {
-        const template = db
-          .query<Template, [number]>(`SELECT id, name, blocks FROM templates WHERE id = ?`)
-          .get(campaign.template_id)
+        const template = await queryOne<Template>(`SELECT id, name, blocks FROM templates WHERE id = ?`, [campaign.template_id])
 
         if (template) {
           templateBlocks = JSON.parse(template.blocks) as BlockInput[]
@@ -144,29 +140,29 @@ export async function processQueue(): Promise<ProcessResult> {
         })
 
         // Update queue status
-        updateQueueStatus(queueItem.id, 'sent')
+        await updateQueueStatus(queueItem.id, 'sent')
 
         // Increment account send count
         await incrementSendCount(senderAccount.id)
 
         // Log success
-        logSend(queueItem.campaign_id, senderAccount.id, queueItem.recipient_email, 'sent', null)
+        await logSend(queueItem.campaign_id, senderAccount.id, queueItem.recipient_email, 'sent', null)
 
         // Update campaign stats
-        updateCampaignStats(queueItem.campaign_id, 'successful')
+        await updateCampaignStats(queueItem.campaign_id, 'successful')
 
         processed++
       } catch (sendError) {
         const errorMessage = sendError instanceof Error ? sendError.message : 'Unknown error'
 
         // Update queue status
-        updateQueueStatus(queueItem.id, 'failed')
+        await updateQueueStatus(queueItem.id, 'failed')
 
         // Log failure
-        logSend(queueItem.campaign_id, senderAccount.id, queueItem.recipient_email, 'failed', errorMessage)
+        await logSend(queueItem.campaign_id, senderAccount.id, queueItem.recipient_email, 'failed', errorMessage)
 
         // Update campaign stats
-        updateCampaignStats(queueItem.campaign_id, 'failed')
+        await updateCampaignStats(queueItem.campaign_id, 'failed')
 
         failed++
         console.error(`[QueueProcessor] Failed to send to ${queueItem.recipient_email}:`, errorMessage)
@@ -178,9 +174,9 @@ export async function processQueue(): Promise<ProcessResult> {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
       console.error(`[QueueProcessor] Error processing queue item ${queueItem.id}:`, errorMessage)
 
-      updateQueueStatus(queueItem.id, 'failed')
-      logSend(queueItem.campaign_id, null, queueItem.recipient_email, 'failed', errorMessage)
-      updateCampaignStats(queueItem.campaign_id, 'failed')
+      await updateQueueStatus(queueItem.id, 'failed')
+      await logSend(queueItem.campaign_id, null, queueItem.recipient_email, 'failed', errorMessage)
+      await updateCampaignStats(queueItem.campaign_id, 'failed')
 
       failed++
     }
@@ -195,28 +191,28 @@ function compileSubject(subject: string, variables: Record<string, unknown>): st
   })
 }
 
-function updateQueueStatus(queueId: number, status: string): void {
-  db.run(`UPDATE email_queue SET status = ? WHERE id = ?`, [status, queueId])
+async function updateQueueStatus(queueId: number, status: string): Promise<void> {
+  await execute(`UPDATE email_queue SET status = ? WHERE id = ?`, [status, queueId])
 }
 
-function logSend(
+async function logSend(
   campaignId: number,
   accountId: number | null,
   recipientEmail: string,
   status: string,
   errorMessage: string | null
-): void {
-  db.run(
+): Promise<void> {
+  await execute(
     `INSERT INTO send_logs (campaign_id, account_id, recipient_email, status, error_message)
      VALUES (?, ?, ?, ?, ?)`,
     [campaignId, accountId, recipientEmail, status, errorMessage]
   )
 }
 
-function updateCampaignStats(campaignId: number, outcome: 'successful' | 'failed'): void {
+async function updateCampaignStats(campaignId: number, outcome: 'successful' | 'failed'): Promise<void> {
   const column = outcome === 'successful' ? 'successful' : 'failed'
 
-  db.run(
+  await execute(
     `UPDATE campaigns
      SET ${column} = ${column} + 1,
          queued = queued - 1,

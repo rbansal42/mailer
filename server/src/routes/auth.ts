@@ -1,12 +1,12 @@
 import { Router } from 'express'
-import { db } from '../db'
+import { queryOne, execute } from '../db'
 import { generateToken } from '../middleware/auth'
 
 export const authRouter = Router()
 
 // Check if setup is needed
-authRouter.get('/check', (_, res) => {
-  const result = db.query('SELECT value FROM settings WHERE key = ?').get('password_hash')
+authRouter.get('/check', async (_, res) => {
+  const result = await queryOne<{ value: string }>('SELECT value FROM settings WHERE key = ?', ['password_hash'])
   res.json({ needsSetup: !result })
 })
 
@@ -19,7 +19,7 @@ authRouter.post('/setup', async (req, res) => {
   }
 
   // Check if already set up
-  const existing = db.query('SELECT value FROM settings WHERE key = ?').get('password_hash')
+  const existing = await queryOne<{ value: string }>('SELECT value FROM settings WHERE key = ?', ['password_hash'])
   if (existing) {
     return res.status(400).json({ message: 'Already set up' })
   }
@@ -27,7 +27,7 @@ authRouter.post('/setup', async (req, res) => {
   // Hash password using Bun's built-in
   const hash = await Bun.password.hash(password, { algorithm: 'bcrypt', cost: 12 })
   
-  db.run('INSERT INTO settings (key, value) VALUES (?, ?)', ['password_hash', hash])
+  await execute('INSERT INTO settings (key, value) VALUES (?, ?)', ['password_hash', hash])
 
   const token = generateToken()
   res.json({ token })
@@ -41,7 +41,7 @@ authRouter.post('/login', async (req, res) => {
     return res.status(400).json({ message: 'Password required' })
   }
 
-  const result = db.query('SELECT value FROM settings WHERE key = ?').get('password_hash') as { value: string } | null
+  const result = await queryOne<{ value: string }>('SELECT value FROM settings WHERE key = ?', ['password_hash'])
   
   if (!result) {
     return res.status(400).json({ message: 'Setup required' })

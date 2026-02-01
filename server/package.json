@@ -9,6 +9,7 @@
     "db:migrate": "bun run src/db/migrate.ts"
   },
   "dependencies": {
+    "@libsql/client": "^0.17.0",
     "@react-pdf/font": "^4.0.4",
     "@react-pdf/renderer": "^4.3.2",
     "@types/multer": "^2.0.0",
