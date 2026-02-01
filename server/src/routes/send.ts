@@ -121,7 +121,7 @@ sendRouter.get('/', async (req: Request, res: Response) => {
     const result = await execute(`
       INSERT INTO campaigns (name, template_id, subject, total_recipients, cc, bcc, status, scheduled_for)
       VALUES (?, ?, ?, ?, ?, ?, 'scheduled', ?)
-    `, [campaignName || 'Scheduled Campaign', validatedTemplateId || validatedMailId, validatedSubject, recipients.length, JSON.stringify(cc || []), JSON.stringify(bcc || []), scheduledFor])
+    `, [campaignName || 'Scheduled Campaign', validatedTemplateId ?? validatedMailId ?? null, validatedSubject, recipients.length, JSON.stringify(cc || []), JSON.stringify(bcc || []), scheduledFor])
 
     const campaignId = Number(result.lastInsertRowid)
 
@@ -183,7 +183,7 @@ sendRouter.get('/', async (req: Request, res: Response) => {
     const result = await execute(
       `INSERT INTO campaigns (name, template_id, subject, total_recipients, cc, bcc, status, started_at)
        VALUES (?, ?, ?, ?, ?, ?, 'sending', CURRENT_TIMESTAMP)`,
-      [campaignName || 'Unnamed', validatedTemplateId, validatedSubject, recipients.length, JSON.stringify(cc || []), JSON.stringify(bcc || [])]
+      [campaignName || 'Unnamed', validatedTemplateId ?? null, validatedSubject, recipients.length, JSON.stringify(cc || []), JSON.stringify(bcc || [])]
     )
     const campaignId = Number(result.lastInsertRowid)
 
