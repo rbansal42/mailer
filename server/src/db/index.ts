@@ -1,6 +1,6 @@
 import { Database } from 'bun:sqlite'
-import { existsSync, mkdirSync } from 'fs'
-import { join } from 'path'
+import { existsSync, mkdirSync, readdirSync } from 'fs'
+import { join, dirname } from 'path'
 
 const DATA_DIR = process.env.DATA_DIR || join(process.cwd(), '..', 'data')
 const DB_PATH = join(DATA_DIR, 'mailer.db')
@@ -24,6 +24,36 @@ function addColumnIfNotExists(table: string, column: string, type: string, defau
     }
   } catch (e) {
     // Column might already exist or table doesn't exist
+  }
+}
+
+// Run SQL migrations from the migrations directory
+function runMigrations() {
+  const migrationsDir = join(dirname(import.meta.path), 'migrations')
+  
+  if (!existsSync(migrationsDir)) {
+    return
+  }
+
+  const files = readdirSync(migrationsDir)
+    .filter(f => f.endsWith('.sql'))
+    .sort()
+
+  for (const file of files) {
+    const filePath = join(migrationsDir, file)
+    const content = require('fs').readFileSync(filePath, 'utf-8')
+    
+    // Split by semicolons to handle multiple statements
+    const statements = content
+      .split(';')
+      .map((s: string) => s.trim())
+      .filter((s: string) => s.length > 0)
+    
+    for (const statement of statements) {
+      db.run(statement)
+    }
+    
+    console.log(`Migration applied: ${file}`)
   }
 }
 
@@ -336,6 +366,9 @@ export function initializeDatabase() {
 
   // Seed starter templates
   seedTemplates()
+
+  // Run SQL migrations
+  runMigrations()
 }
 
 export function checkDatabaseHealth(): { ok: boolean; latencyMs: number } {
