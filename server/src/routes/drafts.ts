@@ -9,7 +9,9 @@ interface DraftRow {
   id: number
   name: string
   template_id: number | null
+  mail_id: number | null
   subject: string | null
+  test_email: string | null
   recipients: string
   variables: string
   cc: string
@@ -23,7 +25,9 @@ function formatDraft(row: DraftRow) {
     id: row.id,
     name: row.name,
     templateId: row.template_id,
+    mailId: row.mail_id,
     subject: row.subject,
+    testEmail: row.test_email,
     recipients: JSON.parse(row.recipients || '[]'),
     variables: JSON.parse(row.variables || '{}'),
     cc: JSON.parse(row.cc || '[]'),
@@ -69,16 +73,18 @@ draftsRouter.post('/', async (req, res) => {
     return res.status(400).json({ error: validation.error })
   }
 
-  const { name, templateId, subject, recipients, variables, cc, bcc } = validation.data
+  const { name, templateId, mailId, subject, testEmail, recipients, variables, cc, bcc } = validation.data
 
   try {
 
     const result = await execute(
-      'INSERT INTO drafts (name, template_id, subject, recipients, variables, cc, bcc) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO drafts (name, template_id, mail_id, subject, test_email, recipients, variables, cc, bcc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         name,
-        templateId || null,
-        subject || null,
+        templateId ?? null,
+        mailId ?? null,
+        subject ?? null,
+        testEmail ?? null,
         JSON.stringify(recipients || []),
         JSON.stringify(variables || {}),
         JSON.stringify(cc || []),
@@ -104,7 +110,7 @@ draftsRouter.put('/:id', async (req, res) => {
     return res.status(400).json({ error: validation.error })
   }
 
-  const { name, templateId, subject, recipients, variables, cc, bcc } = validation.data
+  const { name, templateId, mailId, subject, testEmail, recipients, variables, cc, bcc } = validation.data
 
   try {
     // Check if draft exists
@@ -124,11 +130,19 @@ draftsRouter.put('/:id', async (req, res) => {
     }
     if (templateId !== undefined) {
       updates.push('template_id = ?')
-      values.push(templateId || null)
+      values.push(templateId ?? null)
+    }
+    if (mailId !== undefined) {
+      updates.push('mail_id = ?')
+      values.push(mailId ?? null)
     }
     if (subject !== undefined) {
       updates.push('subject = ?')
-      values.push(subject || null)
+      values.push(subject ?? null)
+    }
+    if (testEmail !== undefined) {
+      updates.push('test_email = ?')
+      values.push(testEmail ?? null)
     }
     if (recipients !== undefined) {
       updates.push('recipients = ?')

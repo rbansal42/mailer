@@ -282,8 +282,10 @@ export interface Block {
 export interface Draft {
   id: number
   name: string
-  templateId: number
+  templateId: number | null
+  mailId: number | null
   subject: string
+  testEmail: string | null
   recipients: Recipient[]
   variables?: Record<string, string>
   createdAt: string

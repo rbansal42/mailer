@@ -465,6 +465,8 @@ export async function initializeDatabase() {
   // Run migrations - add columns if they don't exist
   await addColumnIfNotExists('drafts', 'cc', 'TEXT', '[]')
   await addColumnIfNotExists('drafts', 'bcc', 'TEXT', '[]')
+  await addColumnIfNotExists('drafts', 'mail_id', 'INTEGER', '')
+  await addColumnIfNotExists('drafts', 'test_email', 'TEXT', '')
   await addColumnIfNotExists('campaigns', 'cc', 'TEXT', '[]')
   await addColumnIfNotExists('campaigns', 'bcc', 'TEXT', '[]')
   await addColumnIfNotExists('campaigns', 'scheduled_for', 'DATETIME', '')

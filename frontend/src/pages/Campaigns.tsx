@@ -123,8 +123,11 @@ interface ComposerProps {
 function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
   const queryClient = useQueryClient()
   const [name, setName] = useState(draft?.name || '')
-  const [contentSource, setContentSource] = useState<'mail' | 'template'>('mail')
-  const [mailId, setMailId] = useState<number | null>(null)
+  // Determine content source from draft - if mailId exists, use mail; otherwise template
+  const [contentSource, setContentSource] = useState<'mail' | 'template'>(
+    draft?.mailId ? 'mail' : (draft?.templateId ? 'template' : 'mail')
+  )
+  const [mailId, setMailId] = useState<number | null>(draft?.mailId || null)
   const [templateId, setTemplateId] = useState<number | null>(draft?.templateId || null)
   const [subject, setSubject] = useState(draft?.subject || '')
   const [recipientsText, setRecipientsText] = useState('')
@@ -132,7 +135,7 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
   const [previewIndex, setPreviewIndex] = useState(0)
   const [sending, setSending] = useState(false)
   const [sendProgress, setSendProgress] = useState<{ current: number; total: number; logs: string[] } | null>(null)
-  const [testEmails, setTestEmails] = useState('')
+  const [testEmails, setTestEmails] = useState(draft?.testEmail || '')
   const [sendingTest, setSendingTest] = useState(false)
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
   
@@ -255,8 +258,10 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
   const handleSaveDraft = () => {
     saveDraftMutation.mutate({
       name,
-      templateId: templateId!,
+      templateId: contentSource === 'template' ? templateId : null,
+      mailId: contentSource === 'mail' ? mailId : null,
       subject,
+      testEmail: testEmails || null,
       recipients,
     })
   }
@@ -271,8 +276,9 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
       const contentParam = contentSource === 'mail' && mailId 
         ? `mailId=${mailId}` 
         : `templateId=${templateId}`
+      const token = getToken()
       const eventSource = new EventSource(
-        `/api/send?${contentParam}&subject=${encodeURIComponent(subject)}&recipients=${encodeURIComponent(JSON.stringify(recipients))}&name=${encodeURIComponent(name)}`
+        `/api/send?${contentParam}&subject=${encodeURIComponent(subject)}&recipients=${encodeURIComponent(JSON.stringify(recipients))}&name=${encodeURIComponent(name)}&token=${token}`
       )
 
       eventSource.onmessage = (event) => {
@@ -738,10 +744,10 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
                 try {
                   const list = await listsApi.create({ name: newListName })
                   await listsApi.addMembers(list.id, recipients.map(r => ({
+                    ...r,
                     email: r.email,
                     name: r.name,
                     company: r.company,
-                    ...r
                   })))
                   setLists([list, ...lists])
                   setSelectedListId(list.id)

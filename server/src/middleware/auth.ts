@@ -41,12 +41,21 @@ export function markSetupComplete(): void {
 
 export async function authMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization
+  
+  // Support token from query param (for EventSource/SSE which can't set headers)
+  const queryToken = req.query.token as string | undefined
 
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  let token: string | undefined
+  
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.slice(7)
+  } else if (queryToken) {
+    token = queryToken
+  }
+  
+  if (!token) {
     return res.status(401).json({ message: 'No token provided' })
   }
-
-  const token = authHeader.slice(7)
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as { userId: string }
