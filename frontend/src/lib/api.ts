@@ -544,5 +544,22 @@ export const listsApi = {
       body: JSON.stringify({ csv, mapping })
     }),
   
-  exportUrl: (listId: number): string => `${API_BASE}/contacts/lists/${listId}/export`
+  export: async (listId: number, listName: string): Promise<void> => {
+    const token = getToken()
+    const headers: HeadersInit = {}
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`
+    }
+    
+    const res = await fetch(`${API_BASE}/contacts/lists/${listId}/export`, { headers })
+    if (!res.ok) throw new Error('Failed to export list')
+    
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${listName.replace(/[^a-z0-9]/gi, '_')}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 }

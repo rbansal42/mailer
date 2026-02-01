@@ -204,8 +204,13 @@ export default function ListDetail() {
   }
 
   // Export
-  const handleExport = () => {
-    window.open(listsApi.exportUrl(listId), '_blank')
+  const handleExport = async () => {
+    if (!list) return
+    try {
+      await listsApi.export(listId, list.name)
+    } catch (error) {
+      console.error('Export failed:', error)
+    }
   }
 
   if (loading && !list) {
