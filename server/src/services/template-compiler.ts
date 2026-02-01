@@ -20,11 +20,23 @@ export function replaceVariables(text: string, data: Record<string, string>): st
 }
 
 /**
+ * Resolve a URL - prepend baseUrl for relative paths
+ */
+function resolveUrl(url: string, baseUrl: string): string {
+  if (!url) return url
+  // If it's a relative path (starts with /), prepend base URL
+  if (url.startsWith('/')) {
+    return `${baseUrl}${url}`
+  }
+  return url
+}
+
+/**
  * Compile a header block to HTML
  */
-function compileHeader(props: Record<string, unknown>): string {
+function compileHeader(props: Record<string, unknown>, baseUrl: string): string {
   const bgColor = String(props.backgroundColor || '#ffffff')
-  const imageUrl = String(props.imageUrl || '')
+  const imageUrl = resolveUrl(String(props.imageUrl || ''), baseUrl)
   const imageHtml = imageUrl
     ? `<img src="${imageUrl}" alt="Header" style="max-width: 200px; height: auto;" />`
     : ''
@@ -71,11 +83,11 @@ function compileText(props: Record<string, unknown>, data: Record<string, string
 /**
  * Compile an image block to HTML
  */
-function compileImage(props: Record<string, unknown>, data: Record<string, string>): string {
+function compileImage(props: Record<string, unknown>, data: Record<string, string>, baseUrl: string): string {
   const width = Number(props.width) || 100
   const align = String(props.align || 'center')
   const alt = replaceVariables(String(props.alt || ''), data)
-  const url = replaceVariables(String(props.url || ''), data)
+  const url = resolveUrl(replaceVariables(String(props.url || ''), data), baseUrl)
 
   return `
     <table width="100%" cellpadding="0" cellspacing="0" border="0">
@@ -192,16 +204,16 @@ function compileFooter(props: Record<string, unknown>, data: Record<string, stri
 /**
  * Compile a single block to HTML
  */
-function compileBlock(block: BlockInput, data: Record<string, string>): string {
+function compileBlock(block: BlockInput, data: Record<string, string>, baseUrl: string): string {
   const { type, props } = block
 
   switch (type) {
     case 'header':
-      return compileHeader(props)
+      return compileHeader(props, baseUrl)
     case 'text':
       return compileText(props, data)
     case 'image':
-      return compileImage(props, data)
+      return compileImage(props, data, baseUrl)
     case 'button':
       return compileButton(props, data)
     case 'divider':
@@ -258,9 +270,10 @@ export function injectTracking(
 
 /**
  * Compile an array of blocks to a complete HTML email
+ * @param baseUrl - Base URL for resolving relative media paths (e.g., https://mailer.example.com)
  */
-export function compileTemplate(blocks: BlockInput[], data: Record<string, string>): string {
-  const bodyContent = blocks.map((block) => compileBlock(block, data)).join('')
+export function compileTemplate(blocks: BlockInput[], data: Record<string, string>, baseUrl: string = ''): string {
+  const bodyContent = blocks.map((block) => compileBlock(block, data, baseUrl)).join('')
 
   return `<!DOCTYPE html>
 <html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">

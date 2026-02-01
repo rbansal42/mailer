@@ -4,6 +4,7 @@ import { getNextAvailableAccount, incrementSendCount } from './account-manager'
 import { compileTemplate } from './template-compiler'
 import { createProvider } from '../providers'
 import { decrypt } from '../utils/crypto'
+import { getTrackingSettings } from './tracking'
 
 interface QueueItem {
   id: number
@@ -120,9 +121,12 @@ export async function processQueue(): Promise<ProcessResult> {
 
       const senderAccount = account as unknown as SenderAccount
 
+      // Get base URL for media
+      const trackingSettings = await getTrackingSettings()
+
       // Compile template with recipient data
       const recipientData = JSON.parse(queueItem.recipient_data)
-      const html = compileTemplate(templateBlocks, recipientData)
+      const html = compileTemplate(templateBlocks, recipientData, trackingSettings.baseUrl)
 
       // Compile subject with variables
       const subject = compileSubject(campaign.subject, recipientData)

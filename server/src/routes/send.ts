@@ -233,13 +233,15 @@ sendRouter.get('/', async (req: Request, res: Response) => {
           continue
         }
 
+        // Get tracking settings (needed for baseUrl and tracking injection)
+        const trackingSettings = await getTrackingSettings()
+
         // Compile template with recipient data (merge email with data for variable substitution)
         const recipientData: Record<string, string> = { email: recipient.email, ...recipient.data }
-        let html = compileTemplate(blocks, recipientData)
+        let html = compileTemplate(blocks, recipientData, trackingSettings.baseUrl)
         const compiledSubject = replaceVariables(validatedSubject, recipientData)
 
         // Inject tracking if enabled
-        const trackingSettings = await getTrackingSettings()
         if (trackingSettings.enabled) {
           const trackingToken = await getOrCreateToken(campaignId, recipient.email)
           html = injectTracking(html, trackingToken, trackingSettings.baseUrl, {

@@ -266,7 +266,7 @@ async function runRecurringCampaign(campaign: RecurringCampaign): Promise<void> 
 
     try {
       // Compile email
-      let html = compileTemplate(templateBlocks, recipient)
+      let html = compileTemplate(templateBlocks, recipient, trackingSettings.baseUrl)
       const subject = replaceVariables(campaign.subject, recipient)
 
       // Add tracking if enabled

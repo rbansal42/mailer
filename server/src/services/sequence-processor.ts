@@ -213,7 +213,7 @@ async function processEnrollmentStep(enrollment: Enrollment & { sequence_name: s
 
   try {
     // Compile email
-    let html = compileTemplate(templateBlocks as Parameters<typeof compileTemplate>[0], recipientData)
+    let html = compileTemplate(templateBlocks as Parameters<typeof compileTemplate>[0], recipientData, trackingSettings.baseUrl)
     const subject = replaceVariables(step.subject, recipientData)
 
     // Add tracking
