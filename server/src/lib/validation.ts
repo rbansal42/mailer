@@ -25,15 +25,15 @@ export const updateTemplateSchema = createTemplateSchema.partial()
 // Mail schemas
 export const createMailSchema = z.object({
   name: z.string().min(1, { message: 'Name is required' }).max(200),
-  description: z.string().max(1000).optional(),
+  description: z.string().max(1000).nullable().optional(),
   blocks: z.array(blockSchema).default([]),
-  templateId: z.number().int().positive().optional(),
+  templateId: z.number().int().positive().nullable().optional(),
   status: z.enum(['draft', 'sent', 'archived']).default('draft')
 })
 
 export const updateMailSchema = z.object({
   name: z.string().min(1).max(200).optional(),
-  description: z.string().max(1000).optional(),
+  description: z.string().max(1000).nullable().optional(),
   blocks: z.array(blockSchema).optional(),
   status: z.enum(['draft', 'sent', 'archived']).optional()
 })
@@ -73,7 +73,7 @@ export const createAccountSchema = z.object({
 // Draft schemas
 export const createDraftSchema = z.object({
   name: z.string().min(1).max(200),
-  templateId: z.number().int().positive().optional(),
+  templateId: z.number().int().positive().nullable().optional(),
   subject: z.string().max(500).optional(),
   recipients: z.array(z.object({
     email: emailSchema,
@@ -89,8 +89,8 @@ export const updateDraftSchema = createDraftSchema.partial()
 // Send schema - either templateId OR mailId must be provided
 export const sendCampaignSchema = z.object({
   name: z.string().min(1).max(200).optional(),
-  templateId: z.number().int().positive().optional(),
-  mailId: z.number().int().positive().optional(),
+  templateId: z.number().int().positive().nullable().optional(),
+  mailId: z.number().int().positive().nullable().optional(),
   subject: z.string().min(1).max(500),
   recipients: z.array(z.object({
     email: emailSchema,
