@@ -19,7 +19,7 @@ import { analyticsRouter } from './routes/analytics'
 import { recurringRouter } from './routes/recurring'
 import { sequencesRouter } from './routes/sequences'
 import { certificatesRouter } from './routes/certificates'
-import { uploadthingRouter } from './routes/uploadthing'
+import { createUploadthingRouter } from './routes/uploadthing'
 import mediaRoutes from './routes/media'
 import { authMiddleware } from './middleware/auth'
 import { startQueueProcessor } from './services/queue-processor'
@@ -139,7 +139,7 @@ app.use('/api/certificates', authMiddleware, certificatesRouter)
 app.use('/api/media', authMiddleware, mediaRoutes)
 
 // Uploadthing routes (uses its own auth via UPLOADTHING_TOKEN)
-app.use('/api/uploadthing', uploadthingRouter)
+app.use('/api/uploadthing', createUploadthingRouter())
 
 // Serve static frontend in production
 const publicPath = join(process.cwd(), 'public')
