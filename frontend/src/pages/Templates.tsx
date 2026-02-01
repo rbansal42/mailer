@@ -14,6 +14,7 @@ import { MediaLibrarySidebar } from '@/components/media-library'
 import { cn } from '../lib/utils'
 import { RichTextEditor } from '../components/ui/rich-text-editor'
 import { ImageCropModal } from '../components/ui/image-crop-modal'
+import DOMPurify from 'isomorphic-dompurify'
 import { useBlockHistory } from '../stores/history'
 import { useKeyboardShortcuts, createSaveShortcut, createUndoShortcut, createRedoShortcut } from '../hooks/useKeyboardShortcuts'
 
@@ -573,7 +574,7 @@ function BlockPreview({ block, darkMode: _darkMode }: { block: Block; darkMode?:
         <div
           className="p-3 prose prose-sm max-w-none"
           style={{ fontSize: Number(props.fontSize) || 14, textAlign: (props.align as 'left' | 'center' | 'right') || 'left' }}
-          dangerouslySetInnerHTML={{ __html: String(props.content) || '<p>Enter text content...</p>' }}
+          dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(String(props.content)) || '<p>Enter text content...</p>' }}
         />
       )
     case 'image':

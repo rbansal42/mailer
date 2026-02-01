@@ -120,6 +120,14 @@ mailsRouter.put('/:id', (req, res) => {
 // Delete mail
 mailsRouter.delete('/:id', (req, res) => {
   logger.info('Deleting mail', { service: 'mails', mailId: req.params.id })
+  
+  // Check if mail exists first
+  const existing = db.query('SELECT id FROM mails WHERE id = ?').get(req.params.id)
+  if (!existing) {
+    logger.warn('Mail not found for deletion', { service: 'mails', mailId: req.params.id })
+    return res.status(404).json({ error: 'Mail not found' })
+  }
+  
   db.run('DELETE FROM mails WHERE id = ?', [req.params.id])
   logger.info('Mail deleted', { service: 'mails', mailId: req.params.id })
   res.status(204).send()
