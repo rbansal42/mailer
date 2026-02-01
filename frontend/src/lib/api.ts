@@ -9,11 +9,30 @@ class ApiError extends Error {
   }
 }
 
+// Get token from Zustand store, with fallback to localStorage for SSR/hydration race
+function getToken(): string | null {
+  // Try Zustand store first
+  const storeToken = useAuthStore.getState().token
+  if (storeToken) return storeToken
+  
+  // Fallback: read directly from localStorage (handles hydration race)
+  try {
+    const stored = localStorage.getItem('mailer-auth')
+    if (stored) {
+      const parsed = JSON.parse(stored)
+      return parsed?.state?.token || null
+    }
+  } catch {
+    // Ignore parse errors
+  }
+  return null
+}
+
 async function request<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const token = useAuthStore.getState().token
+  const token = getToken()
 
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
@@ -181,7 +200,7 @@ export const api = {
   
   // Download certificates as ZIP (for large batches - server-side ZIP creation)
   downloadCertificatesZip: async (configId: number, recipients: CertificateData[]): Promise<Blob> => {
-    const token = useAuthStore.getState().token
+    const token = getToken()
     const response = await fetch(`${API_BASE}/certificates/generate/zip`, {
       method: 'POST',
       headers: {
