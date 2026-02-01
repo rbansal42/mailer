@@ -62,6 +62,29 @@ Located in `server/src/services/pdf/templates/`:
 - **clean-minimal**: White minimal design
 - **wave-accent**: Layered color bars at bottom
 
+## Database Schema
+
+Key tables in `server/src/db/index.ts`:
+
+- **templates** - Reusable email templates (starter designs)
+  - `is_default` - Built-in templates flag
+  
+- **mails** - Saved email designs (user-created)
+  - `template_id` - Which template it was based on
+  - `campaign_id` - Associated campaign (if sent)
+  - `status` - 'draft' or 'sent'
+  
+- **drafts** - Campaign drafts (work in progress)
+  - `template_id` - Currently uses templates, should support mails too
+  
+- **campaigns** - Sent campaign history
+
+## Mail Library vs Templates
+
+- **Templates**: Reusable starting points (e.g., "Newsletter Layout")
+- **Mails**: Actual composed emails saved to library (e.g., "January Newsletter")
+- **Workflow**: Create mail from template → Edit → Save → Use in campaign or save as new template
+
 ## Known Issues / Gotchas
 
 1. **Large payloads**: JSON body limit is 10mb for certificate configs with base64 images.
@@ -69,6 +92,8 @@ Located in `server/src/services/pdf/templates/`:
 2. **Worktrees**: Use `.worktrees/` directory for feature branches. It's gitignored.
 
 3. **React PDF fonts**: Fonts are registered in `server/src/services/pdf/fonts.ts`. Font files are in `server/assets/fonts/`.
+
+4. **Rich text in blocks**: Text blocks use HTML content (TipTap editor). Preview must use `dangerouslySetInnerHTML` with DOMPurify sanitization.
 
 ## Workflow
 

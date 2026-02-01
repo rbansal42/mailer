@@ -86,10 +86,11 @@ export const createDraftSchema = z.object({
 
 export const updateDraftSchema = createDraftSchema.partial()
 
-// Send schema
+// Send schema - either templateId OR mailId must be provided
 export const sendCampaignSchema = z.object({
   name: z.string().min(1).max(200).optional(),
-  templateId: z.number().int().positive(),
+  templateId: z.number().int().positive().optional(),
+  mailId: z.number().int().positive().optional(),
   subject: z.string().min(1).max(500),
   recipients: z.array(z.object({
     email: emailSchema,
@@ -98,6 +99,8 @@ export const sendCampaignSchema = z.object({
   cc: emailArraySchema,
   bcc: emailArraySchema,
   scheduledFor: z.string().datetime().optional()
+}).refine(data => data.templateId || data.mailId, {
+  message: 'Either templateId or mailId must be provided'
 })
 
 // Validation helper

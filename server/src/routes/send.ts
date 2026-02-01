@@ -23,6 +23,12 @@ interface TemplateRow {
   blocks: string
 }
 
+interface MailRow {
+  id: number
+  name: string
+  blocks: string
+}
+
 function sendSSE(res: Response, data: object): void {
   res.write(`data: ${JSON.stringify(data)}\n\n`)
 }
@@ -34,7 +40,7 @@ function getNextDay(): string {
 }
 
 sendRouter.get('/', async (req: Request, res: Response) => {
-  const { templateId, subject, recipients: recipientsJson, name, cc: ccJson, bcc: bccJson, scheduledFor: scheduledForParam } = req.query
+  const { templateId, mailId, subject, recipients: recipientsJson, name, cc: ccJson, bcc: bccJson, scheduledFor: scheduledForParam } = req.query
 
   // Parse JSON fields from query params
   let parsedRecipients: unknown
@@ -65,7 +71,8 @@ sendRouter.get('/', async (req: Request, res: Response) => {
   // Validate with schema
   const validation = validate(sendCampaignSchema, {
     name: name as string,
-    templateId: Number(templateId),
+    templateId: templateId ? Number(templateId) : undefined,
+    mailId: mailId ? Number(mailId) : undefined,
     subject: subject as string,
     recipients: parsedRecipients,
     cc: parsedCc,
@@ -79,23 +86,42 @@ sendRouter.get('/', async (req: Request, res: Response) => {
     return
   }
 
-  const { templateId: validatedTemplateId, subject: validatedSubject, recipients, cc, bcc, name: campaignName, scheduledFor } = validation.data
+  const { templateId: validatedTemplateId, mailId: validatedMailId, subject: validatedSubject, recipients, cc, bcc, name: campaignName, scheduledFor } = validation.data
+
+  // Helper to get blocks from either template or mail
+  interface BlockInput {
+    id: string
+    type: string
+    props: Record<string, unknown>
+  }
+  async function getBlocks(): Promise<{ blocks: BlockInput[], sourceId: number, sourceType: 'template' | 'mail' } | null> {
+    if (validatedMailId) {
+      const mail = await queryOne<MailRow>('SELECT * FROM mails WHERE id = ?', [validatedMailId])
+      if (!mail) return null
+      return { blocks: JSON.parse(mail.blocks || '[]') as BlockInput[], sourceId: validatedMailId, sourceType: 'mail' }
+    } else if (validatedTemplateId) {
+      const template = await queryOne<TemplateRow>('SELECT * FROM templates WHERE id = ?', [validatedTemplateId])
+      if (!template) return null
+      return { blocks: JSON.parse(template.blocks || '[]') as BlockInput[], sourceId: validatedTemplateId, sourceType: 'template' }
+    }
+    return null
+  }
 
   // If scheduling for later, don't send immediately
   if (scheduledFor) {
-    // Validate template exists
-    const template = await queryOne<TemplateRow>('SELECT * FROM templates WHERE id = ?', [validatedTemplateId])
-    if (!template) {
-      logger.warn('Template not found for scheduled campaign', { templateId: validatedTemplateId })
-      res.status(404).json({ error: 'Template not found' })
+    // Validate content source exists
+    const content = await getBlocks()
+    if (!content) {
+      logger.warn('Content source not found for scheduled campaign', { templateId: validatedTemplateId, mailId: validatedMailId })
+      res.status(404).json({ error: 'Template or mail not found' })
       return
     }
 
-    // Create scheduled campaign
+    // Create scheduled campaign (store template_id for backwards compatibility, or mail reference)
     const result = await execute(`
       INSERT INTO campaigns (name, template_id, subject, total_recipients, cc, bcc, status, scheduled_for)
       VALUES (?, ?, ?, ?, ?, ?, 'scheduled', ?)
-    `, [campaignName || 'Scheduled Campaign', validatedTemplateId, validatedSubject, recipients.length, JSON.stringify(cc || []), JSON.stringify(bcc || []), scheduledFor])
+    `, [campaignName || 'Scheduled Campaign', validatedTemplateId || validatedMailId, validatedSubject, recipients.length, JSON.stringify(cc || []), JSON.stringify(bcc || []), scheduledFor])
 
     const campaignId = Number(result.lastInsertRowid)
 
@@ -127,6 +153,7 @@ sendRouter.get('/', async (req: Request, res: Response) => {
   logger.info('Starting campaign send', {
     service: 'send',
     templateId: validatedTemplateId,
+    mailId: validatedMailId,
     recipientCount: recipients.length,
     ccCount: cc?.length || 0,
     bccCount: bcc?.length || 0
@@ -140,17 +167,17 @@ sendRouter.get('/', async (req: Request, res: Response) => {
   res.flushHeaders()
 
   try {
-    // Get template from database
-    const template = await queryOne<TemplateRow>('SELECT * FROM templates WHERE id = ?', [validatedTemplateId])
+    // Get content from template or mail
+    const content = await getBlocks()
 
-    if (!template) {
-      logger.warn('Template not found', { templateId: validatedTemplateId })
-      sendSSE(res, { type: 'error', message: 'Template not found' })
+    if (!content) {
+      logger.warn('Content source not found', { templateId: validatedTemplateId, mailId: validatedMailId })
+      sendSSE(res, { type: 'error', message: 'Template or mail not found' })
       res.end()
       return
     }
 
-    const blocks = JSON.parse(template.blocks || '[]')
+    const blocks = content.blocks
 
     // Create campaign record with cc/bcc
     const result = await execute(
