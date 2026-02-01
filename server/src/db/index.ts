@@ -27,8 +27,16 @@ function addColumnIfNotExists(table: string, column: string, type: string, defau
   }
 }
 
-// Run SQL migrations from the migrations directory
+// Run SQL migrations from the migrations directory (with tracking)
 function runMigrations() {
+  // Create migrations tracking table if it doesn't exist
+  db.run(`
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      filename TEXT PRIMARY KEY,
+      applied_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `)
+
   // Try multiple possible locations for migrations
   const possiblePaths = [
     join(process.cwd(), 'src', 'db', 'migrations'),           // Running from server/
@@ -38,15 +46,26 @@ function runMigrations() {
   
   const migrationsDir = possiblePaths.find(p => existsSync(p))
   
-  if (!existsSync(migrationsDir)) {
+  if (!migrationsDir || !existsSync(migrationsDir)) {
     return
   }
+
+  // Get already applied migrations
+  const applied = new Set(
+    (db.query('SELECT filename FROM schema_migrations').all() as { filename: string }[])
+      .map(r => r.filename)
+  )
 
   const files = readdirSync(migrationsDir)
     .filter(f => f.endsWith('.sql'))
     .sort()
 
   for (const file of files) {
+    // Skip if already applied
+    if (applied.has(file)) {
+      continue
+    }
+
     const filePath = join(migrationsDir, file)
     const content = require('fs').readFileSync(filePath, 'utf-8')
     
@@ -54,13 +73,20 @@ function runMigrations() {
     const statements = content
       .split(';')
       .map((s: string) => s.trim())
-      .filter((s: string) => s.length > 0)
+      .filter((s: string) => s.length > 0 && !s.startsWith('--'))
     
-    for (const statement of statements) {
-      db.run(statement)
+    try {
+      for (const statement of statements) {
+        db.run(statement)
+      }
+      
+      // Record successful migration
+      db.run('INSERT INTO schema_migrations (filename) VALUES (?)', [file])
+      console.log(`Migration applied: ${file}`)
+    } catch (err) {
+      console.error(`Migration failed: ${file}`, err)
+      throw err // Stop on migration failure
     }
-    
-    console.log(`Migration applied: ${file}`)
   }
 }
 
