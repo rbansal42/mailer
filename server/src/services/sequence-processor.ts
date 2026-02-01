@@ -1,4 +1,4 @@
-import { db } from '../db'
+import { queryAll, queryOne, execute } from '../db'
 import { logger } from '../lib/logger'
 import { compileTemplate, replaceVariables, injectTracking } from './template-compiler'
 import { getNextAvailableAccount, incrementSendCount } from './account-manager'
@@ -57,17 +57,16 @@ function calculateNextSendAt(step: SequenceStep): string {
 /**
  * Enroll a recipient in a sequence
  */
-export function enrollRecipient(
+export async function enrollRecipient(
   sequenceId: number,
   email: string,
   data: Record<string, string> = {}
-): number {
+): Promise<number> {
   // Get first step
-  const firstStep = db
-    .query<SequenceStep, [number]>(
-      `SELECT * FROM sequence_steps WHERE sequence_id = ? ORDER BY step_order LIMIT 1`
-    )
-    .get(sequenceId)
+  const firstStep = await queryOne<SequenceStep>(
+    `SELECT * FROM sequence_steps WHERE sequence_id = ? ORDER BY step_order LIMIT 1`,
+    [sequenceId]
+  )
 
   if (!firstStep) {
     throw new Error('Sequence has no steps')
@@ -75,7 +74,7 @@ export function enrollRecipient(
 
   const nextSendAt = calculateNextSendAt(firstStep)
 
-  const result = db.run(
+  const result = await execute(
     `INSERT INTO sequence_enrollments (sequence_id, recipient_email, recipient_data, current_step, next_send_at)
      VALUES (?, ?, ?, 1, ?)
      ON CONFLICT(sequence_id, recipient_email) DO UPDATE SET
@@ -99,8 +98,8 @@ export function enrollRecipient(
 /**
  * Pause an enrollment
  */
-export function pauseEnrollment(enrollmentId: number): void {
-  db.run(
+export async function pauseEnrollment(enrollmentId: number): Promise<void> {
+  await execute(
     `UPDATE sequence_enrollments SET status = 'paused' WHERE id = ?`,
     [enrollmentId]
   )
@@ -109,8 +108,8 @@ export function pauseEnrollment(enrollmentId: number): void {
 /**
  * Cancel an enrollment
  */
-export function cancelEnrollment(enrollmentId: number): void {
-  db.run(
+export async function cancelEnrollment(enrollmentId: number): Promise<void> {
+  await execute(
     `UPDATE sequence_enrollments SET status = 'cancelled' WHERE id = ?`,
     [enrollmentId]
   )
@@ -119,8 +118,8 @@ export function cancelEnrollment(enrollmentId: number): void {
 /**
  * Resume a paused enrollment
  */
-export function resumeEnrollment(enrollmentId: number): void {
-  db.run(
+export async function resumeEnrollment(enrollmentId: number): Promise<void> {
+  await execute(
     `UPDATE sequence_enrollments SET status = 'active' WHERE id = ?`,
     [enrollmentId]
   )
@@ -133,16 +132,15 @@ export async function processSequenceSteps(): Promise<number> {
   const now = new Date().toISOString()
 
   // Find due enrollments
-  const dueEnrollments = db
-    .query<Enrollment & { sequence_name: string }, [string]>(
-      `SELECT e.*, s.name as sequence_name
-       FROM sequence_enrollments e
-       JOIN sequences s ON e.sequence_id = s.id
-       WHERE e.status = 'active' 
-         AND e.next_send_at <= ?
-         AND s.enabled = 1`
-    )
-    .all(now)
+  const dueEnrollments = await queryAll<Enrollment & { sequence_name: string }>(
+    `SELECT e.*, s.name as sequence_name
+     FROM sequence_enrollments e
+     JOIN sequences s ON e.sequence_id = s.id
+     WHERE e.status = 'active' 
+       AND e.next_send_at <= ?
+       AND s.enabled = 1`,
+    [now]
+  )
 
   if (dueEnrollments.length === 0) {
     return 0
@@ -170,16 +168,15 @@ export async function processSequenceSteps(): Promise<number> {
  */
 async function processEnrollmentStep(enrollment: Enrollment & { sequence_name: string }): Promise<void> {
   // Get current step
-  const step = db
-    .query<SequenceStep, [number, number]>(
-      `SELECT * FROM sequence_steps 
-       WHERE sequence_id = ? AND step_order = ?`
-    )
-    .get(enrollment.sequence_id, enrollment.current_step)
+  const step = await queryOne<SequenceStep>(
+    `SELECT * FROM sequence_steps 
+     WHERE sequence_id = ? AND step_order = ?`,
+    [enrollment.sequence_id, enrollment.current_step]
+  )
 
   if (!step) {
     // No more steps, complete the enrollment
-    db.run(
+    await execute(
       `UPDATE sequence_enrollments 
        SET status = 'completed', completed_at = CURRENT_TIMESTAMP, next_send_at = NULL
        WHERE id = ?`,
@@ -191,9 +188,7 @@ async function processEnrollmentStep(enrollment: Enrollment & { sequence_name: s
   // Get template
   let templateBlocks: unknown[] = []
   if (step.template_id) {
-    const template = db
-      .query<TemplateRow, [number]>('SELECT id, blocks FROM templates WHERE id = ?')
-      .get(step.template_id)
+    const template = await queryOne<TemplateRow>('SELECT id, blocks FROM templates WHERE id = ?', [step.template_id])
     
     if (template) {
       templateBlocks = JSON.parse(template.blocks)
@@ -205,7 +200,7 @@ async function processEnrollmentStep(enrollment: Enrollment & { sequence_name: s
   recipientData.email = enrollment.recipient_email
 
   // Get account
-  const account = getNextAvailableAccount()
+  const account = await getNextAvailableAccount()
   if (!account) {
     logger.warn('No available account for sequence step', {
       service: 'sequence-processor',
@@ -214,7 +209,7 @@ async function processEnrollmentStep(enrollment: Enrollment & { sequence_name: s
     return
   }
 
-  const trackingSettings = getTrackingSettings()
+  const trackingSettings = await getTrackingSettings()
 
   try {
     // Compile email
@@ -225,7 +220,7 @@ async function processEnrollmentStep(enrollment: Enrollment & { sequence_name: s
     if (trackingSettings.enabled) {
       // Use a synthetic campaign ID for sequences
       const syntheticCampaignId = -enrollment.sequence_id
-      const token = getOrCreateToken(syntheticCampaignId, enrollment.recipient_email)
+      const token = await getOrCreateToken(syntheticCampaignId, enrollment.recipient_email)
       html = injectTracking(html, token, trackingSettings.baseUrl, {
         openTracking: trackingSettings.openEnabled,
         clickTracking: trackingSettings.clickEnabled
@@ -241,7 +236,7 @@ async function processEnrollmentStep(enrollment: Enrollment & { sequence_name: s
     })
     await provider.disconnect()
 
-    incrementSendCount(account.id)
+    await incrementSendCount(account.id)
 
     logger.info('Sequence step sent', {
       service: 'sequence-processor',
@@ -251,16 +246,15 @@ async function processEnrollmentStep(enrollment: Enrollment & { sequence_name: s
     })
 
     // Advance to next step
-    const nextStep = db
-      .query<SequenceStep, [number, number]>(
-        `SELECT * FROM sequence_steps 
-         WHERE sequence_id = ? AND step_order = ?`
-      )
-      .get(enrollment.sequence_id, enrollment.current_step + 1)
+    const nextStep = await queryOne<SequenceStep>(
+      `SELECT * FROM sequence_steps 
+       WHERE sequence_id = ? AND step_order = ?`,
+      [enrollment.sequence_id, enrollment.current_step + 1]
+    )
 
     if (nextStep) {
       const nextSendAt = calculateNextSendAt(nextStep)
-      db.run(
+      await execute(
         `UPDATE sequence_enrollments 
          SET current_step = current_step + 1, next_send_at = ?
          WHERE id = ?`,
@@ -268,7 +262,7 @@ async function processEnrollmentStep(enrollment: Enrollment & { sequence_name: s
       )
     } else {
       // No more steps, complete
-      db.run(
+      await execute(
         `UPDATE sequence_enrollments 
          SET status = 'completed', completed_at = CURRENT_TIMESTAMP, next_send_at = NULL
          WHERE id = ?`,

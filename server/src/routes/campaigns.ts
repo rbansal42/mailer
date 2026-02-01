@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { db } from '../db'
+import { queryAll, queryOne, execute } from '../db'
 
 export const campaignsRouter = Router()
 
@@ -56,19 +56,19 @@ function formatSendLog(row: SendLogRow) {
 }
 
 // List campaigns
-campaignsRouter.get('/', (_, res) => {
-  const rows = db.query('SELECT * FROM campaigns ORDER BY created_at DESC').all() as CampaignRow[]
+campaignsRouter.get('/', async (_, res) => {
+  const rows = await queryAll<CampaignRow>('SELECT * FROM campaigns ORDER BY created_at DESC')
   res.json(rows.map(formatCampaign))
 })
 
 // Get campaign with logs
-campaignsRouter.get('/:id', (req, res) => {
-  const campaign = db.query('SELECT * FROM campaigns WHERE id = ?').get(req.params.id) as CampaignRow | null
+campaignsRouter.get('/:id', async (req, res) => {
+  const campaign = await queryOne<CampaignRow>('SELECT * FROM campaigns WHERE id = ?', [req.params.id])
   if (!campaign) {
     return res.status(404).json({ message: 'Campaign not found' })
   }
 
-  const logs = db.query('SELECT * FROM send_logs WHERE campaign_id = ? ORDER BY sent_at DESC').all(req.params.id) as SendLogRow[]
+  const logs = await queryAll<SendLogRow>('SELECT * FROM send_logs WHERE campaign_id = ? ORDER BY sent_at DESC', [req.params.id])
 
   res.json({
     ...formatCampaign(campaign),
@@ -77,7 +77,7 @@ campaignsRouter.get('/:id', (req, res) => {
 })
 
 // Delete campaign
-campaignsRouter.delete('/:id', (req, res) => {
-  db.run('DELETE FROM campaigns WHERE id = ?', [req.params.id])
+campaignsRouter.delete('/:id', async (req, res) => {
+  await execute('DELETE FROM campaigns WHERE id = ?', [req.params.id])
   res.status(204).send()
 })

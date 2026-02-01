@@ -2,7 +2,7 @@ import { Router } from 'express'
 import multer from 'multer'
 import { existsSync, unlinkSync } from 'fs'
 import { basename, extname } from 'path'
-import { db } from '../db'
+import { queryAll, queryOne, execute } from '../db'
 import { logger } from '../lib/logger'
 import {
   extractZip,
@@ -236,7 +236,7 @@ attachmentsRouter.post('/upload', (req, res, next) => {
     }
 
     // Store attachments in the database
-    const attachmentIds = storeAttachments(filesToStore, draftId, campaignId)
+    const attachmentIds = await storeAttachments(filesToStore, draftId, campaignId)
 
     // Clean up temp directories (files have been copied to attachments dir)
     for (const dir of tempDirs) {
@@ -262,7 +262,7 @@ attachmentsRouter.post('/upload', (req, res, next) => {
 })
 
 // POST /match - Match attachments to recipients
-attachmentsRouter.post('/match', (req, res) => {
+attachmentsRouter.post('/match', async (req, res) => {
   const requestId = (req as any).requestId
   const {
     attachmentIds,
@@ -294,7 +294,7 @@ attachmentsRouter.post('/match', (req, res) => {
   }
 
   try {
-    const results = matchAttachments(attachmentIds, recipients, config, draftId, campaignId)
+    const results = await matchAttachments(attachmentIds, recipients, config, draftId, campaignId)
     const summary = getMatchSummary(results)
 
     logger.info('Attachment matching complete', {
@@ -316,7 +316,7 @@ attachmentsRouter.post('/match', (req, res) => {
 })
 
 // GET /draft/:draftId - Get attachments for a draft
-attachmentsRouter.get('/draft/:draftId', (req, res) => {
+attachmentsRouter.get('/draft/:draftId', async (req, res) => {
   const requestId = (req as any).requestId
   const draftId = parseInt(req.params.draftId, 10)
 
@@ -325,9 +325,10 @@ attachmentsRouter.get('/draft/:draftId', (req, res) => {
   }
 
   try {
-    const attachments = db
-      .query('SELECT * FROM attachments WHERE draft_id = ? ORDER BY created_at DESC')
-      .all(draftId) as AttachmentRow[]
+    const attachments = await queryAll<AttachmentRow>(
+      'SELECT * FROM attachments WHERE draft_id = ? ORDER BY created_at DESC',
+      [draftId]
+    )
 
     logger.debug('Retrieved attachments for draft', {
       requestId,
@@ -351,7 +352,7 @@ attachmentsRouter.get('/draft/:draftId', (req, res) => {
 })
 
 // GET /recipient-preview - Get attachment info for a specific recipient
-attachmentsRouter.get('/recipient-preview', (req, res) => {
+attachmentsRouter.get('/recipient-preview', async (req, res) => {
   const requestId = (req as any).requestId
   const { email, draftId, campaignId } = req.query as {
     email?: string
@@ -367,7 +368,7 @@ attachmentsRouter.get('/recipient-preview', (req, res) => {
   const parsedCampaignId = campaignId ? parseInt(campaignId, 10) : undefined
 
   try {
-    const attachment = getRecipientAttachment(email, parsedDraftId, parsedCampaignId)
+    const attachment = await getRecipientAttachment(email, parsedDraftId, parsedCampaignId)
 
     if (!attachment) {
       logger.debug('No attachment found for recipient', { requestId, email })
@@ -392,7 +393,7 @@ attachmentsRouter.get('/recipient-preview', (req, res) => {
 })
 
 // DELETE /:id - Delete an attachment
-attachmentsRouter.delete('/:id', (req, res) => {
+attachmentsRouter.delete('/:id', async (req, res) => {
   const requestId = (req as any).requestId
   const attachmentId = parseInt(req.params.id, 10)
 
@@ -402,9 +403,10 @@ attachmentsRouter.delete('/:id', (req, res) => {
 
   try {
     // Get the attachment to find the file path
-    const attachment = db
-      .query('SELECT * FROM attachments WHERE id = ?')
-      .get(attachmentId) as AttachmentRow | null
+    const attachment = await queryOne<AttachmentRow>(
+      'SELECT * FROM attachments WHERE id = ?',
+      [attachmentId]
+    )
 
     if (!attachment) {
       logger.warn('Attachment not found', { requestId, attachmentId })
@@ -423,10 +425,10 @@ attachmentsRouter.delete('/:id', (req, res) => {
     }
 
     // Delete recipient_attachments records
-    db.run('DELETE FROM recipient_attachments WHERE attachment_id = ?', [attachmentId])
+    await execute('DELETE FROM recipient_attachments WHERE attachment_id = ?', [attachmentId])
 
     // Delete the attachment record
-    db.run('DELETE FROM attachments WHERE id = ?', [attachmentId])
+    await execute('DELETE FROM attachments WHERE id = ?', [attachmentId])
 
     logger.info('Attachment deleted', { requestId, attachmentId })
     res.status(204).send()

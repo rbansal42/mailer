@@ -1,4 +1,4 @@
-import { db } from '../db'
+import { queryAll, queryOne, execute } from '../db'
 import { logger } from '../lib/logger'
 
 interface Recipient {
@@ -59,11 +59,11 @@ export function getUtcTimeForLocal(localTime: string, timezone: string): Date {
  * Create timezone-based batches for a campaign
  * Groups recipients by timezone and schedules each batch for the target local time
  */
-export function createTimezoneBatches(
+export async function createTimezoneBatches(
   campaignId: number,
   recipients: Recipient[],
   targetLocalTime: string
-): number {
+): Promise<number> {
   // Group recipients by timezone
   const batches: Map<string, string[]> = new Map()
   
@@ -81,7 +81,7 @@ export function createTimezoneBatches(
   for (const [timezone, emails] of batches) {
     const scheduledFor = getUtcTimeForLocal(targetLocalTime, timezone)
     
-    db.run(
+    await execute(
       `INSERT INTO scheduled_batches (campaign_id, scheduled_for, recipient_emails, status)
        VALUES (?, ?, ?, 'pending')`,
       [campaignId, scheduledFor.toISOString(), JSON.stringify(emails)]
@@ -105,16 +105,15 @@ export function createTimezoneBatches(
  * Process all due scheduled batches
  * Returns the batches that need to be sent
  */
-export function getScheduledBatches(): ScheduledBatch[] {
+export async function getScheduledBatches(): Promise<ScheduledBatch[]> {
   const now = new Date().toISOString()
   
-  const dueBatches = db
-    .query<ScheduledBatch, [string]>(
-      `SELECT * FROM scheduled_batches 
-       WHERE status = 'pending' AND scheduled_for <= ?
-       ORDER BY scheduled_for`
-    )
-    .all(now)
+  const dueBatches = await queryAll<ScheduledBatch>(
+    `SELECT * FROM scheduled_batches 
+     WHERE status = 'pending' AND scheduled_for <= ?
+     ORDER BY scheduled_for`,
+    [now]
+  )
 
   return dueBatches
 }
@@ -122,8 +121,8 @@ export function getScheduledBatches(): ScheduledBatch[] {
 /**
  * Mark a batch as sending
  */
-export function markBatchSending(batchId: number): void {
-  db.run(
+export async function markBatchSending(batchId: number): Promise<void> {
+  await execute(
     `UPDATE scheduled_batches SET status = 'sending' WHERE id = ?`,
     [batchId]
   )
@@ -132,8 +131,8 @@ export function markBatchSending(batchId: number): void {
 /**
  * Mark a batch as completed
  */
-export function markBatchCompleted(batchId: number): void {
-  db.run(
+export async function markBatchCompleted(batchId: number): Promise<void> {
+  await execute(
     `UPDATE scheduled_batches SET status = 'completed' WHERE id = ?`,
     [batchId]
   )
@@ -150,7 +149,7 @@ export function getBatchRecipients(batch: ScheduledBatch): string[] {
  * Process all due batches (called by scheduler)
  */
 export async function processScheduledBatches(): Promise<number> {
-  const batches = getScheduledBatches()
+  const batches = await getScheduledBatches()
   
   if (batches.length === 0) {
     return 0

@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express'
-import { db } from '../db'
+import { queryOne, execute } from '../db'
 import { getNextAvailableAccount, incrementSendCount } from '../services/account-manager'
 import { compileTemplate, replaceVariables, injectTracking } from '../services/template-compiler'
 import { createProvider } from '../providers'
@@ -84,7 +84,7 @@ sendRouter.get('/', async (req: Request, res: Response) => {
   // If scheduling for later, don't send immediately
   if (scheduledFor) {
     // Validate template exists
-    const template = db.query('SELECT * FROM templates WHERE id = ?').get(validatedTemplateId) as TemplateRow | null
+    const template = await queryOne<TemplateRow>('SELECT * FROM templates WHERE id = ?', [validatedTemplateId])
     if (!template) {
       logger.warn('Template not found for scheduled campaign', { templateId: validatedTemplateId })
       res.status(404).json({ error: 'Template not found' })
@@ -92,7 +92,7 @@ sendRouter.get('/', async (req: Request, res: Response) => {
     }
 
     // Create scheduled campaign
-    const result = db.run(`
+    const result = await execute(`
       INSERT INTO campaigns (name, template_id, subject, total_recipients, cc, bcc, status, scheduled_for)
       VALUES (?, ?, ?, ?, ?, ?, 'scheduled', ?)
     `, [campaignName || 'Scheduled Campaign', validatedTemplateId, validatedSubject, recipients.length, JSON.stringify(cc || []), JSON.stringify(bcc || []), scheduledFor])
@@ -101,7 +101,7 @@ sendRouter.get('/', async (req: Request, res: Response) => {
 
     // Store recipients in email_queue for the scheduled time
     for (const recipient of recipients) {
-      db.run(
+      await execute(
         `INSERT INTO email_queue (campaign_id, recipient_email, recipient_data, scheduled_for, status)
          VALUES (?, ?, ?, ?, 'pending')`,
         [campaignId, recipient.email, JSON.stringify(recipient), scheduledFor.split('T')[0]]
@@ -141,7 +141,7 @@ sendRouter.get('/', async (req: Request, res: Response) => {
 
   try {
     // Get template from database
-    const template = db.query('SELECT * FROM templates WHERE id = ?').get(validatedTemplateId) as TemplateRow | null
+    const template = await queryOne<TemplateRow>('SELECT * FROM templates WHERE id = ?', [validatedTemplateId])
 
     if (!template) {
       logger.warn('Template not found', { templateId: validatedTemplateId })
@@ -153,7 +153,7 @@ sendRouter.get('/', async (req: Request, res: Response) => {
     const blocks = JSON.parse(template.blocks || '[]')
 
     // Create campaign record with cc/bcc
-    const result = db.run(
+    const result = await execute(
       `INSERT INTO campaigns (name, template_id, subject, total_recipients, cc, bcc, status, started_at)
        VALUES (?, ?, ?, ?, ?, ?, 'sending', CURRENT_TIMESTAMP)`,
       [campaignName || 'Unnamed', validatedTemplateId, validatedSubject, recipients.length, JSON.stringify(cc || []), JSON.stringify(bcc || [])]
@@ -173,17 +173,17 @@ sendRouter.get('/', async (req: Request, res: Response) => {
 
       try {
         // Get accounts with open circuits to exclude
-        const openCircuits = getOpenCircuits()
+        const openCircuits = await getOpenCircuits()
         if (openCircuits.length > 0) {
           logger.debug('Skipping accounts with open circuits', { accountIds: openCircuits, service: 'send' })
         }
 
         // Get next available account, excluding those with open circuits
-        const account = getNextAvailableAccount(campaignId, openCircuits)
+        const account = await getNextAvailableAccount(campaignId, openCircuits)
 
         if (!account) {
           // No account available - queue for tomorrow
-          db.run(
+          await execute(
             `INSERT INTO email_queue (campaign_id, recipient_email, recipient_data, scheduled_for, status)
              VALUES (?, ?, ?, ?, 'pending')`,
             [campaignId, recipient.email, JSON.stringify(recipient), getNextDay()]
@@ -191,7 +191,7 @@ sendRouter.get('/', async (req: Request, res: Response) => {
 
           queued++
 
-          db.run(
+          await execute(
             `INSERT INTO send_logs (campaign_id, recipient_email, status, error_message)
              VALUES (?, ?, 'queued', 'All accounts at cap')`,
             [campaignId, recipient.email]
@@ -212,9 +212,9 @@ sendRouter.get('/', async (req: Request, res: Response) => {
         const compiledSubject = replaceVariables(validatedSubject, recipientData)
 
         // Inject tracking if enabled
-        const trackingSettings = getTrackingSettings()
+        const trackingSettings = await getTrackingSettings()
         if (trackingSettings.enabled) {
-          const trackingToken = getOrCreateToken(campaignId, recipient.email)
+          const trackingToken = await getOrCreateToken(campaignId, recipient.email)
           html = injectTracking(html, trackingToken, trackingSettings.baseUrl, {
             openTracking: trackingSettings.openEnabled,
             clickTracking: trackingSettings.clickEnabled,
@@ -222,7 +222,7 @@ sendRouter.get('/', async (req: Request, res: Response) => {
         }
 
         // Get per-recipient attachment if one was matched
-        const recipientAttachment = getRecipientAttachment(recipient.email, undefined, campaignId)
+        const recipientAttachment = await getRecipientAttachment(recipient.email, undefined, campaignId)
         const attachments = recipientAttachment ? [{
           filename: recipientAttachment.filename,
           path: recipientAttachment.path,
@@ -252,15 +252,15 @@ sendRouter.get('/', async (req: Request, res: Response) => {
 
         if (sendResult.success) {
           // Record success with circuit breaker
-          recordSuccess(account.id)
+          await recordSuccess(account.id)
 
           // Increment account send count
-          incrementSendCount(account.id)
+          await incrementSendCount(account.id)
 
           successful++
 
           // Log success with retry count
-          db.run(
+          await execute(
             `INSERT INTO send_logs (campaign_id, account_id, recipient_email, status, retry_count)
              VALUES (?, ?, ?, 'success', ?)`,
             [campaignId, account.id, recipient.email, sendResult.attempts]
@@ -282,13 +282,13 @@ sendRouter.get('/', async (req: Request, res: Response) => {
           })
         } else {
           // Record failure with circuit breaker
-          recordFailure(account.id)
+          await recordFailure(account.id)
 
           failed++
           const errorMessage = sendResult.error?.message || 'Unknown error'
 
           // Log failure with retry count
-          db.run(
+          await execute(
             `INSERT INTO send_logs (campaign_id, account_id, recipient_email, status, error_message, retry_count)
              VALUES (?, ?, ?, 'failed', ?, ?)`,
             [campaignId, account.id, recipient.email, errorMessage, sendResult.attempts]
@@ -314,7 +314,7 @@ sendRouter.get('/', async (req: Request, res: Response) => {
         failed++
         const errorMessage = error instanceof Error ? error.message : 'Unknown error'
 
-        db.run(
+        await execute(
           `INSERT INTO send_logs (campaign_id, recipient_email, status, error_message, retry_count)
            VALUES (?, ?, 'failed', ?, 1)`,
           [campaignId, recipient.email, errorMessage]
@@ -339,7 +339,7 @@ sendRouter.get('/', async (req: Request, res: Response) => {
     }
 
     // Update campaign stats
-    db.run(
+    await execute(
       `UPDATE campaigns SET successful = ?, failed = ?, queued = ?, status = 'completed', completed_at = CURRENT_TIMESTAMP WHERE id = ?`,
       [successful, failed, queued, campaignId]
     )

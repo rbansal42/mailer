@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { db } from '../db'
+import { queryAll, queryOne, execute } from '../db'
 import { createTemplateSchema, updateTemplateSchema, validate } from '../lib/validation'
 import { logger } from '../lib/logger'
 
@@ -26,16 +26,16 @@ function formatTemplate(row: TemplateRow) {
 }
 
 // List templates
-templatesRouter.get('/', (_, res) => {
+templatesRouter.get('/', async (_, res) => {
   logger.info('Listing templates', { service: 'templates' })
-  const rows = db.query('SELECT * FROM templates ORDER BY updated_at DESC').all() as TemplateRow[]
+  const rows = await queryAll<TemplateRow>('SELECT * FROM templates ORDER BY updated_at DESC')
   res.json(rows.map(formatTemplate))
 })
 
 // Get template
-templatesRouter.get('/:id', (req, res) => {
+templatesRouter.get('/:id', async (req, res) => {
   logger.info('Getting template', { service: 'templates', templateId: req.params.id })
-  const row = db.query('SELECT * FROM templates WHERE id = ?').get(req.params.id) as TemplateRow | null
+  const row = await queryOne<TemplateRow>('SELECT * FROM templates WHERE id = ?', [req.params.id])
   if (!row) {
     logger.warn('Template not found', { service: 'templates', templateId: req.params.id })
     return res.status(404).json({ message: 'Template not found' })
@@ -44,7 +44,7 @@ templatesRouter.get('/:id', (req, res) => {
 })
 
 // Create template
-templatesRouter.post('/', (req, res) => {
+templatesRouter.post('/', async (req, res) => {
   const validation = validate(createTemplateSchema, req.body)
   if (!validation.success) {
     logger.warn('Template validation failed', { service: 'templates', error: validation.error })
@@ -54,18 +54,18 @@ templatesRouter.post('/', (req, res) => {
   
   logger.info('Creating template', { service: 'templates', name })
   
-  const result = db.run(
+  const result = await execute(
     'INSERT INTO templates (name, description, blocks) VALUES (?, ?, ?)',
     [name, description || null, JSON.stringify(blocks)]
   )
   
-  const row = db.query('SELECT * FROM templates WHERE id = ?').get(result.lastInsertRowid) as TemplateRow
-  logger.info('Template created', { service: 'templates', templateId: row.id, name })
-  res.status(201).json(formatTemplate(row))
+  const row = await queryOne<TemplateRow>('SELECT * FROM templates WHERE id = ?', [result.lastInsertRowid])
+  logger.info('Template created', { service: 'templates', templateId: row!.id, name })
+  res.status(201).json(formatTemplate(row!))
 })
 
 // Update template
-templatesRouter.put('/:id', (req, res) => {
+templatesRouter.put('/:id', async (req, res) => {
   const validation = validate(updateTemplateSchema, req.body)
   if (!validation.success) {
     logger.warn('Template update validation failed', { service: 'templates', templateId: req.params.id, error: validation.error })
@@ -95,10 +95,10 @@ templatesRouter.put('/:id', (req, res) => {
   if (updates.length > 0) {
     updates.push('updated_at = CURRENT_TIMESTAMP')
     values.push(req.params.id)
-    db.run(`UPDATE templates SET ${updates.join(', ')} WHERE id = ?`, values)
+    await execute(`UPDATE templates SET ${updates.join(', ')} WHERE id = ?`, values)
   }
   
-  const row = db.query('SELECT * FROM templates WHERE id = ?').get(req.params.id) as TemplateRow | null
+  const row = await queryOne<TemplateRow>('SELECT * FROM templates WHERE id = ?', [req.params.id])
   if (!row) {
     logger.warn('Template not found for update', { service: 'templates', templateId: req.params.id })
     return res.status(404).json({ message: 'Template not found' })
@@ -108,9 +108,9 @@ templatesRouter.put('/:id', (req, res) => {
 })
 
 // Delete template
-templatesRouter.delete('/:id', (req, res) => {
+templatesRouter.delete('/:id', async (req, res) => {
   logger.info('Deleting template', { service: 'templates', templateId: req.params.id })
-  db.run('DELETE FROM templates WHERE id = ?', [req.params.id])
+  await execute('DELETE FROM templates WHERE id = ?', [req.params.id])
   logger.info('Template deleted', { service: 'templates', templateId: req.params.id })
   res.status(204).send()
 })

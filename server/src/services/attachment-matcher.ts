@@ -1,7 +1,7 @@
 import AdmZip from 'adm-zip'
 import { join, basename, extname } from 'path'
 import { mkdirSync, existsSync, copyFileSync, statSync, readdirSync, rmSync, unlinkSync } from 'fs'
-import { db } from '../db'
+import { queryAll, queryOne, execute } from '../db'
 import { logger } from '../lib/logger'
 
 const DATA_DIR = process.env.DATA_DIR || join(process.cwd(), '..', 'data')
@@ -167,11 +167,11 @@ function getMimeType(filename: string): string {
  * @param campaignId - Optional campaign ID to associate with
  * @returns Array of created attachment IDs
  */
-export function storeAttachments(
+export async function storeAttachments(
   files: string[],
   draftId?: number,
   campaignId?: number
-): number[] {
+): Promise<number[]> {
   ensureDirectories()
 
   const attachmentIds: number[] = []
@@ -194,7 +194,7 @@ export function storeAttachments(
     copyFileSync(filePath, destPath)
 
     // Create DB record
-    const result = db.run(
+    const result = await execute(
       `INSERT INTO attachments (campaign_id, draft_id, filename, original_filename, filepath, size_bytes, mime_type)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [
@@ -233,21 +233,19 @@ export function storeAttachments(
  * @param campaignId - Optional campaign ID
  * @returns Array of match results
  */
-export function matchAttachments(
+export async function matchAttachments(
   attachmentIds: number[],
   recipients: Recipient[],
   config: MatchConfig,
   draftId?: number,
   campaignId?: number
-): MatchResult[] {
+): Promise<MatchResult[]> {
   const results: MatchResult[] = []
 
   // Load attachment records
   const attachments: AttachmentRow[] = []
   for (const id of attachmentIds) {
-    const row = db
-      .query('SELECT * FROM attachments WHERE id = ?')
-      .get(id) as AttachmentRow | null
+    const row = await queryOne<AttachmentRow>('SELECT * FROM attachments WHERE id = ?', [id])
     if (row) {
       attachments.push(row)
     }
@@ -302,7 +300,7 @@ export function matchAttachments(
     // Create recipient_attachments record if matched
     if (matchedAttachment) {
       try {
-        db.run(
+        await execute(
           `INSERT OR REPLACE INTO recipient_attachments 
            (campaign_id, draft_id, recipient_email, attachment_id, matched_by)
            VALUES (?, ?, ?, ?, ?)`,
@@ -346,11 +344,11 @@ export function matchAttachments(
  * @param campaignId - Optional campaign ID
  * @returns Attachment info or null if not found
  */
-export function getRecipientAttachment(
+export async function getRecipientAttachment(
   recipientEmail: string,
   draftId?: number,
   campaignId?: number
-): { path: string; filename: string; mimeType: string } | null {
+): Promise<{ path: string; filename: string; mimeType: string } | null> {
   let query = `
     SELECT a.filepath, a.original_filename, a.mime_type, ra.attachment_id
     FROM recipient_attachments ra
@@ -367,7 +365,7 @@ export function getRecipientAttachment(
     params.push(draftId)
   }
 
-  const row = db.query(query).get(...params) as RecipientAttachmentRow | null
+  const row = await queryOne<RecipientAttachmentRow>(query, params)
 
   if (!row) {
     return null
@@ -431,7 +429,7 @@ export function createTempDir(): string {
 /**
  * Delete attachment files and DB records for a draft or campaign
  */
-export function deleteAttachments(draftId?: number, campaignId?: number): void {
+export async function deleteAttachments(draftId?: number, campaignId?: number): Promise<void> {
   if (campaignId === undefined && draftId === undefined) {
     return
   }
@@ -440,13 +438,9 @@ export function deleteAttachments(draftId?: number, campaignId?: number): void {
   let attachments: { filepath: string }[]
   
   if (campaignId !== undefined) {
-    attachments = db
-      .query('SELECT filepath FROM attachments WHERE campaign_id = ?')
-      .all(campaignId) as { filepath: string }[]
+    attachments = await queryAll<{ filepath: string }>('SELECT filepath FROM attachments WHERE campaign_id = ?', [campaignId])
   } else {
-    attachments = db
-      .query('SELECT filepath FROM attachments WHERE draft_id = ?')
-      .all(draftId!) as { filepath: string }[]
+    attachments = await queryAll<{ filepath: string }>('SELECT filepath FROM attachments WHERE draft_id = ?', [draftId!])
   }
 
   // Delete files
@@ -463,11 +457,11 @@ export function deleteAttachments(draftId?: number, campaignId?: number): void {
 
   // Delete DB records using parameterized queries
   if (campaignId !== undefined) {
-    db.run('DELETE FROM recipient_attachments WHERE campaign_id = ?', [campaignId])
-    db.run('DELETE FROM attachments WHERE campaign_id = ?', [campaignId])
+    await execute('DELETE FROM recipient_attachments WHERE campaign_id = ?', [campaignId])
+    await execute('DELETE FROM attachments WHERE campaign_id = ?', [campaignId])
   } else {
-    db.run('DELETE FROM recipient_attachments WHERE draft_id = ?', [draftId!])
-    db.run('DELETE FROM attachments WHERE draft_id = ?', [draftId!])
+    await execute('DELETE FROM recipient_attachments WHERE draft_id = ?', [draftId!])
+    await execute('DELETE FROM attachments WHERE draft_id = ?', [draftId!])
   }
 
   logger.info('Deleted attachments', { draftId, campaignId, count: attachments.length })

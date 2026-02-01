@@ -1,6 +1,6 @@
 import * as cron from 'node-cron'
 import type { ScheduledTask } from 'node-cron'
-import { db } from '../db'
+import { queryAll, execute } from '../db'
 import { logger } from '../lib/logger'
 import { createBackup, pruneBackups, getBackupSettings } from './backup'
 import { processRecurringCampaigns } from './recurring-processor'
@@ -35,18 +35,17 @@ let batchJob: ScheduledTask | null = null
  * Finds campaigns with status='scheduled' and scheduled_for <= NOW(),
  * then updates them to 'sending' status.
  */
-export function checkScheduledCampaigns(): number {
+export async function checkScheduledCampaigns(): Promise<number> {
   try {
     const now = new Date().toISOString()
     
     // Find campaigns ready to send
-    const scheduledCampaigns = db
-      .query<ScheduledCampaign, [string]>(
-        `SELECT id, name, status, scheduled_for
-         FROM campaigns
-         WHERE status = 'scheduled' AND scheduled_for <= ?`
-      )
-      .all(now)
+    const scheduledCampaigns = await queryAll<ScheduledCampaign>(
+      `SELECT id, name, status, scheduled_for
+       FROM campaigns
+       WHERE status = 'scheduled' AND scheduled_for <= ?`,
+      [now]
+    )
 
     if (scheduledCampaigns.length === 0) {
       return 0
@@ -54,7 +53,7 @@ export function checkScheduledCampaigns(): number {
 
     // Update each campaign to 'sending' status
     for (const campaign of scheduledCampaigns) {
-      db.run(
+      await execute(
         `UPDATE campaigns 
          SET status = 'sending', started_at = CURRENT_TIMESTAMP 
          WHERE id = ?`,
@@ -85,7 +84,7 @@ export function checkScheduledCampaigns(): number {
  * Run a scheduled backup of the database.
  * Creates a new backup and prunes old backups based on retention settings.
  */
-export function runScheduledBackup(): void {
+export async function runScheduledBackup(): Promise<void> {
   try {
     logger.info('Starting scheduled backup', { service: 'scheduler' })
 
@@ -93,7 +92,7 @@ export function runScheduledBackup(): void {
     const filename = createBackup()
 
     // Get retention settings and prune old backups
-    const settings = getBackupSettings()
+    const settings = await getBackupSettings()
     const pruned = pruneBackups(settings.retention)
 
     logger.info('Scheduled backup complete', {
@@ -168,17 +167,15 @@ export async function checkScheduledBatches(): Promise<number> {
 /**
  * Start the scheduler with cron jobs for campaign checking and backups.
  */
-export function startScheduler(): void {
+export async function startScheduler(): Promise<void> {
   // Stop any existing jobs first
   stopScheduler()
 
   // Schedule campaign check every minute
   campaignCheckJob = cron.schedule('* * * * *', () => {
-    try {
-      checkScheduledCampaigns()
-    } catch (error) {
+    checkScheduledCampaigns().catch(() => {
       // Error already logged in checkScheduledCampaigns
-    }
+    })
   })
 
   logger.info('Campaign scheduler started', {
@@ -187,7 +184,7 @@ export function startScheduler(): void {
   })
 
   // Get backup settings and start backup job if not manual
-  const backupSettings = getBackupSettings()
+  const backupSettings = await getBackupSettings()
   
   if (backupSettings.schedule !== 'manual' && cron.validate(backupSettings.schedule)) {
     backupJob = cron.schedule(backupSettings.schedule, () => {
@@ -233,21 +230,19 @@ export function startScheduler(): void {
  * Find campaigns that were interrupted (status='sending') on startup.
  * These campaigns may need attention or resumption.
  */
-export function resumeInterruptedCampaigns(): InterruptedCampaign[] {
+export async function resumeInterruptedCampaigns(): Promise<InterruptedCampaign[]> {
   try {
-    const interruptedCampaigns = db
-      .query<InterruptedCampaign, []>(
-        `SELECT id, name, total_recipients, successful, failed, queued
-         FROM campaigns
-         WHERE status = 'sending'`
-      )
-      .all()
+    const interruptedCampaigns = await queryAll<InterruptedCampaign>(
+      `SELECT id, name, total_recipients, successful, failed, queued
+       FROM campaigns
+       WHERE status = 'sending'`
+    )
 
     if (interruptedCampaigns.length > 0) {
       logger.warn('Found interrupted campaigns on startup', {
         service: 'scheduler',
         count: interruptedCampaigns.length,
-        campaignIds: interruptedCampaigns.map(c => c.id)
+        campaignIds: interruptedCampaigns.map((c: InterruptedCampaign) => c.id)
       })
 
       // Log details for each interrupted campaign

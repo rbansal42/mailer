@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { db } from '../db'
+import { queryAll, queryOne, execute } from '../db'
 import { createDraftSchema, updateDraftSchema, validate } from '../lib/validation'
 import { logger } from '../lib/logger'
 
@@ -34,9 +34,9 @@ function formatDraft(row: DraftRow) {
 }
 
 // List drafts
-draftsRouter.get('/', (req, res) => {
+draftsRouter.get('/', async (req, res) => {
   try {
-    const rows = db.query('SELECT * FROM drafts ORDER BY updated_at DESC').all() as DraftRow[]
+    const rows = await queryAll<DraftRow>('SELECT * FROM drafts ORDER BY updated_at DESC')
     logger.debug('Drafts listed', { requestId: (req as any).requestId, count: rows.length })
     res.json(rows.map(formatDraft))
   } catch (error) {
@@ -46,9 +46,9 @@ draftsRouter.get('/', (req, res) => {
 })
 
 // Get draft
-draftsRouter.get('/:id', (req, res) => {
+draftsRouter.get('/:id', async (req, res) => {
   try {
-    const row = db.query('SELECT * FROM drafts WHERE id = ?').get(req.params.id) as DraftRow | null
+    const row = await queryOne<DraftRow>('SELECT * FROM drafts WHERE id = ?', [req.params.id])
     if (!row) {
       logger.warn('Draft not found', { requestId: (req as any).requestId, draftId: req.params.id })
       return res.status(404).json({ error: 'Draft not found' })
@@ -62,7 +62,7 @@ draftsRouter.get('/:id', (req, res) => {
 })
 
 // Create draft
-draftsRouter.post('/', (req, res) => {
+draftsRouter.post('/', async (req, res) => {
   const validation = validate(createDraftSchema, req.body)
   if (!validation.success) {
     logger.warn('Draft validation failed', { requestId: (req as any).requestId, validationError: validation.error })
@@ -73,7 +73,7 @@ draftsRouter.post('/', (req, res) => {
 
   try {
 
-    const result = db.run(
+    const result = await execute(
       'INSERT INTO drafts (name, template_id, subject, recipients, variables, cc, bcc) VALUES (?, ?, ?, ?, ?, ?, ?)',
       [
         name,
@@ -86,9 +86,9 @@ draftsRouter.post('/', (req, res) => {
       ]
     )
 
-    const row = db.query('SELECT * FROM drafts WHERE id = ?').get(result.lastInsertRowid) as DraftRow
+    const row = await queryOne<DraftRow>('SELECT * FROM drafts WHERE id = ?', [result.lastInsertRowid])
     logger.info('Draft created', { requestId: (req as any).requestId, draftId: result.lastInsertRowid })
-    res.status(201).json(formatDraft(row))
+    res.status(201).json(formatDraft(row!))
   } catch (error) {
     logger.error('Failed to create draft', { requestId: (req as any).requestId }, error as Error)
     res.status(500).json({ error: 'Failed to create draft' })
@@ -96,7 +96,7 @@ draftsRouter.post('/', (req, res) => {
 })
 
 // Update draft
-draftsRouter.put('/:id', (req, res) => {
+draftsRouter.put('/:id', async (req, res) => {
   const validation = validate(updateDraftSchema, req.body)
   if (!validation.success) {
     logger.warn('Draft update validation failed', { requestId: (req as any).requestId, draftId: req.params.id, validationError: validation.error })
@@ -107,7 +107,7 @@ draftsRouter.put('/:id', (req, res) => {
 
   try {
     // Check if draft exists
-    const existing = db.query('SELECT * FROM drafts WHERE id = ?').get(req.params.id) as DraftRow | null
+    const existing = await queryOne<DraftRow>('SELECT * FROM drafts WHERE id = ?', [req.params.id])
     if (!existing) {
       logger.warn('Draft not found for update', { requestId: (req as any).requestId, draftId: req.params.id })
       return res.status(404).json({ error: 'Draft not found' })
@@ -149,12 +149,12 @@ draftsRouter.put('/:id', (req, res) => {
     if (updates.length > 0) {
       updates.push('updated_at = CURRENT_TIMESTAMP')
       values.push(req.params.id)
-      db.run(`UPDATE drafts SET ${updates.join(', ')} WHERE id = ?`, values)
+      await execute(`UPDATE drafts SET ${updates.join(', ')} WHERE id = ?`, values)
     }
 
-    const row = db.query('SELECT * FROM drafts WHERE id = ?').get(req.params.id) as DraftRow
-    logger.info('Draft updated', { requestId: (req as any).requestId, draftId: row.id })
-    res.json(formatDraft(row))
+    const row = await queryOne<DraftRow>('SELECT * FROM drafts WHERE id = ?', [req.params.id])
+    logger.info('Draft updated', { requestId: (req as any).requestId, draftId: row!.id })
+    res.json(formatDraft(row!))
   } catch (error) {
     logger.error('Failed to update draft', { requestId: (req as any).requestId, draftId: req.params.id }, error as Error)
     res.status(500).json({ error: 'Failed to update draft' })
@@ -162,15 +162,15 @@ draftsRouter.put('/:id', (req, res) => {
 })
 
 // Delete draft
-draftsRouter.delete('/:id', (req, res) => {
+draftsRouter.delete('/:id', async (req, res) => {
   try {
-    const existing = db.query('SELECT id FROM drafts WHERE id = ?').get(req.params.id)
+    const existing = await queryOne<{ id: number }>('SELECT id FROM drafts WHERE id = ?', [req.params.id])
     if (!existing) {
       logger.warn('Draft not found for deletion', { requestId: (req as any).requestId, draftId: req.params.id })
       return res.status(404).json({ error: 'Draft not found' })
     }
 
-    db.run('DELETE FROM drafts WHERE id = ?', [req.params.id])
+    await execute('DELETE FROM drafts WHERE id = ?', [req.params.id])
     logger.info('Draft deleted', { requestId: (req as any).requestId, draftId: req.params.id })
     res.status(204).send()
   } catch (error) {

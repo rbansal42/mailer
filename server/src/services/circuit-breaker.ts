@@ -1,4 +1,4 @@
-import { db } from '../db'
+import { queryAll, queryOne, execute } from '../db'
 import { logger } from '../lib/logger'
 
 // Constants
@@ -25,15 +25,13 @@ interface AccountRow {
  * Get or create circuit state for an account.
  * Loads from DB if exists and not in memory.
  */
-export function getCircuitState(accountId: number): CircuitState {
+export async function getCircuitState(accountId: number): Promise<CircuitState> {
   // Check memory first
   let state = circuitStates.get(accountId)
   
   if (!state) {
     // Initialize from DB if circuit breaker is set
-    const row = db
-      .query('SELECT id, circuit_breaker_until FROM sender_accounts WHERE id = ?')
-      .get(accountId) as AccountRow | null
+    const row = await queryOne<AccountRow>('SELECT id, circuit_breaker_until FROM sender_accounts WHERE id = ?', [accountId])
     
     if (row?.circuit_breaker_until) {
       const openUntil = new Date(row.circuit_breaker_until)
@@ -65,8 +63,8 @@ export function getCircuitState(accountId: number): CircuitState {
  * Check if circuit is open for an account.
  * Handles cooldown expiry automatically.
  */
-export function isCircuitOpen(accountId: number): boolean {
-  const state = getCircuitState(accountId)
+export async function isCircuitOpen(accountId: number): Promise<boolean> {
+  const state = await getCircuitState(accountId)
   
   if (!state.isOpen) {
     return false
@@ -75,7 +73,7 @@ export function isCircuitOpen(accountId: number): boolean {
   // Check if cooldown has expired
   if (state.openUntil && new Date() >= state.openUntil) {
     // Cooldown expired, close the circuit
-    closeCircuit(accountId)
+    await closeCircuit(accountId)
     return false
   }
   
@@ -86,8 +84,8 @@ export function isCircuitOpen(accountId: number): boolean {
  * Record a successful send for an account.
  * Resets failures and closes circuit if open.
  */
-export function recordSuccess(accountId: number): void {
-  const state = getCircuitState(accountId)
+export async function recordSuccess(accountId: number): Promise<void> {
+  const state = await getCircuitState(accountId)
   
   // Reset failures on success
   state.failures = 0
@@ -95,7 +93,7 @@ export function recordSuccess(accountId: number): void {
   
   // Close circuit if it was open
   if (state.isOpen) {
-    closeCircuit(accountId)
+    await closeCircuit(accountId)
   }
 }
 
@@ -103,8 +101,8 @@ export function recordSuccess(accountId: number): void {
  * Record a failure for an account.
  * Opens circuit if threshold is reached.
  */
-export function recordFailure(accountId: number): void {
-  const state = getCircuitState(accountId)
+export async function recordFailure(accountId: number): Promise<void> {
+  const state = await getCircuitState(accountId)
   
   state.failures++
   state.lastFailure = new Date()
@@ -118,7 +116,7 @@ export function recordFailure(accountId: number): void {
   
   // Open circuit if threshold reached
   if (state.failures >= FAILURE_THRESHOLD) {
-    openCircuit(accountId)
+    await openCircuit(accountId)
   }
 }
 
@@ -126,15 +124,15 @@ export function recordFailure(accountId: number): void {
  * Open the circuit for an account.
  * Sets openUntil, persists to DB, and logs warning.
  */
-export function openCircuit(accountId: number): void {
-  const state = getCircuitState(accountId)
+export async function openCircuit(accountId: number): Promise<void> {
+  const state = await getCircuitState(accountId)
   const openUntil = new Date(Date.now() + COOLDOWN_MINUTES * 60 * 1000)
   
   state.isOpen = true
   state.openUntil = openUntil
   
   // Persist to DB
-  db.run(
+  await execute(
     'UPDATE sender_accounts SET circuit_breaker_until = ? WHERE id = ?',
     [openUntil.toISOString(), accountId]
   )
@@ -152,8 +150,8 @@ export function openCircuit(accountId: number): void {
  * Close the circuit for an account.
  * Clears state, updates DB, and logs info.
  */
-export function closeCircuit(accountId: number): void {
-  const state = getCircuitState(accountId)
+export async function closeCircuit(accountId: number): Promise<void> {
+  const state = await getCircuitState(accountId)
   
   state.failures = 0
   state.lastFailure = null
@@ -161,7 +159,7 @@ export function closeCircuit(accountId: number): void {
   state.openUntil = null
   
   // Clear in DB
-  db.run(
+  await execute(
     'UPDATE sender_accounts SET circuit_breaker_until = NULL WHERE id = ?',
     [accountId]
   )
@@ -175,26 +173,24 @@ export function closeCircuit(accountId: number): void {
 /**
  * Get list of account IDs with open circuits.
  */
-export function getOpenCircuits(): number[] {
+export async function getOpenCircuits(): Promise<number[]> {
   const openAccountIds: number[] = []
   
   // Check in-memory states
-  circuitStates.forEach((state, accountId) => {
-    if (isCircuitOpen(accountId)) {
+  for (const [accountId, state] of circuitStates) {
+    if (state.isOpen && state.openUntil && new Date() < state.openUntil) {
       openAccountIds.push(accountId)
     }
-  })
+  }
   
   // Also check DB for any accounts with circuit_breaker_until set
   // that might not be in memory yet
-  const rows = db
-    .query('SELECT id FROM sender_accounts WHERE circuit_breaker_until IS NOT NULL AND circuit_breaker_until > datetime(\'now\')')
-    .all() as { id: number }[]
+  const rows = await queryAll<{ id: number }>('SELECT id FROM sender_accounts WHERE circuit_breaker_until IS NOT NULL AND circuit_breaker_until > datetime(\'now\')')
   
   for (const row of rows) {
     if (!openAccountIds.includes(row.id)) {
       // Verify it's actually open (this will load it into memory)
-      if (isCircuitOpen(row.id)) {
+      if (await isCircuitOpen(row.id)) {
         openAccountIds.push(row.id)
       }
     }

@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express'
 import { getCampaignAnalytics } from '../services/tracking'
-import { db } from '../db'
+import { queryOne } from '../db'
 
 export const analyticsRouter = Router()
 
@@ -10,7 +10,7 @@ interface CampaignRow {
 }
 
 // GET /campaigns/:id/analytics - Get analytics for a campaign
-analyticsRouter.get('/campaigns/:id/analytics', (req: Request<{ id: string }>, res: Response) => {
+analyticsRouter.get('/campaigns/:id/analytics', async (req: Request<{ id: string }>, res: Response) => {
   try {
     const campaignId = parseInt(req.params.id, 10)
 
@@ -20,16 +20,17 @@ analyticsRouter.get('/campaigns/:id/analytics', (req: Request<{ id: string }>, r
     }
 
     // Verify campaign exists
-    const campaign = db.query<CampaignRow, [number]>(
-      'SELECT id, name FROM campaigns WHERE id = ?'
-    ).get(campaignId)
+    const campaign = await queryOne<CampaignRow>(
+      'SELECT id, name FROM campaigns WHERE id = ?',
+      [campaignId]
+    )
 
     if (!campaign) {
       res.status(404).json({ error: 'Campaign not found' })
       return
     }
 
-    const analytics = getCampaignAnalytics(campaignId)
+    const analytics = await getCampaignAnalytics(campaignId)
 
     res.json({
       campaignId,
