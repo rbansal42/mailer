@@ -10,7 +10,7 @@ Mailer is a self-hosted email campaign management system with certificate genera
 
 - **Runtime**: Bun (NOT npm/node)
 - **Frontend**: React + Vite + TypeScript + TailwindCSS + shadcn/ui
-- **Backend**: Express + TypeScript + SQLite (via bun:sqlite)
+- **Backend**: Express + TypeScript + Turso/libSQL (via @libsql/client)
 - **PDF Generation**: @react-pdf/renderer
 
 ## Commands
@@ -85,6 +85,22 @@ Key tables in `server/src/db/index.ts`:
 - **Mails**: Actual composed emails saved to library (e.g., "January Newsletter")
 - **Workflow**: Create mail from template → Edit → Save → Use in campaign or save as new template
 
+## Environment Variables
+
+All config is in `.env` at project root (see `.env.example`):
+
+```bash
+# Database (Turso)
+TURSO_DATABASE_URL=libsql://your-db.turso.io
+TURSO_AUTH_TOKEN=eyJ...
+
+# Public URL (for media in emails and tracking)
+BASE_URL=https://mailer.example.com
+
+# Server
+PORT=3342
+```
+
 ## Known Issues / Gotchas
 
 1. **Large payloads**: JSON body limit is 10mb for certificate configs with base64 images.
@@ -94,6 +110,22 @@ Key tables in `server/src/db/index.ts`:
 3. **React PDF fonts**: Fonts are registered in `server/src/services/pdf/fonts.ts`. Font files are in `server/assets/fonts/`.
 
 4. **Rich text in blocks**: Text blocks use HTML content (TipTap editor). Preview must use `dangerouslySetInnerHTML` with DOMPurify sanitization.
+
+5. **libsql requires null, not undefined**: The `@libsql/client` throws errors if you pass `undefined` as a query parameter. Always use `?? null` for optional values:
+   ```typescript
+   // WRONG - will throw if description is undefined
+   await execute('INSERT INTO mails (name, description) VALUES (?, ?)', [name, description])
+   
+   // CORRECT - converts undefined to null
+   await execute('INSERT INTO mails (name, description) VALUES (?, ?)', [name, description ?? null])
+   ```
+
+6. **Database migrations for new columns**: When adding new fields to a feature, remember to:
+   - Add `addColumnIfNotExists()` call in `server/src/db/index.ts`
+   - Update the row interface and `formatX()` function in the route
+   - Update validation schema in `server/src/lib/validation.ts`
+   - Update frontend TypeScript interface in `frontend/src/lib/api.ts`
+   - Update both CREATE and UPDATE handlers
 
 ## Workflow
 
