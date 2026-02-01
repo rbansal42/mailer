@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { queryAll, queryOne, execute } from '../../db'
 import { createListSchema, updateListSchema } from '../../lib/validation'
+import { logger } from '../../lib/logger'
 
 const router = Router()
 
@@ -28,7 +29,7 @@ router.get('/', async (req, res) => {
     
     res.json(lists)
   } catch (error) {
-    console.error('Error fetching lists:', error)
+    logger.error('Failed to fetch lists', { service: 'contacts' }, error as Error)
     res.status(500).json({ error: 'Failed to fetch lists' })
   }
 })
@@ -44,12 +45,13 @@ router.post('/', async (req, res) => {
     )
     
     const list = await queryOne<ListRow>('SELECT * FROM lists WHERE id = ?', [result.lastInsertRowid])
+    logger.info('List created', { service: 'contacts', listId: String(result.lastInsertRowid) })
     res.status(201).json(list)
   } catch (error: any) {
     if (error.name === 'ZodError') {
       return res.status(400).json({ error: error.errors })
     }
-    console.error('Error creating list:', error)
+    logger.error('Failed to create list', { service: 'contacts' }, error as Error)
     res.status(500).json({ error: 'Failed to create list' })
   }
 })
@@ -73,7 +75,7 @@ router.get('/:id', async (req, res) => {
     
     res.json(list)
   } catch (error) {
-    console.error('Error fetching list:', error)
+    logger.error('Failed to fetch list', { service: 'contacts', listId: req.params.id }, error as Error)
     res.status(500).json({ error: 'Failed to fetch list' })
   }
 })
@@ -105,12 +107,13 @@ router.put('/:id', async (req, res) => {
     await execute(`UPDATE lists SET ${updates.join(', ')} WHERE id = ?`, values)
     
     const list = await queryOne<ListRow>('SELECT * FROM lists WHERE id = ?', [req.params.id])
+    logger.info('List updated', { service: 'contacts', listId: req.params.id })
     res.json(list)
   } catch (error: any) {
     if (error.name === 'ZodError') {
       return res.status(400).json({ error: error.errors })
     }
-    console.error('Error updating list:', error)
+    logger.error('Failed to update list', { service: 'contacts', listId: req.params.id }, error as Error)
     res.status(500).json({ error: 'Failed to update list' })
   }
 })
@@ -124,9 +127,10 @@ router.delete('/:id', async (req, res) => {
     }
     
     await execute('DELETE FROM lists WHERE id = ?', [req.params.id])
+    logger.info('List deleted', { service: 'contacts', listId: req.params.id })
     res.status(204).send()
   } catch (error) {
-    console.error('Error deleting list:', error)
+    logger.error('Failed to delete list', { service: 'contacts', listId: req.params.id }, error as Error)
     res.status(500).json({ error: 'Failed to delete list' })
   }
 })
@@ -273,6 +277,7 @@ router.post('/:id/import', async (req, res) => {
       }
     }
     
+    logger.info('CSV import completed', { service: 'contacts', listId: req.params.id, created, updated, added })
     res.json({
       message: 'Import completed',
       created,
@@ -281,7 +286,7 @@ router.post('/:id/import', async (req, res) => {
       errors: errors.length > 0 ? errors : undefined
     })
   } catch (error) {
-    console.error('Error importing CSV:', error)
+    logger.error('Failed to import CSV', { service: 'contacts', listId: req.params.id }, error as Error)
     res.status(500).json({ error: 'Failed to import CSV' })
   }
 })
@@ -341,7 +346,7 @@ router.get('/:id/export', async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="${list.name.replace(/[^a-z0-9]/gi, '_')}.csv"`)
     res.send(csvOutput)
   } catch (error) {
-    console.error('Error exporting list:', error)
+    logger.error('Failed to export list', { service: 'contacts', listId: req.params.id }, error as Error)
     res.status(500).json({ error: 'Failed to export list' })
   }
 })

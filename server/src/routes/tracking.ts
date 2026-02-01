@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { recordOpen, recordClick, getTokenDetails } from '../services/tracking'
+import { logger } from '../lib/logger'
 
 export const trackingRouter = Router()
 
@@ -17,7 +18,12 @@ trackingRouter.get('/:token/open.gif', (req, res) => {
   const userAgent = req.headers['user-agent']
 
   // Record the open event (fire and forget)
-  recordOpen(token, ipAddress, userAgent)
+  try {
+    recordOpen(token, ipAddress, userAgent)
+    logger.debug('Recorded email open', { service: 'tracking', token, type: 'open' })
+  } catch (error) {
+    logger.error('Failed to record open', { service: 'tracking', token, type: 'open' }, error as Error)
+  }
 
   // Return transparent 1x1 GIF
   res.set({
@@ -58,7 +64,12 @@ trackingRouter.get('/:token/c/:linkIndex', (req, res) => {
   }
 
   // Verify token exists
-  const tokenDetails = getTokenDetails(token)
+  let tokenDetails
+  try {
+    tokenDetails = getTokenDetails(token)
+  } catch (error) {
+    logger.error('Failed to get token details', { service: 'tracking', token, type: 'click' }, error as Error)
+  }
   if (!tokenDetails) {
     // Still redirect even if token invalid (don't break user experience)
     res.redirect(url)
@@ -70,7 +81,12 @@ trackingRouter.get('/:token/c/:linkIndex', (req, res) => {
   const userAgent = req.headers['user-agent']
 
   // Record the click event
-  recordClick(token, url, parseInt(linkIndex, 10), ipAddress, userAgent)
+  try {
+    recordClick(token, url, parseInt(linkIndex, 10), ipAddress, userAgent)
+    logger.debug('Recorded link click', { service: 'tracking', token, type: 'click', linkIndex: parseInt(linkIndex, 10), url })
+  } catch (error) {
+    logger.error('Failed to record click', { service: 'tracking', token, type: 'click', url }, error as Error)
+  }
 
   // Redirect to original URL
   res.redirect(url)

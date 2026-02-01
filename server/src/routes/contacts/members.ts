@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { queryAll, queryOne, execute } from '../../db'
 import { addContactsToListSchema } from '../../lib/validation'
+import { logger } from '../../lib/logger'
 
 const router = Router({ mergeParams: true })
 
@@ -83,7 +84,7 @@ router.get('/', async (req, res) => {
       }
     })
   } catch (error) {
-    console.error('Error fetching list members:', error)
+    logger.error('Failed to fetch list members', { service: 'contacts', listId: req.params.listId }, error as Error)
     res.status(500).json({ error: 'Failed to fetch list members' })
   }
 })
@@ -169,6 +170,7 @@ router.post('/', async (req, res) => {
       }
     }
     
+    logger.info('Contacts added to list', { service: 'contacts', listId, created, updated, added })
     res.status(201).json({
       message: 'Contacts added successfully',
       created,
@@ -179,7 +181,7 @@ router.post('/', async (req, res) => {
     if (error.name === 'ZodError') {
       return res.status(400).json({ error: error.errors })
     }
-    console.error('Error adding contacts to list:', error)
+    logger.error('Failed to add contacts to list', { service: 'contacts', listId: req.params.listId }, error as Error)
     res.status(500).json({ error: 'Failed to add contacts' })
   }
 })
@@ -198,9 +200,10 @@ router.delete('/:contactId', async (req, res) => {
       return res.status(404).json({ error: 'Contact not in list' })
     }
     
+    logger.info('Contact removed from list', { service: 'contacts', listId, contactId })
     res.status(204).send()
   } catch (error) {
-    console.error('Error removing contact from list:', error)
+    logger.error('Failed to remove contact from list', { service: 'contacts', listId: req.params.listId, contactId: req.params.contactId }, error as Error)
     res.status(500).json({ error: 'Failed to remove contact' })
   }
 })

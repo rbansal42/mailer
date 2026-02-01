@@ -1,4 +1,5 @@
 import cron from 'node-cron'
+import { logger } from '../lib/logger'
 import { queryAll, queryOne, execute } from '../db'
 import { getNextAvailableAccount, incrementSendCount } from './account-manager'
 import { compileTemplate } from './template-compiler'
@@ -57,17 +58,17 @@ interface ProcessResult {
 export function startQueueProcessor(): void {
   // Schedule job at 00:01 daily
   cron.schedule('1 0 * * *', () => {
-    console.log('[QueueProcessor] Starting scheduled queue processing')
+    logger.info('Starting scheduled queue processing', { service: 'queue-processor' })
     processQueue()
       .then((result) => {
-        console.log(`[QueueProcessor] Completed: ${result.processed} processed, ${result.failed} failed`)
+        logger.info('Queue processing completed', { service: 'queue-processor', processed: result.processed, failed: result.failed })
       })
       .catch((error) => {
-        console.error('[QueueProcessor] Error processing queue:', error)
+        logger.error('Error processing queue', { service: 'queue-processor' }, error as Error)
       })
   })
 
-  console.log('[QueueProcessor] Scheduled daily at 00:01')
+  logger.info('Queue processor scheduled daily at 00:01', { service: 'queue-processor' })
 }
 
 export async function processQueue(): Promise<ProcessResult> {
@@ -95,7 +96,7 @@ export async function processQueue(): Promise<ProcessResult> {
       )
 
       if (!campaign) {
-        console.error(`[QueueProcessor] Campaign not found for queue item ${queueItem.id}`)
+        logger.error('Campaign not found for queue item', { service: 'queue-processor', queueItemId: queueItem.id, recipientEmail: queueItem.recipient_email })
         await updateQueueStatus(queueItem.id, 'failed')
         failed++
         continue
@@ -115,7 +116,7 @@ export async function processQueue(): Promise<ProcessResult> {
       const account = await getNextAvailableAccount()
 
       if (!account) {
-        console.log(`[QueueProcessor] No available accounts, stopping processing`)
+        logger.info('No available accounts, stopping processing', { service: 'queue-processor' })
         break // Stop processing if no accounts available
       }
 
@@ -169,7 +170,7 @@ export async function processQueue(): Promise<ProcessResult> {
         await updateCampaignStats(queueItem.campaign_id, 'failed')
 
         failed++
-        console.error(`[QueueProcessor] Failed to send to ${queueItem.recipient_email}:`, errorMessage)
+        logger.error('Failed to send email', { service: 'queue-processor', campaignId: queueItem.campaign_id, recipientEmail: queueItem.recipient_email, error: errorMessage })
       } finally {
         // Clean up provider connection
         await provider.disconnect()

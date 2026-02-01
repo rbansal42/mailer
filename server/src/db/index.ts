@@ -1,6 +1,7 @@
 import { createClient, Client } from '@libsql/client'
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'fs'
 import { join, dirname } from 'path'
+import { logger } from '../lib/logger'
 
 // Data directory for local file storage (attachments, backups)
 const DATA_DIR = process.env.DATA_DIR || join(process.cwd(), 'data')
@@ -112,9 +113,9 @@ async function runMigrations() {
       
       // Record successful migration
       await execute('INSERT INTO schema_migrations (filename) VALUES (?)', [file])
-      console.log(`Migration applied: ${file}`)
+      logger.info('Migration applied', { service: 'database', operation: 'migration', file })
     } catch (err) {
-      console.error(`Migration failed: ${file}`, err)
+      logger.error('Migration failed', { service: 'database', operation: 'migration', file, error: err })
       throw err // Stop on migration failure
     }
   }
@@ -507,7 +508,7 @@ export async function initializeDatabase() {
     await execute('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', [key, value])
   }
 
-  console.log('Database initialized')
+  logger.info('Database initialized', { service: 'database', operation: 'init' })
 
   // Seed starter templates
   await seedTemplates()
@@ -534,7 +535,7 @@ async function seedTemplates(): Promise<void> {
     return // Templates already exist, skip seeding
   }
 
-  console.log('Seeding starter templates...')
+  logger.info('Seeding starter templates', { service: 'database', operation: 'seed' })
 
   const templates = [
     {
@@ -616,5 +617,5 @@ async function seedTemplates(): Promise<void> {
     )
   }
 
-  console.log(`Seeded ${templates.length} starter templates`)
+  logger.info('Seeded starter templates', { service: 'database', operation: 'seed', count: templates.length })
 }

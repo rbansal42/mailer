@@ -5,6 +5,7 @@ import { queryAll, queryOne, execute } from "../db";
 import { nanoid } from "nanoid";
 import { join } from "path";
 import { existsSync, mkdirSync, unlinkSync } from "fs";
+import { logger } from "../lib/logger";
 
 const router = Router();
 
@@ -69,9 +70,10 @@ router.post("/upload", upload.single("file"), async (req, res) => {
     );
 
     const media = await queryOne("SELECT * FROM media WHERE id = ?", [id]);
+    logger.info("Media uploaded successfully", { service: "media", mediaId: id, filename: originalName });
     res.status(201).json(media);
   } catch (error) {
-    console.error("Upload error:", error);
+    logger.error("Failed to upload media", { service: "media" }, error as Error);
     res.status(500).json({ error: "Failed to process image" });
   }
 });
@@ -129,7 +131,7 @@ router.patch("/:id", async (req, res) => {
 
 // Soft delete
 router.delete("/:id", async (req, res) => {
-  const media = await queryOne("SELECT * FROM media WHERE id = ?", [req.params.id]);
+  const media = await queryOne<{ filename: string }>("SELECT * FROM media WHERE id = ?", [req.params.id]);
   
   if (!media) {
     return res.status(404).json({ error: "Media not found" });
@@ -140,6 +142,7 @@ router.delete("/:id", async (req, res) => {
     [req.params.id]
   );
   
+  logger.info("Media deleted", { service: "media", mediaId: req.params.id, filename: media.filename });
   res.status(204).send();
 });
 

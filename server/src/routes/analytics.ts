@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express'
 import { getCampaignAnalytics } from '../services/tracking'
 import { queryOne } from '../db'
+import { logger } from '../lib/logger'
 
 export const analyticsRouter = Router()
 
@@ -32,13 +33,15 @@ analyticsRouter.get('/campaigns/:id/analytics', async (req: Request<{ id: string
 
     const analytics = await getCampaignAnalytics(campaignId)
 
+    logger.debug('Fetched campaign analytics', { service: 'analytics', campaignId })
+
     res.json({
       campaignId,
       campaignName: campaign.name,
       ...analytics,
     })
   } catch (error) {
-    console.error('Error fetching campaign analytics:', error)
+    logger.error('Failed to fetch campaign analytics', { service: 'analytics', campaignId: req.params.id }, error as Error)
     res.status(500).json({ error: 'Failed to fetch analytics' })
   }
 })

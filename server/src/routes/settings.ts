@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express'
 import { queryOne, execute } from '../db'
+import { logger } from '../lib/logger'
 
 export const settingsRouter = Router()
 
@@ -14,12 +15,13 @@ settingsRouter.get('/', async (_req: Request, res: Response) => {
     const testEmail = await queryOne<SettingRow>('SELECT value FROM settings WHERE key = ?', ['test_email'])
     const timezone = await queryOne<SettingRow>('SELECT value FROM settings WHERE key = ?', ['timezone'])
 
+    logger.info('Fetched settings', { service: 'settings', keys: ['test_email', 'timezone'] })
     res.json({
       testEmail: testEmail?.value || null,
       timezone: timezone?.value || null,
     })
   } catch (error) {
-    console.error('Error fetching settings:', error)
+    logger.error('Failed to fetch settings', { service: 'settings' }, error as Error)
     res.status(500).json({ error: 'Failed to fetch settings' })
   }
 })
@@ -40,12 +42,13 @@ settingsRouter.put('/', async (req: Request, res: Response) => {
     const testEmailRow = await queryOne<SettingRow>('SELECT value FROM settings WHERE key = ?', ['test_email'])
     const timezoneRow = await queryOne<SettingRow>('SELECT value FROM settings WHERE key = ?', ['timezone'])
 
+    logger.info('Updated settings', { service: 'settings', keys: ['test_email', 'timezone'] })
     res.json({
       testEmail: testEmailRow?.value || null,
       timezone: timezoneRow?.value || null,
     })
   } catch (error) {
-    console.error('Error updating settings:', error)
+    logger.error('Failed to update settings', { service: 'settings' }, error as Error)
     res.status(500).json({ error: 'Failed to update settings' })
   }
 })
@@ -62,6 +65,7 @@ settingsRouter.get('/tracking', async (_req: Request, res: Response) => {
       retentionDays: await queryOne<SettingRow>('SELECT value FROM settings WHERE key = ?', ['tracking_retention_days']),
     }
 
+    logger.info('Fetched tracking settings', { service: 'settings', key: 'tracking' })
     res.json({
       enabled: settings.enabled?.value === 'true',
       baseUrl: settings.baseUrl?.value || 'https://mailer.rbansal.xyz',
@@ -71,7 +75,7 @@ settingsRouter.get('/tracking', async (_req: Request, res: Response) => {
       retentionDays: parseInt(settings.retentionDays?.value || '90', 10),
     })
   } catch (error) {
-    console.error('Error fetching tracking settings:', error)
+    logger.error('Failed to fetch tracking settings', { service: 'settings', key: 'tracking' }, error as Error)
     res.status(500).json({ error: 'Failed to fetch tracking settings' })
   }
 })
@@ -121,6 +125,7 @@ settingsRouter.put('/tracking', async (req: Request, res: Response) => {
       retentionDays: await queryOne<SettingRow>('SELECT value FROM settings WHERE key = ?', ['tracking_retention_days']),
     }
 
+    logger.info('Updated tracking settings', { service: 'settings', key: 'tracking' })
     res.json({
       enabled: settings.enabled?.value === 'true',
       baseUrl: settings.baseUrl?.value || 'https://mailer.rbansal.xyz',
@@ -130,7 +135,7 @@ settingsRouter.put('/tracking', async (req: Request, res: Response) => {
       retentionDays: parseInt(settings.retentionDays?.value || '90', 10),
     })
   } catch (error) {
-    console.error('Error updating tracking settings:', error)
+    logger.error('Failed to update tracking settings', { service: 'settings', key: 'tracking' }, error as Error)
     res.status(500).json({ error: 'Failed to update tracking settings' })
   }
 })

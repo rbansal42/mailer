@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express'
 import { queryAll } from '../db'
 import { processQueue } from '../services/queue-processor'
+import { logger } from '../lib/logger'
 
 export const queueRouter = Router()
 
@@ -29,9 +30,10 @@ queueRouter.get('/', async (_req: Request, res: Response) => {
       createdAt: item.created_at,
     }))
 
+    logger.info('Fetched queue items', { service: 'queue', count: formatted.length })
     res.json(formatted)
   } catch (error) {
-    console.error('Error fetching queue:', error)
+    logger.error('Failed to fetch queue', { service: 'queue' }, error as Error)
     res.status(500).json({ error: 'Failed to fetch queue' })
   }
 })
@@ -40,9 +42,10 @@ queueRouter.get('/', async (_req: Request, res: Response) => {
 queueRouter.post('/process', async (_req: Request, res: Response) => {
   try {
     const result = await processQueue()
+    logger.info('Queue processed', { service: 'queue', ...result })
     res.json({ success: true, ...result })
   } catch (error) {
-    console.error('Error processing queue:', error)
+    logger.error('Failed to process queue', { service: 'queue' }, error as Error)
     res.status(500).json({ error: 'Failed to process queue' })
   }
 })

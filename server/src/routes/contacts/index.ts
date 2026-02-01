@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { queryAll, queryOne, execute } from '../../db'
 import { updateContactSchema } from '../../lib/validation'
+import { logger } from '../../lib/logger'
 
 const router = Router()
 
@@ -50,7 +51,7 @@ router.get('/', async (req, res) => {
       }
     })
   } catch (error) {
-    console.error('Error fetching contacts:', error)
+    logger.error('Failed to fetch contacts', { service: 'contacts' }, error as Error)
     res.status(500).json({ error: 'Failed to fetch contacts' })
   }
 })
@@ -77,7 +78,7 @@ router.get('/:id', async (req, res) => {
       lists
     })
   } catch (error) {
-    console.error('Error fetching contact:', error)
+    logger.error('Failed to fetch contact', { service: 'contacts', contactId: req.params.id }, error as Error)
     res.status(500).json({ error: 'Failed to fetch contact' })
   }
 })
@@ -115,6 +116,7 @@ router.put('/:id', async (req, res) => {
     }
     
     const contact = await queryOne<any>('SELECT * FROM contacts WHERE id = ?', [req.params.id])
+    logger.info('Contact updated', { service: 'contacts', contactId: req.params.id })
     res.json({
       ...contact,
       custom_fields: JSON.parse(contact?.custom_fields || '{}')
@@ -123,7 +125,7 @@ router.put('/:id', async (req, res) => {
     if (error.name === 'ZodError') {
       return res.status(400).json({ error: error.errors })
     }
-    console.error('Error updating contact:', error)
+    logger.error('Failed to update contact', { service: 'contacts', contactId: req.params.id }, error as Error)
     res.status(500).json({ error: 'Failed to update contact' })
   }
 })
@@ -137,9 +139,10 @@ router.delete('/:id', async (req, res) => {
     }
     
     await execute('DELETE FROM contacts WHERE id = ?', [req.params.id])
+    logger.info('Contact deleted', { service: 'contacts', contactId: req.params.id })
     res.status(204).send()
   } catch (error) {
-    console.error('Error deleting contact:', error)
+    logger.error('Failed to delete contact', { service: 'contacts', contactId: req.params.id }, error as Error)
     res.status(500).json({ error: 'Failed to delete contact' })
   }
 })
