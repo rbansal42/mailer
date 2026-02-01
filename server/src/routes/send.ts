@@ -237,7 +237,12 @@ sendRouter.get('/', async (req: Request, res: Response) => {
         const trackingSettings = await getTrackingSettings()
 
         // Compile template with recipient data (all fields are directly on recipient object)
-        const recipientData: Record<string, string> = { ...recipient }
+        // Convert all values to strings for variable substitution
+        const recipientData: Record<string, string> = {}
+        for (const [key, value] of Object.entries(recipient)) {
+          recipientData[key] = String(value ?? '')
+        }
+        logger.debug('Recipient data for template', { email: recipient.email, fields: Object.keys(recipientData) })
         let html = compileTemplate(blocks, recipientData, trackingSettings.baseUrl)
         const compiledSubject = replaceVariables(validatedSubject, recipientData)
 

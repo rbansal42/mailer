@@ -90,16 +90,18 @@ export const createDraftSchema = z.object({
 
 export const updateDraftSchema = createDraftSchema.partial()
 
+// Recipient schema - flat structure with email and any additional string fields
+const recipientSchema = z.object({
+  email: emailSchema,
+}).passthrough() // Allow additional string fields like name, firstname, etc.
+
 // Send schema - either templateId OR mailId must be provided
 export const sendCampaignSchema = z.object({
   name: z.string().min(1).max(200).optional(),
   templateId: z.number().int().positive().nullable().optional(),
   mailId: z.number().int().positive().nullable().optional(),
   subject: z.string().min(1).max(500),
-  recipients: z.array(z.object({
-    email: emailSchema,
-    data: z.record(z.string(), z.string()).optional()
-  })).min(1, { message: 'At least one recipient required' }),
+  recipients: z.array(recipientSchema).min(1, { message: 'At least one recipient required' }),
   cc: emailArraySchema,
   bcc: emailArraySchema,
   scheduledFor: z.string().datetime().optional()
