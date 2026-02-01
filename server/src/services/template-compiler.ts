@@ -53,7 +53,7 @@ function compileText(props: Record<string, unknown>, data: Record<string, string
   
   // Sanitize HTML
   content = DOMPurify.sanitize(content, {
-    ALLOWED_TAGS: ['p', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'a', 'h1', 'h2', 'h3', 'ul', 'ol', 'li', 'blockquote', 'span'],
+    ALLOWED_TAGS: ['p', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'a', 'h1', 'h2', 'h3', 'ul', 'ol', 'li', 'blockquote', 'span', 'mark'],
     ALLOWED_ATTR: ['href', 'style', 'class'],
   })
 

@@ -48,11 +48,28 @@ const COLOR_PALETTE = [
 ]
 
 const FONT_SIZES = [
-  { label: 'Small', value: '0.875em' },
-  { label: 'Normal', value: '1em' },
-  { label: 'Large', value: '1.25em' },
-  { label: 'XL', value: '1.5em' },
+  { label: 'Small', value: '14px' },
+  { label: 'Normal', value: '16px' },
+  { label: 'Large', value: '20px' },
+  { label: 'XL', value: '24px' },
 ]
+
+// Custom extension for font size support
+const FontSize = TextStyle.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      fontSize: {
+        default: null,
+        parseHTML: (element) => element.style.fontSize || null,
+        renderHTML: (attributes) => {
+          if (!attributes.fontSize) return {}
+          return { style: `font-size: ${attributes.fontSize}` }
+        },
+      },
+    }
+  },
+})
 
 interface RichTextEditorProps {
   value: string
@@ -113,7 +130,7 @@ export function RichTextEditor({
         types: ['heading', 'paragraph'],
       }),
       Underline,
-      TextStyle,
+      FontSize,
       Color,
       Highlight.configure({
         multicolor: true,
@@ -146,6 +163,10 @@ export function RichTextEditor({
     if (linkUrl === '') {
       editor.chain().focus().extendMarkRange('link').unsetLink().run()
     } else {
+      // Only allow http/https URLs for security
+      if (!/^https?:\/\//i.test(linkUrl)) {
+        return
+      }
       editor
         .chain()
         .focus()
