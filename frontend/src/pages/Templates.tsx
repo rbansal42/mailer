@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api, Template, Block } from '../lib/api'
+import { api, Template, Block, mails } from '../lib/api'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
@@ -8,10 +8,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import {
   Plus, ChevronLeft, Save, Trash2, Type, Image, MousePointer,
   Minus, Square, Columns, FileText, GripVertical, Loader2, Undo2, Redo2, Copy,
-  Monitor, Smartphone, Moon, Code, ImageIcon
+  Monitor, Smartphone, Moon, Code, ImageIcon, Crop
 } from 'lucide-react'
 import { MediaLibrarySidebar } from '@/components/media-library'
 import { cn } from '../lib/utils'
+import { RichTextEditor } from '../components/ui/rich-text-editor'
+import { ImageCropModal } from '../components/ui/image-crop-modal'
+import DOMPurify from 'isomorphic-dompurify'
 import { useBlockHistory } from '../stores/history'
 import { useKeyboardShortcuts, createSaveShortcut, createUndoShortcut, createRedoShortcut } from '../hooks/useKeyboardShortcuts'
 
@@ -101,9 +104,11 @@ export default function Templates() {
 interface EditorProps {
   template: Template | null
   onBack: () => void
+  isMail?: boolean
+  onSaveAsTemplate?: (name: string) => void
 }
 
-function TemplateEditor({ template, onBack }: EditorProps) {
+export function TemplateEditor({ template, onBack, isMail, onSaveAsTemplate }: EditorProps) {
   const queryClient = useQueryClient()
   const [name, setName] = useState(template?.name || 'Untitled Template')
   const [_description, _setDescription] = useState(template?.description || '')
@@ -116,6 +121,12 @@ function TemplateEditor({ template, onBack }: EditorProps) {
   const [mediaSelectionTarget, setMediaSelectionTarget] = useState<{
     blockId: string;
     prop: "url" | "imageUrl";
+  } | null>(null)
+  const [cropModalOpen, setCropModalOpen] = useState(false)
+  const [cropTarget, setCropTarget] = useState<{
+    blockId: string;
+    url: string;
+    initialCrop?: { x: number; y: number; width: number; height: number };
   } | null>(null)
   
   const { set: recordHistory, undo, redo, canUndo, canRedo, clear: clearHistory } = useBlockHistory()
@@ -142,19 +153,26 @@ function TemplateEditor({ template, onBack }: EditorProps) {
   }
 
   const saveMutation = useMutation({
-    mutationFn: (data: Partial<Template>) => template
-      ? api.updateTemplate(template.id, data)
-      : api.createTemplate(data as Omit<Template, 'id' | 'createdAt' | 'updatedAt'>),
+    mutationFn: async (data: Partial<Template>) => {
+      if (isMail) {
+        return template
+          ? mails.update(template.id, { name: data.name!, blocks: data.blocks })
+          : mails.create({ name: data.name!, blocks: data.blocks })
+      }
+      return template
+        ? api.updateTemplate(template.id, data)
+        : api.createTemplate(data as Omit<Template, 'id' | 'createdAt' | 'updatedAt'>)
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['templates'] })
+      queryClient.invalidateQueries({ queryKey: isMail ? ['mails'] : ['templates'] })
       onBack()
     },
   })
 
   const deleteMutation = useMutation({
-    mutationFn: () => api.deleteTemplate(template!.id),
+    mutationFn: () => isMail ? mails.delete(template!.id) : api.deleteTemplate(template!.id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['templates'] })
+      queryClient.invalidateQueries({ queryKey: isMail ? ['mails'] : ['templates'] })
       onBack()
     },
   })
@@ -295,12 +313,23 @@ function TemplateEditor({ template, onBack }: EditorProps) {
               size="sm"
               className="text-destructive"
               onClick={() => deleteMutation.mutate()}
-              aria-label="Delete template"
+              aria-label={isMail ? "Delete mail" : "Delete template"}
             >
               <Trash2 className="h-4 w-4" />
             </Button>
           )}
-          <Button size="sm" onClick={handleSave} disabled={saveMutation.isPending} aria-label="Save template">
+          {isMail && template && onSaveAsTemplate && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onSaveAsTemplate(name)}
+              aria-label="Save as template"
+            >
+              <FileText className="h-4 w-4 mr-1" />
+              Save as Template
+            </Button>
+          )}
+          <Button size="sm" onClick={handleSave} disabled={saveMutation.isPending} aria-label={isMail ? "Save mail" : "Save template"}>
             <Save className="h-4 w-4 mr-1" />
             Save
           </Button>
@@ -448,6 +477,19 @@ function TemplateEditor({ template, onBack }: EditorProps) {
                   setMediaSelectionTarget({ blockId: selectedBlock.id, prop })
                   setMediaLibraryOpen(true)
                 }}
+                onOpenCropModal={selectedBlock.type === 'image' && selectedBlock.props.url ? () => {
+                  setCropTarget({
+                    blockId: selectedBlock.id,
+                    url: String(selectedBlock.props.url),
+                    initialCrop: selectedBlock.props.cropWidth ? {
+                      x: Number(selectedBlock.props.cropX) || 0,
+                      y: Number(selectedBlock.props.cropY) || 0,
+                      width: Number(selectedBlock.props.cropWidth) || 0,
+                      height: Number(selectedBlock.props.cropHeight) || 0,
+                    } : undefined,
+                  })
+                  setCropModalOpen(true)
+                } : undefined}
               />
               <div className="mt-4 pt-4 border-t flex gap-1">
                 <Button
@@ -485,6 +527,24 @@ function TemplateEditor({ template, onBack }: EditorProps) {
         selectionMode={!!mediaSelectionTarget}
         onSelect={handleMediaSelect}
       />
+
+      <ImageCropModal
+        open={cropModalOpen}
+        onOpenChange={setCropModalOpen}
+        imageUrl={cropTarget?.url || ''}
+        initialCrop={cropTarget?.initialCrop}
+        onCropComplete={(crop) => {
+          if (cropTarget) {
+            updateBlock(cropTarget.blockId, {
+              cropX: crop.x,
+              cropY: crop.y,
+              cropWidth: crop.width,
+              cropHeight: crop.height,
+            })
+          }
+          setCropTarget(null)
+        }}
+      />
     </div>
   )
 }
@@ -511,18 +571,24 @@ function BlockPreview({ block, darkMode: _darkMode }: { block: Block; darkMode?:
       )
     case 'text':
       return (
-        <p
-          className="p-3"
+        <div
+          className="p-3 prose prose-sm max-w-none"
           style={{ fontSize: Number(props.fontSize) || 14, textAlign: (props.align as 'left' | 'center' | 'right') || 'left' }}
-        >
-          {String(props.content) || 'Enter text content...'}
-        </p>
+          dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(String(props.content)) || '<p>Enter text content...</p>' }}
+        />
       )
     case 'image':
       return (
         <div className="p-3" style={{ textAlign: (props.align as 'left' | 'center' | 'right') || 'center' }}>
           {props.url ? (
-            <img src={String(props.url)} alt={String(props.alt) || ''} style={{ maxWidth: props.width ? `${props.width}%` : '100%' }} />
+            <img 
+              src={String(props.url)} 
+              alt={String(props.alt) || ''} 
+              style={{ 
+                maxWidth: props.width ? `${props.width}%` : '100%',
+                objectFit: (props.objectFit as 'contain' | 'cover' | 'fill') || 'contain',
+              }} 
+            />
           ) : (
             <div className="h-24 bg-muted rounded flex items-center justify-center text-xs text-muted-foreground">
               Image placeholder
@@ -574,10 +640,11 @@ function BlockPreview({ block, darkMode: _darkMode }: { block: Block; darkMode?:
   }
 }
 
-function BlockProperties({ block, onChange, onOpenMediaLibrary }: { 
+function BlockProperties({ block, onChange, onOpenMediaLibrary, onOpenCropModal }: { 
   block: Block; 
   onChange: (props: Record<string, unknown>) => void;
   onOpenMediaLibrary: (prop: "url" | "imageUrl") => void;
+  onOpenCropModal?: () => void;
 }) {
   const { type, props } = block
 
@@ -621,11 +688,11 @@ function BlockProperties({ block, onChange, onOpenMediaLibrary }: {
         <div className="space-y-3">
           <div className="space-y-1">
             <Label className="text-xs">Content</Label>
-            <textarea
+            <RichTextEditor
               value={String(props.content || '')}
-              onChange={(e) => onChange({ content: e.target.value })}
+              onChange={(content) => onChange({ content })}
               placeholder="Hello {{name}}..."
-              className="w-full h-24 text-xs rounded-md border border-input bg-background text-foreground px-2 py-1 resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+              className="min-h-[120px]"
             />
           </div>
           <div className="grid grid-cols-2 gap-2">
@@ -707,6 +774,29 @@ function BlockProperties({ block, onChange, onOpenMediaLibrary }: {
               </select>
             </div>
           </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Fit</Label>
+            <select
+              value={String(props.objectFit || 'contain')}
+              onChange={(e) => onChange({ objectFit: e.target.value })}
+              className="w-full h-8 text-xs rounded-md border border-input bg-background text-foreground px-2 focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+              <option value="contain">Contain (show all)</option>
+              <option value="cover">Cover (fill, may crop)</option>
+              <option value="fill">Fill (stretch)</option>
+            </select>
+          </div>
+          {Boolean(props.url) && onOpenCropModal && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full"
+              onClick={onOpenCropModal}
+            >
+              <Crop className="h-4 w-4 mr-2" />
+              Crop Image
+            </Button>
+          )}
         </div>
       )
     case 'button':
@@ -831,7 +921,7 @@ function getDefaultProps(type: Block['type']): Record<string, unknown> {
     case 'text':
       return { content: '', fontSize: 14, align: 'left' }
     case 'image':
-      return { url: '', alt: '', width: 100, align: 'center' }
+      return { url: '', alt: '', width: 100, align: 'center', objectFit: 'contain', cropX: 0, cropY: 0, cropWidth: 0, cropHeight: 0 }
     case 'button':
       return { label: 'Click Here', url: '', color: '#0f172a', align: 'center' }
     case 'divider':

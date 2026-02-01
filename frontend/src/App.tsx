@@ -7,7 +7,7 @@ import { applyTheme } from './lib/theme'
 import Layout from './components/Layout'
 import Login from './pages/Login'
 import Campaigns from './pages/Campaigns'
-import Templates from './pages/Templates'
+import MailLibrary from './pages/MailLibrary'
 import History from './pages/History'
 import Settings from './pages/Settings'
 import Certificates from './pages/Certificates'
@@ -48,7 +48,7 @@ export default function App() {
         >
           <Route index element={<Navigate to="/campaigns" replace />} />
           <Route path="campaigns" element={<Campaigns />} />
-          <Route path="templates" element={<Templates />} />
+          <Route path="templates" element={<MailLibrary />} />
           <Route path="certificates" element={<Certificates />} />
           <Route path="history" element={<History />} />
           <Route path="settings" element={<Settings />} />

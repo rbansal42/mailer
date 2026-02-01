@@ -7,7 +7,7 @@ import { cn } from '../lib/utils'
 
 const navItems = [
   { to: '/campaigns', label: 'Campaigns', icon: Mail },
-  { to: '/templates', label: 'Templates', icon: FileText },
+  { to: '/templates', label: 'Mail Library', icon: FileText },
   { to: '/certificates', label: 'Certificates', icon: Award },
   { to: '/history', label: 'History', icon: History },
   { to: '/settings', label: 'Settings', icon: Settings },

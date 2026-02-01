@@ -164,6 +164,30 @@ export async function initializeDatabase() {
     )
   `)
 
+  // Add is_default column to templates (for built-in templates)
+  try {
+    await execute(`ALTER TABLE templates ADD COLUMN is_default INTEGER DEFAULT 0`)
+  } catch (e) {
+    // Column may already exist, ignore error
+  }
+
+  // Create mails table for saved mail designs
+  await execute(`
+    CREATE TABLE IF NOT EXISTS mails (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      description TEXT,
+      blocks TEXT NOT NULL DEFAULT '[]',
+      template_id INTEGER,
+      campaign_id INTEGER,
+      status TEXT DEFAULT 'draft',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (template_id) REFERENCES templates(id) ON DELETE SET NULL,
+      FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE SET NULL
+    )
+  `)
+
   await execute(`
     CREATE TABLE IF NOT EXISTS drafts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
