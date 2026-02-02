@@ -104,12 +104,29 @@ campaignsRouter.post('/:id/duplicate', async (req, res) => {
 
     const newName = `Copy of ${campaign.name || 'Untitled'}`
 
+    // Determine if the stored template_id is actually a template or mail
+    // Campaigns store either template ID or mail ID in the template_id column
+    let templateId: number | null = null
+    let mailId: number | null = null
+
+    if (campaign.template_id) {
+      // Check if it's a template first
+      const template = await queryOne<{ id: number }>('SELECT id FROM templates WHERE id = ?', [campaign.template_id])
+      if (template) {
+        templateId = campaign.template_id
+      } else {
+        // Must be a mail
+        mailId = campaign.template_id
+      }
+    }
+
     const result = await execute(
-      `INSERT INTO drafts (name, template_id, subject, cc, bcc)
-       VALUES (?, ?, ?, ?, ?)`,
+      `INSERT INTO drafts (name, template_id, mail_id, subject, cc, bcc)
+       VALUES (?, ?, ?, ?, ?, ?)`,
       [
         newName,
-        campaign.template_id ?? null,
+        templateId,
+        mailId,
         campaign.subject ?? null,
         campaign.cc ?? null,
         campaign.bcc ?? null,
