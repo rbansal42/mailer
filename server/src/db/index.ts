@@ -621,6 +621,108 @@ async function seedDefaultTemplates(): Promise<void> {
         { id: '5', type: 'text', props: { content: '<p>We look forward to seeing you there!</p>' } },
         { id: '6', type: 'footer', props: { text: 'Can\'t make it? Let us know by replying to this email.', showUnsubscribe: true } }
       ]
+    },
+    // Transactional Templates
+    {
+      name: 'Order Confirmation',
+      description: 'Order summary with items, shipping address, and tracking',
+      blocks: [
+        { id: '1', type: 'header', props: { logo: '', title: 'Order Confirmed!', backgroundColor: '#10b981' } },
+        { id: '2', type: 'text', props: { content: '<p>Hi {{name}},</p><p>Thank you for your order! We\'re getting it ready to ship.</p>' } },
+        { id: '3', type: 'divider', props: { style: 'solid' } },
+        { id: '4', type: 'text', props: { content: '<h3>Order Details</h3><p><strong>Order Number:</strong> {{order_number}}</p>' } },
+        { id: '5', type: 'text', props: { content: '<p>{{order_items}}</p>' } },
+        { id: '6', type: 'divider', props: { style: 'solid' } },
+        { id: '7', type: 'text', props: { content: '<p style="text-align: right;"><strong>Order Total:</strong> {{order_total}}</p>' } },
+        { id: '8', type: 'text', props: { content: '<h3>Shipping Address</h3><p>{{shipping_address}}</p>' } },
+        { id: '9', type: 'button', props: { label: 'Track Order', url: '{{tracking_url}}', align: 'center', backgroundColor: '#10b981' } },
+        { id: '10', type: 'footer', props: { text: 'Questions about your order? Reply to this email.', showUnsubscribe: false } }
+      ]
+    },
+    {
+      name: 'Shipping Update',
+      description: 'Package shipped notification with tracking details',
+      blocks: [
+        { id: '1', type: 'header', props: { logo: '', title: 'Your Order is On Its Way!' } },
+        { id: '2', type: 'text', props: { content: '<p>Hi {{name}},</p><p>Great news! Your order has shipped and is on its way to you.</p>' } },
+        { id: '3', type: 'divider', props: { style: 'solid' } },
+        { id: '4', type: 'text', props: { content: '<p><strong>Tracking Number:</strong> {{tracking_number}}<br><strong>Carrier:</strong> {{carrier}}<br><strong>Estimated Delivery:</strong> {{delivery_date}}</p>' } },
+        { id: '5', type: 'button', props: { label: 'Track Package', url: '{{tracking_url}}', align: 'center', backgroundColor: '#10b981' } },
+        { id: '6', type: 'divider', props: { style: 'solid' } },
+        { id: '7', type: 'text', props: { content: '<p><strong>Order Reference:</strong> {{order_number}}</p>' } },
+        { id: '8', type: 'footer', props: { text: 'Thank you for your order!', showUnsubscribe: false } }
+      ]
+    },
+    {
+      name: 'Password Reset',
+      description: 'Secure password reset request with single CTA',
+      blocks: [
+        { id: '1', type: 'header', props: { logo: '', title: 'Reset Your Password' } },
+        { id: '2', type: 'text', props: { content: '<p>Hi {{name}},</p><p>We received a request to reset the password for your account. Click the button below to choose a new password.</p>' } },
+        { id: '3', type: 'button', props: { label: 'Reset Password', url: '{{reset_url}}', align: 'center', backgroundColor: '#dc2626' } },
+        { id: '4', type: 'text', props: { content: '<p style="text-align: center; color: #6b7280; font-size: 14px;">This link will expire in 24 hours.</p>' } },
+        { id: '5', type: 'divider', props: { style: 'solid' } },
+        { id: '6', type: 'text', props: { content: '<p style="color: #6b7280; font-size: 13px;"><strong>Didn\'t request this?</strong><br>If you didn\'t request a password reset, you can safely ignore this email. Your password will remain unchanged.</p>' } },
+        { id: '7', type: 'footer', props: { text: 'This request was initiated from IP address {{ip_address}}.', showUnsubscribe: false } }
+      ]
+    },
+    {
+      name: 'Receipt',
+      description: 'Payment receipt with itemized breakdown',
+      blocks: [
+        { id: '1', type: 'header', props: { logo: '', title: 'Payment Receipt', backgroundColor: '#10b981' } },
+        { id: '2', type: 'text', props: { content: '<p>Hi {{name}},</p><p>Thank you for your payment. Here are your transaction details:</p>' } },
+        { id: '3', type: 'text', props: { content: '<p><strong>Invoice #:</strong> {{invoice_number}}<br><strong>Date:</strong> {{date}}</p>' } },
+        { id: '4', type: 'divider', props: { style: 'solid' } },
+        { id: '5', type: 'text', props: { content: '<h3>Items</h3><p>{{line_items}}</p>' } },
+        { id: '6', type: 'divider', props: { style: 'solid' } },
+        { id: '7', type: 'text', props: { content: '<p style="text-align: right;">Subtotal: {{subtotal}}<br>Tax: {{tax}}<br><strong style="font-size: 18px;">Total: {{total}}</strong></p>' } },
+        { id: '8', type: 'text', props: { content: '<p><strong>Payment Method:</strong> {{payment_method}}</p>' } },
+        { id: '9', type: 'footer', props: { text: 'Keep this email for your records.', showUnsubscribe: false } }
+      ]
+    },
+    // Re-engagement Templates
+    {
+      name: 'We Miss You',
+      description: 'Friendly re-engagement for inactive users',
+      blocks: [
+        { id: '1', type: 'header', props: { logo: '', title: 'We Miss You!' } },
+        { id: '2', type: 'text', props: { content: '<p style="text-align: center; font-size: 48px;">👋</p>' } },
+        { id: '3', type: 'text', props: { content: '<p>Hi {{name}},</p><p>It\'s been a while since we\'ve seen you around, and we just wanted to reach out and say — we miss you!</p>' } },
+        { id: '4', type: 'text', props: { content: '<p>A lot has happened since your last visit. Here\'s what you\'ve been missing:</p><ul><li><strong>New features</strong> — Exciting tools to help you do more</li><li><strong>Improvements</strong> — Faster, smoother, better than ever</li><li><strong>Fresh updates</strong> — New content waiting just for you</li></ul>' } },
+        { id: '5', type: 'text', props: { content: '<p style="text-align: center;">We\'d love to have you back. Why not take a look around?</p>' } },
+        { id: '6', type: 'button', props: { label: 'Come Back and Explore', url: '{{app_url}}', align: 'center' } },
+        { id: '7', type: 'text', props: { content: '<p>Warm regards,<br>The Team</p>' } },
+        { id: '8', type: 'footer', props: { text: 'We hope to see you again soon.', showUnsubscribe: true } }
+      ]
+    },
+    {
+      name: 'Account Inactive Warning',
+      description: 'Warning before account deactivation',
+      blocks: [
+        { id: '1', type: 'header', props: { logo: '', title: 'Action Required', backgroundColor: '#f59e0b' } },
+        { id: '2', type: 'text', props: { content: '<p>Hi {{name}},</p><p>We noticed you haven\'t logged into your account in a while. To keep our platform secure, <strong>your account will be deactivated on {{deactivation_date}}</strong> unless you take action.</p>' } },
+        { id: '3', type: 'divider', props: { style: 'solid' } },
+        { id: '4', type: 'text', props: { content: '<h3>What happens if your account is deactivated?</h3><ul><li>Your data will be archived and no longer accessible</li><li>You\'ll need to contact support to restore your account</li></ul>' } },
+        { id: '5', type: 'button', props: { label: 'Keep My Account Active', url: '{{login_url}}', align: 'center', backgroundColor: '#f59e0b' } },
+        { id: '6', type: 'text', props: { content: '<p>Want to download your data first? <a href="{{export_url}}">Export your data here</a> before the deadline.</p>' } },
+        { id: '7', type: 'footer', props: { text: 'If you believe you received this message in error, please contact support.', showUnsubscribe: true } }
+      ]
+    },
+    {
+      name: 'Special Win-back Offer',
+      description: 'Promotional discount to re-engage inactive users',
+      blocks: [
+        { id: '1', type: 'header', props: { logo: '', title: 'A Gift For You' } },
+        { id: '2', type: 'text', props: { content: '<h1 style="text-align: center; color: #7c3aed;">Welcome Back!</h1><p style="text-align: center; font-size: 18px;">We\'ve missed you, {{name}}!</p>' } },
+        { id: '3', type: 'text', props: { content: '<p style="text-align: center;">To celebrate your return, here\'s <strong>20% off</strong> just for you:</p>' } },
+        { id: '4', type: 'text', props: { content: '<p style="background-color: #f3f4f6; padding: 20px; text-align: center; border-radius: 8px; font-size: 24px; font-weight: bold; letter-spacing: 2px;">{{promo_code}}</p>' } },
+        { id: '5', type: 'button', props: { label: 'Shop Now', url: '{{shop_url}}', align: 'center', backgroundColor: '#7c3aed' } },
+        { id: '6', type: 'text', props: { content: '<p style="text-align: center; font-size: 14px; color: #6b7280;">Offer expires: {{expiry_date}}</p>' } },
+        { id: '7', type: 'divider', props: { style: 'solid' } },
+        { id: '8', type: 'text', props: { content: '<h3>What\'s new since you\'ve been away</h3><ul><li>{{new_feature_1}}</li><li>{{new_feature_2}}</li></ul>' } },
+        { id: '9', type: 'footer', props: { text: '© 2026 Company Name', showUnsubscribe: true } }
+      ]
     }
   ]
 
