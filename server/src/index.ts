@@ -24,6 +24,7 @@ import { recurringRouter } from './routes/recurring'
 import { sequencesRouter } from './routes/sequences'
 import { certificatesRouter } from './routes/certificates'
 import mailsRouter from './routes/mails'
+import { previewRouter } from './routes/preview'
 import mediaRoutes from './routes/media'
 import contactsListsRouter from './routes/contacts/lists'
 import contactsMembersRouter from './routes/contacts/members'
@@ -142,6 +143,7 @@ app.use('/api/sequences', authMiddleware, sequencesRouter)
 app.use('/api/certificates', authMiddleware, certificatesRouter)
 app.use('/api/mails', authMiddleware, mailsRouter)
 app.use('/api/media', authMiddleware, mediaRoutes)
+app.use('/api/preview', authMiddleware, previewRouter)
 app.use('/api/contacts/lists/:listId/members', authMiddleware, contactsMembersRouter)
 app.use('/api/contacts/lists', authMiddleware, contactsListsRouter)
 app.use('/api/contacts', authMiddleware, contactsRouter)

@@ -26,7 +26,7 @@ import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
 import { Card, CardContent, CardHeader } from '../components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog'
-import { Plus, Send, Save, ChevronLeft, ChevronRight, AlertCircle, CheckCircle2, Loader2, Search, Copy, Clock } from 'lucide-react'
+import { Plus, Send, Save, ChevronLeft, ChevronRight, AlertCircle, CheckCircle2, Loader2, Search, Copy, Clock, Eye } from 'lucide-react'
 import type { Recipient } from '../lib/api'
 
 export default function Campaigns() {
@@ -195,9 +195,41 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
   const [showScheduler, setShowScheduler] = useState(false)
   const [scheduledDateTime, setScheduledDateTime] = useState('')
 
+  // Preview state
+  const [showRenderedPreview, setShowRenderedPreview] = useState(false)
+  const [previewHtml, setPreviewHtml] = useState('')
+  const [previewLoading, setPreviewLoading] = useState(false)
+
   const selectedMail = mails.find((m) => m.id === mailId)
   const selectedTemplate = templates.find((t) => t.id === templateId)
   const selectedContent = contentSource === 'mail' ? selectedMail : selectedTemplate
+
+  // Fetch rendered preview from backend
+  const fetchPreview = async () => {
+    if (!selectedContent?.blocks || selectedContent.blocks.length === 0) {
+      setPreviewHtml('')
+      return
+    }
+
+    setPreviewLoading(true)
+    try {
+      const recipient = recipients[previewIndex] || { email: 'recipient@example.com' }
+      const result = await api.preview(selectedContent.blocks, recipient)
+      setPreviewHtml(result.html)
+    } catch (error) {
+      console.error('Preview failed:', error)
+      setPreviewHtml('<p style="color: red; padding: 16px;">Preview failed to load</p>')
+    } finally {
+      setPreviewLoading(false)
+    }
+  }
+
+  // Fetch preview when toggled on or when content/recipient changes
+  useEffect(() => {
+    if (showRenderedPreview) {
+      fetchPreview()
+    }
+  }, [showRenderedPreview, previewIndex, selectedContent])
 
   // Load lists on mount
   useEffect(() => {
@@ -419,6 +451,15 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
           <h1 className="font-semibold">{draft ? 'Edit Draft' : 'New Campaign'}</h1>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant={showRenderedPreview ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setShowRenderedPreview(!showRenderedPreview)}
+            disabled={!selectedContent}
+          >
+            <Eye className="h-4 w-4 mr-1" />
+            Preview
+          </Button>
           <Button variant="outline" size="sm" onClick={handleSaveDraft} disabled={saveDraftMutation.isPending}>
             <Save className="h-4 w-4 mr-1" />
             Save Draft
@@ -676,7 +717,9 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
         {/* Right: Preview */}
         <div className="w-1/2 p-4 overflow-y-auto bg-muted/30">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-sm font-medium">Preview</span>
+            <span className="text-sm font-medium">
+              {showRenderedPreview ? 'Rendered Preview' : 'Preview'}
+            </span>
             {recipients.length > 0 && (
               <div className="flex items-center gap-1">
                 <Button
@@ -712,7 +755,22 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
               </p>
             </CardHeader>
             <CardContent className="p-3 pt-0">
-              {selectedContent ? (
+              {showRenderedPreview ? (
+                // Backend-rendered HTML preview
+                previewLoading ? (
+                  <div className="flex justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : previewHtml ? (
+                  <div
+                    className="border rounded bg-white overflow-auto"
+                    style={{ maxHeight: '60vh' }}
+                    dangerouslySetInnerHTML={{ __html: previewHtml }}
+                  />
+                ) : (
+                  <p className="text-sm text-muted-foreground">Select a mail or template to preview</p>
+                )
+              ) : selectedContent ? (
                 <div className="text-sm border rounded p-3 bg-background">
                   {/* Render blocks with variables replaced */}
                   {selectedContent.blocks.map((block) => (

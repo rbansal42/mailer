@@ -6,9 +6,15 @@ import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '../components/ui/dialog'
+import {
   Plus, ChevronLeft, Save, Trash2, Type, Image, MousePointer,
   Minus, Square, Columns, FileText, GripVertical, Loader2, Undo2, Redo2, Copy,
-  Monitor, Smartphone, Moon, Code, ImageIcon, Crop
+  Monitor, Smartphone, Moon, Code, ImageIcon, Crop, Eye, X
 } from 'lucide-react'
 import { MediaLibrarySidebar } from '@/components/media-library'
 import { cn } from '../lib/utils'
@@ -129,6 +135,16 @@ export function TemplateEditor({ template, onBack, isMail, onSaveAsTemplate }: E
     initialCrop?: { x: number; y: number; width: number; height: number };
   } | null>(null)
   
+  // Preview state
+  const [showPreview, setShowPreview] = useState(false)
+  const [previewHtml, setPreviewHtml] = useState('')
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [sampleData, setSampleData] = useState<Record<string, string>>({
+    name: 'John Doe',
+    email: 'john@example.com',
+    company: 'Acme Inc',
+  })
+  
   const { set: recordHistory, undo, redo, canUndo, canRedo, clear: clearHistory } = useBlockHistory()
 
   const selectedBlock = blocks.find((b) => b.id === selectedBlockId)
@@ -146,6 +162,26 @@ export function TemplateEditor({ template, onBack, isMail, onSaveAsTemplate }: E
       }
     })
   }, [])
+  
+  // Fetch preview when modal opens or sample data changes
+  useEffect(() => {
+    if (!showPreview || blocks.length === 0) return
+    
+    const fetchPreview = async () => {
+      setPreviewLoading(true)
+      try {
+        const result = await api.preview(blocks, sampleData)
+        setPreviewHtml(result.html)
+      } catch (error) {
+        console.error('Preview failed:', error)
+        setPreviewHtml('<p style="color: red; padding: 20px;">Preview failed to load</p>')
+      } finally {
+        setPreviewLoading(false)
+      }
+    }
+    
+    fetchPreview()
+  }, [showPreview, sampleData, blocks])
   
   const updateBlocks = (newBlocks: Block[]) => {
     setBlocks(newBlocks)
@@ -306,6 +342,16 @@ export function TemplateEditor({ template, onBack, isMail, onSaveAsTemplate }: E
             title="Redo (Ctrl+Shift+Z)"
           >
             <Redo2 className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowPreview(true)}
+            disabled={blocks.length === 0}
+            title="Preview with merge fields"
+          >
+            <Eye className="h-4 w-4 mr-1" />
+            Preview
           </Button>
           {template && (
             <Button
@@ -545,6 +591,78 @@ export function TemplateEditor({ template, onBack, isMail, onSaveAsTemplate }: E
           setCropTarget(null)
         }}
       />
+
+      {/* Preview Modal */}
+      <Dialog open={showPreview} onOpenChange={setShowPreview}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Preview with Merge Fields</DialogTitle>
+          </DialogHeader>
+          <div className="flex gap-4 mt-4 flex-1 min-h-0">
+            {/* Sample data form */}
+            <div className="w-48 space-y-3 shrink-0 overflow-y-auto">
+              <p className="text-xs font-medium text-muted-foreground">Sample Data</p>
+              {Object.entries(sampleData).map(([key, value]) => (
+                <div key={key} className="relative group">
+                  <Label className="text-xs">{key}</Label>
+                  <div className="flex gap-1">
+                    <Input
+                      value={value}
+                      onChange={(e) => setSampleData({ ...sampleData, [key]: e.target.value })}
+                      className="h-8 text-sm pr-7"
+                    />
+                    <button
+                      onClick={() => {
+                        const newData = { ...sampleData }
+                        delete newData[key]
+                        setSampleData(newData)
+                      }}
+                      className="absolute right-1 top-6 p-1 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                      title="Remove field"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full"
+                onClick={() => {
+                  const fieldName = prompt('Field name:')
+                  if (fieldName && fieldName.trim()) {
+                    setSampleData({
+                      ...sampleData,
+                      [fieldName.trim()]: ''
+                    })
+                  }
+                }}
+              >
+                <Plus className="h-3 w-3 mr-1" />
+                Add Field
+              </Button>
+              <p className="text-xs text-muted-foreground mt-4">
+                Use <code className="bg-muted px-1 rounded">{'{{field}}'}</code> in your email content to insert merge fields.
+              </p>
+            </div>
+            
+            {/* Preview content */}
+            <div className="flex-1 border rounded bg-white overflow-hidden min-h-0 flex flex-col">
+              {previewLoading ? (
+                <div className="flex justify-center items-center py-12 flex-1">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : (
+                <div 
+                  className="p-4 overflow-auto flex-1"
+                  dangerouslySetInnerHTML={{ __html: previewHtml }} 
+                />
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

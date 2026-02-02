@@ -254,6 +254,13 @@ export const api = {
   
   getMediaUsage: (id: string) =>
     request<MediaUsage[]>(`/media/${id}/usage`),
+
+  // Email preview
+  preview: (blocks: unknown[], recipient: Record<string, string>) =>
+    request<{ html: string }>('/preview', {
+      method: 'POST',
+      body: JSON.stringify({ blocks, recipient }),
+    }),
 }
 
 // Types
