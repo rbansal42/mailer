@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, Template, Draft, Mail, mails as mailsApi, listsApi, ContactList } from '../lib/api'
 import { useAuthStore } from '../hooks/useAuthStore'
@@ -205,7 +205,7 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
   const selectedContent = contentSource === 'mail' ? selectedMail : selectedTemplate
 
   // Fetch rendered preview from backend
-  const fetchPreview = async () => {
+  const fetchPreview = useCallback(async () => {
     if (!selectedContent?.blocks || selectedContent.blocks.length === 0) {
       setPreviewHtml('')
       return
@@ -222,14 +222,14 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
     } finally {
       setPreviewLoading(false)
     }
-  }
+  }, [selectedContent, previewIndex, recipients])
 
   // Fetch preview when toggled on or when content/recipient changes
   useEffect(() => {
     if (showRenderedPreview) {
       fetchPreview()
     }
-  }, [showRenderedPreview, previewIndex, selectedContent])
+  }, [showRenderedPreview, fetchPreview])
 
   // Load lists on mount
   useEffect(() => {
