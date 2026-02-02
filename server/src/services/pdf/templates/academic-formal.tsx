@@ -2,6 +2,7 @@ import React from 'react'
 import { View, Text, StyleSheet } from '@react-pdf/renderer'
 import { Certificate, LogoBar, Signatories } from '../components'
 import { typography, getNameFontSize } from '../styles'
+import type { BaseTemplateProps } from './types'
 
 // Academic-formal color palette
 const colors = {
@@ -12,20 +13,7 @@ const colors = {
   border: '#64748b',     // Slate for inner border
 }
 
-interface AcademicFormalProps {
-  title: string
-  subtitle?: string
-  recipientName: string
-  description: string
-  logos?: Array<{ url: string; height?: number }>
-  signatories?: Array<{
-    name: string
-    designation: string
-    organization?: string
-    signatureUrl?: string
-  }>
-  certificateId?: string
-}
+type AcademicFormalProps = BaseTemplateProps
 
 const styles = StyleSheet.create({
   // Outer border container (gold thick border)

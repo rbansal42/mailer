@@ -2,21 +2,9 @@ import React from 'react'
 import { View, Text, StyleSheet, Svg, Path } from '@react-pdf/renderer'
 import { Certificate, LogoBar, Signatories } from '../components'
 import { typography, getNameFontSize } from '../styles'
+import type { BaseTemplateProps } from './types'
 
-interface CreativeArtisticProps {
-  title: string
-  subtitle?: string
-  recipientName: string
-  description: string
-  logos?: Array<{ url: string; height?: number }>
-  signatories?: Array<{
-    name: string
-    designation: string
-    organization?: string
-    signatureUrl?: string
-  }>
-  certificateId?: string
-}
+type CreativeArtisticProps = BaseTemplateProps
 
 // Creative color palette
 const creativeColors = {
