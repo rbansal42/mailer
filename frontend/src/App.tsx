@@ -13,6 +13,7 @@ import ListDetail from './pages/ListDetail'
 import History from './pages/History'
 import Settings from './pages/Settings'
 import Certificates from './pages/Certificates'
+import SuppressionList from './pages/SuppressionList'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
@@ -56,6 +57,7 @@ export default function App() {
           <Route path="certificates" element={<Certificates />} />
           <Route path="history" element={<History />} />
           <Route path="settings" element={<Settings />} />
+          <Route path="suppression" element={<SuppressionList />} />
         </Route>
       </Routes>
       <Toaster position="top-right" richColors />

@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express'
-import { queryOne, execute } from '../db'
+import { queryOne, queryAll, execute } from '../db'
 import { getNextAvailableAccount, incrementSendCount } from '../services/account-manager'
 import { compileTemplate, replaceVariables, injectTracking } from '../services/template-compiler'
 import { createProvider } from '../providers'
@@ -11,6 +11,87 @@ import { isCircuitOpen, recordSuccess, recordFailure, getOpenCircuits } from '..
 import { getTrackingSettings, getOrCreateToken } from '../services/tracking'
 
 export const sendRouter = Router()
+
+// Filter out suppressed emails from recipients list
+async function filterSuppressedEmails(recipients: Array<{ email: string; [key: string]: string }>): Promise<{
+  allowed: Array<{ email: string; [key: string]: string }>,
+  suppressed: string[]
+}> {
+  const suppressedList = await queryAll<{ email: string }>('SELECT email FROM suppression_list')
+  const suppressedSet = new Set(suppressedList.map(r => r.email.toLowerCase()))
+  
+  const allowed: Array<{ email: string; [key: string]: string }> = []
+  const suppressed: string[] = []
+  
+  for (const recipient of recipients) {
+    if (suppressedSet.has(recipient.email.toLowerCase())) {
+      suppressed.push(recipient.email)
+    } else {
+      allowed.push(recipient)
+    }
+  }
+  
+  return { allowed, suppressed }
+}
+
+// Record a bounce
+async function recordBounce(
+  campaignId: number | null,
+  email: string,
+  bounceType: 'hard' | 'soft',
+  bounceReason: string
+): Promise<void> {
+  await execute(
+    'INSERT INTO bounces (campaign_id, email, bounce_type, bounce_reason) VALUES (?, ?, ?, ?)',
+    [campaignId, email.toLowerCase(), bounceType, bounceReason]
+  )
+  
+  // Auto-suppress hard bounces
+  if (bounceType === 'hard') {
+    try {
+      await execute(
+        'INSERT INTO suppression_list (email, reason, source) VALUES (?, ?, ?)',
+        [email.toLowerCase(), 'hard_bounce', campaignId ? `campaign_${campaignId}` : 'send']
+      )
+    } catch {
+      // Already suppressed, ignore
+    }
+  }
+}
+
+// Detect bounce type from error message
+function detectBounceType(errorMessage: string): { isBounce: boolean, type: 'hard' | 'soft' } {
+  const msg = errorMessage.toLowerCase()
+  
+  // Hard bounce indicators (5xx errors, permanent failures)
+  const hardBouncePatterns = [
+    '550', '551', '552', '553', '554',
+    'user unknown', 'mailbox not found', 'invalid recipient',
+    'address rejected', 'no such user', 'does not exist',
+    'permanent failure', 'mailbox unavailable'
+  ]
+  
+  // Soft bounce indicators (4xx errors, temporary failures)
+  const softBouncePatterns = [
+    '450', '451', '452',
+    'try again', 'temporarily', 'quota exceeded',
+    'mailbox full', 'rate limit', 'too many'
+  ]
+  
+  for (const pattern of hardBouncePatterns) {
+    if (msg.includes(pattern)) {
+      return { isBounce: true, type: 'hard' }
+    }
+  }
+  
+  for (const pattern of softBouncePatterns) {
+    if (msg.includes(pattern)) {
+      return { isBounce: true, type: 'soft' }
+    }
+  }
+  
+  return { isBounce: false, type: 'soft' }
+}
 
 interface Recipient {
   email: string
@@ -189,13 +270,30 @@ sendRouter.get('/', async (req: Request, res: Response) => {
 
     logger.info('Campaign created', { campaignId, service: 'send' })
 
+    // Filter out suppressed emails
+    const { allowed: filteredRecipients, suppressed: suppressedEmails } = await filterSuppressedEmails(recipients)
+
+    if (suppressedEmails.length > 0) {
+      logger.info(`Filtered ${suppressedEmails.length} suppressed emails`, { 
+        service: 'send',
+        campaignId,
+        suppressedEmails 
+      })
+      sendSSE(res, {
+        type: 'info',
+        message: `Skipping ${suppressedEmails.length} suppressed email(s)`,
+        suppressed: suppressedEmails
+      })
+    }
+
     let successful = 0
     let failed = 0
     let queued = 0
+    const skipped = suppressedEmails.length
 
-    // Process each recipient
-    for (let i = 0; i < recipients.length; i++) {
-      const recipient = recipients[i]
+    // Process each recipient (using filtered list)
+    for (let i = 0; i < filteredRecipients.length; i++) {
+      const recipient = filteredRecipients[i]
       const current = i + 1
 
       try {
@@ -227,7 +325,7 @@ sendRouter.get('/', async (req: Request, res: Response) => {
           sendSSE(res, {
             type: 'progress',
             current,
-            total: recipients.length,
+            total: filteredRecipients.length,
             message: `Queued ${recipient.email} for tomorrow`,
           })
           continue
@@ -311,7 +409,7 @@ sendRouter.get('/', async (req: Request, res: Response) => {
           sendSSE(res, {
             type: 'progress',
             current,
-            total: recipients.length,
+            total: filteredRecipients.length,
             message: `Sent to ${recipient.email} via ${account.name}`,
           })
         } else {
@@ -336,10 +434,22 @@ sendRouter.get('/', async (req: Request, res: Response) => {
             attempts: sendResult.attempts
           }, sendResult.error)
 
+          // Check if this is a bounce and record it
+          const { isBounce, type: bounceType } = detectBounceType(errorMessage)
+          if (isBounce) {
+            await recordBounce(campaignId, recipient.email, bounceType, errorMessage)
+            logger.info(`Recorded ${bounceType} bounce`, {
+              service: 'send',
+              campaignId,
+              recipient: recipient.email,
+              bounceType
+            })
+          }
+
           sendSSE(res, {
             type: 'progress',
             current,
-            total: recipients.length,
+            total: filteredRecipients.length,
             message: `Failed: ${recipient.email} - ${errorMessage} (${sendResult.attempts} attempts)`,
           })
         }
@@ -354,6 +464,18 @@ sendRouter.get('/', async (req: Request, res: Response) => {
           [campaignId, recipient.email, errorMessage]
         )
 
+        // Check if this is a bounce and record it
+        const { isBounce, type: bounceType } = detectBounceType(errorMessage)
+        if (isBounce) {
+          await recordBounce(campaignId, recipient.email, bounceType, errorMessage)
+          logger.info(`Recorded ${bounceType} bounce`, {
+            service: 'send',
+            campaignId,
+            recipient: recipient.email,
+            bounceType
+          })
+        }
+
         logger.error('Unexpected error during send', {
           service: 'send',
           campaignId,
@@ -363,7 +485,7 @@ sendRouter.get('/', async (req: Request, res: Response) => {
         sendSSE(res, {
           type: 'progress',
           current,
-          total: recipients.length,
+          total: filteredRecipients.length,
           message: `Failed: ${recipient.email} - ${errorMessage}`,
         })
       }
@@ -383,10 +505,11 @@ sendRouter.get('/', async (req: Request, res: Response) => {
       campaignId,
       successful,
       failed,
-      queued
+      queued,
+      skipped
     })
 
-    sendSSE(res, { type: 'complete', campaignId })
+    sendSSE(res, { type: 'complete', campaignId, skipped })
     res.end()
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'

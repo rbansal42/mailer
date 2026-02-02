@@ -36,6 +36,9 @@ export interface CampaignAnalytics {
     sent: number
     failed: number
     queued: number
+    bounced: number
+    hardBounces: number
+    softBounces: number
   }
   engagement: {
     opens: number
@@ -175,9 +178,19 @@ export async function getCampaignAnalytics(campaignId: number): Promise<Campaign
     [campaignId]
   )
 
-  const sent = deliveryStats.find((s: { status: string; count: number }) => s.status === 'sent')?.count || 0
+  const sent = deliveryStats.find((s: { status: string; count: number }) => s.status === 'success')?.count || 0
   const failed = deliveryStats.find((s: { status: string; count: number }) => s.status === 'failed')?.count || 0
   const queued = deliveryStats.find((s: { status: string; count: number }) => s.status === 'queued')?.count || 0
+
+  // Get bounce stats
+  const bounceStats = await queryOne<{ total: number; hard: number; soft: number }>(`
+    SELECT 
+      COUNT(*) as total,
+      SUM(CASE WHEN bounce_type = 'hard' THEN 1 ELSE 0 END) as hard,
+      SUM(CASE WHEN bounce_type = 'soft' THEN 1 ELSE 0 END) as soft
+    FROM bounces
+    WHERE campaign_id = ?
+  `, [campaignId])
 
   // Get open stats
   const openStats = await queryOne<{ total: number; unique_count: number }>(`
@@ -263,7 +276,14 @@ export async function getCampaignAnalytics(campaignId: number): Promise<Campaign
   const uniqueClicks = clickStats?.unique_count || 0
 
   return {
-    delivery: { sent, failed, queued },
+    delivery: {
+      sent,
+      failed,
+      queued,
+      bounced: bounceStats?.total || 0,
+      hardBounces: bounceStats?.hard || 0,
+      softBounces: bounceStats?.soft || 0,
+    },
     engagement: {
       opens,
       uniqueOpens,

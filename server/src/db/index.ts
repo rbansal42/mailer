@@ -457,6 +457,29 @@ export async function initializeDatabase() {
     )
   `)
 
+  // Suppression list - emails that should not receive mail
+  await execute(`
+    CREATE TABLE IF NOT EXISTS suppression_list (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT NOT NULL UNIQUE,
+      reason TEXT NOT NULL,
+      source TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `)
+
+  // Bounces log
+  await execute(`
+    CREATE TABLE IF NOT EXISTS bounces (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      campaign_id INTEGER REFERENCES campaigns(id) ON DELETE SET NULL,
+      email TEXT NOT NULL,
+      bounce_type TEXT NOT NULL,
+      bounce_reason TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `)
+
   // Create attachments directory
   mkdirSync(join(DATA_DIR, 'attachments'), { recursive: true })
 
@@ -495,6 +518,8 @@ export async function initializeDatabase() {
   await execute('CREATE INDEX IF NOT EXISTS idx_contacts_email ON contacts(email)')
   await execute('CREATE INDEX IF NOT EXISTS idx_list_contacts_list ON list_contacts(list_id)')
   await execute('CREATE INDEX IF NOT EXISTS idx_list_contacts_contact ON list_contacts(contact_id)')
+  await execute('CREATE INDEX IF NOT EXISTS idx_suppression_email ON suppression_list(email)')
+  await execute('CREATE INDEX IF NOT EXISTS idx_bounces_email ON bounces(email)')
 
   // Initialize default tracking settings
   const trackingDefaults = [
