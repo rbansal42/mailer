@@ -70,9 +70,9 @@ function compileText(props: Record<string, unknown>, data: Record<string, string
   })
 
   return `
-    <table width="100%" cellpadding="0" cellspacing="0" border="0">
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" class="text-block">
       <tr>
-        <td style="padding: 10px 20px; font-size: ${fontSize}px; line-height: 1.5; text-align: ${align}; color: #333333; font-family: Arial, sans-serif;">
+        <td class="text-block" style="padding: 10px 20px; font-size: ${fontSize}px; line-height: 1.5; text-align: ${align}; color: #333333; font-family: Arial, sans-serif;">
           ${content}
         </td>
       </tr>
@@ -136,10 +136,10 @@ function compileDivider(props: Record<string, unknown>): string {
   const color = String(props.color || '#e5e7eb')
 
   return `
-    <table width="100%" cellpadding="0" cellspacing="0" border="0">
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" class="divider-block">
       <tr>
         <td style="padding: 10px 20px;">
-          <hr style="border: none; border-top: 1px ${style} ${color}; margin: 0;" />
+          <hr class="divider-block" style="border: none; border-top: 1px ${style} ${color}; margin: 0;" />
         </td>
       </tr>
     </table>
@@ -191,9 +191,9 @@ function compileFooter(props: Record<string, unknown>, data: Record<string, stri
   const text = replaceVariables(String(props.text || ''), data)
 
   return `
-    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #f5f5f5;">
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" class="footer-block" style="background-color: #f5f5f5;">
       <tr>
-        <td align="center" style="padding: 20px; font-size: 12px; color: #666666; font-family: Arial, sans-serif; line-height: 1.5;">
+        <td class="footer-block" align="center" style="padding: 20px; font-size: 12px; color: #666666; font-family: Arial, sans-serif; line-height: 1.5;">
           ${text}
         </td>
       </tr>
@@ -283,6 +283,8 @@ export function compileTemplate(blocks: BlockInput[], data: Record<string, strin
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="x-apple-disable-message-reformatting">
   <meta name="format-detection" content="telephone=no,address=no,email=no,date=no,url=no">
+  <meta name="color-scheme" content="light dark">
+  <meta name="supported-color-schemes" content="light dark">
   <title>Email</title>
   <!--[if mso]>
   <noscript>
@@ -303,15 +305,51 @@ export function compileTemplate(blocks: BlockInput[], data: Record<string, strin
     @media only screen and (max-width: 620px) {
       .container { width: 100% !important; max-width: 100% !important; }
     }
+    /* Dark mode support */
+    @media (prefers-color-scheme: dark) {
+      body, .email-body {
+        background-color: #1a1a1a !important;
+      }
+      .email-wrapper {
+        background-color: #2d2d2d !important;
+      }
+      .email-content {
+        background-color: #2d2d2d !important;
+        color: #e5e5e5 !important;
+      }
+      h1, h2, h3, h4, h5, h6 {
+        color: #ffffff !important;
+      }
+      p, span, div, td {
+        color: #e5e5e5 !important;
+      }
+      .text-block {
+        color: #e5e5e5 !important;
+      }
+      .text-block a {
+        color: #60a5fa !important;
+      }
+      .footer-block {
+        color: #888888 !important;
+      }
+      .divider-block {
+        border-color: #444444 !important;
+      }
+    }
+    /* Additional dark mode utilities for Outlook */
+    [data-ogsc] .email-content,
+    [data-ogsc] .email-wrapper {
+      background-color: #2d2d2d !important;
+    }
   </style>
 </head>
-<body style="margin: 0; padding: 0; background-color: #f4f4f4;">
-  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color: #f4f4f4;">
+<body class="email-body" style="margin: 0; padding: 0; background-color: #f4f4f4;">
+  <table role="presentation" class="email-wrapper" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color: #f4f4f4;">
     <tr>
       <td align="center" style="padding: 20px 0;">
-        <table role="presentation" class="container" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width: 600px; background-color: #ffffff;">
+        <table role="presentation" class="container email-content" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width: 600px; background-color: #ffffff;">
           <tr>
-            <td>
+            <td class="email-content">
               ${bodyContent}
             </td>
           </tr>

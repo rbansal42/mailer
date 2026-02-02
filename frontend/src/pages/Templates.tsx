@@ -14,7 +14,7 @@ import {
 import {
   Plus, ChevronLeft, Save, Trash2, Type, Image, MousePointer,
   Minus, Square, Columns, FileText, GripVertical, Loader2, Undo2, Redo2, Copy,
-  Monitor, Smartphone, Moon, Code, ImageIcon, Crop, Eye, X
+  Monitor, Smartphone, Moon, Sun, Code, ImageIcon, Crop, Eye, X
 } from 'lucide-react'
 import { MediaLibrarySidebar } from '@/components/media-library'
 import { cn } from '../lib/utils'
@@ -704,8 +704,17 @@ export function TemplateEditor({ template, onBack, isMail, onSaveAsTemplate }: E
       {/* Preview Modal */}
       <Dialog open={showPreview} onOpenChange={setShowPreview}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-          <DialogHeader>
+          <DialogHeader className="flex flex-row items-center justify-between">
             <DialogTitle>Preview with Merge Fields</DialogTitle>
+            <Button
+              variant={darkMode ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setDarkMode(!darkMode)}
+              title="Toggle dark mode preview"
+              className="mr-8"
+            >
+              {darkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </Button>
           </DialogHeader>
           <div className="flex gap-4 mt-4 flex-1 min-h-0">
             {/* Sample data form */}
@@ -757,16 +766,18 @@ export function TemplateEditor({ template, onBack, isMail, onSaveAsTemplate }: E
             </div>
             
             {/* Preview content */}
-            <div className="flex-1 border rounded bg-white overflow-hidden min-h-0 flex flex-col">
+            <div className={`flex-1 border rounded overflow-hidden min-h-0 flex flex-col ${darkMode ? 'bg-zinc-900' : 'bg-white'}`}>
               {previewLoading ? (
                 <div className="flex justify-center items-center py-12 flex-1">
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                 </div>
               ) : (
-                <div 
-                  className="p-4 overflow-auto flex-1"
-                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(previewHtml) }} 
-                />
+                <div className={darkMode ? 'bg-zinc-800 m-2 rounded' : ''}>
+                  <div 
+                    className="p-4 overflow-auto flex-1"
+                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(previewHtml) }} 
+                  />
+                </div>
               )}
             </div>
           </div>
