@@ -631,10 +631,10 @@ export const listsApi = {
     if (token) {
       headers['Authorization'] = `Bearer ${token}`
     }
-    
+
     const res = await fetch(`${API_BASE}/contacts/lists/${listId}/export`, { headers })
     if (!res.ok) throw new Error('Failed to export list')
-    
+
     const blob = await res.blob()
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -643,4 +643,120 @@ export const listsApi = {
     a.click()
     URL.revokeObjectURL(url)
   }
+}
+
+// Google Sheets Integration types
+export interface GoogleSheetsStatus {
+  configured: boolean
+  connected: boolean
+  clientId: string | null
+  redirectUri: string | null
+}
+
+export interface GoogleSheetsCredentials {
+  clientId: string
+  clientSecret: string
+  redirectUri?: string
+}
+
+export interface SpreadsheetMetadata {
+  title: string
+  sheets: { sheetId: number; title: string }[]
+}
+
+export interface SpreadsheetPreview {
+  headers: string[]
+  sampleRows: Record<string, string>[]
+  totalRows: number
+  sheetName: string
+  spreadsheetTitle: string
+  suggestedMapping: ColumnMapping
+}
+
+export interface ColumnMapping {
+  email: string
+  name?: string
+  first_name?: string
+  last_name?: string
+  company?: string
+  phone?: string
+  country?: string
+}
+
+export interface SyncConfig {
+  spreadsheetId: string
+  sheetRange?: string
+  columnMapping: ColumnMapping
+  autoSync?: boolean
+  syncFrequency?: 'manual' | 'hourly' | 'daily'
+}
+
+export interface SyncResult {
+  message: string
+  created: number
+  updated: number
+  added: number
+  total: number
+  spreadsheetTitle?: string
+}
+
+export interface SheetSync {
+  id: number
+  list_id: number
+  spreadsheet_id: string
+  spreadsheet_name: string | null
+  sheet_range: string | null
+  column_mapping: ColumnMapping
+  auto_sync: boolean
+  sync_frequency: string
+  last_synced_at: string | null
+  last_sync_count: number
+  last_sync_error: string | null
+  created_at: string
+  updated_at: string
+}
+
+// Google Sheets API
+export const googleSheetsApi = {
+  getStatus: () => request<GoogleSheetsStatus>('/integrations/google-sheets/status'),
+
+  saveCredentials: (credentials: GoogleSheetsCredentials) =>
+    request<{ message: string }>('/integrations/google-sheets/credentials', {
+      method: 'POST',
+      body: JSON.stringify(credentials),
+    }),
+
+  getAuthUrl: () => request<{ authUrl: string }>('/integrations/google-sheets/auth-url'),
+
+  disconnect: () =>
+    request<{ message: string }>('/integrations/google-sheets/disconnect', {
+      method: 'POST',
+    }),
+
+  getSpreadsheet: (id: string) =>
+    request<SpreadsheetMetadata>(`/integrations/google-sheets/spreadsheet/${encodeURIComponent(id)}`),
+
+  previewSpreadsheet: (id: string, range?: string) => {
+    const params = range ? `?range=${encodeURIComponent(range)}` : ''
+    return request<SpreadsheetPreview>(`/integrations/google-sheets/spreadsheet/${encodeURIComponent(id)}/preview${params}`)
+  },
+
+  syncToList: (listId: number, config: SyncConfig) =>
+    request<SyncResult>(`/integrations/google-sheets/lists/${listId}/sync`, {
+      method: 'POST',
+      body: JSON.stringify(config),
+    }),
+
+  getListSyncs: (listId: number) =>
+    request<SheetSync[]>(`/integrations/google-sheets/lists/${listId}/syncs`),
+
+  deleteSync: (listId: number, syncId: number) =>
+    request<void>(`/integrations/google-sheets/lists/${listId}/syncs/${syncId}`, {
+      method: 'DELETE',
+    }),
+
+  runSync: (listId: number, syncId: number) =>
+    request<SyncResult>(`/integrations/google-sheets/lists/${listId}/syncs/${syncId}/run`, {
+      method: 'POST',
+    }),
 }

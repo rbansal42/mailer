@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api, SenderAccount, GmailConfig, SmtpConfig } from '../lib/api'
+import { useSearchParams } from 'react-router-dom'
+import { api, SenderAccount, GmailConfig, SmtpConfig, googleSheetsApi } from '../lib/api'
 import { useThemeStore } from '../hooks/useThemeStore'
 import { COLOR_PRESETS, THEME_COLORS } from '../lib/theme'
 import { Button } from '../components/ui/button'
@@ -9,17 +10,41 @@ import { Label } from '../components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import {
   Plus, GripVertical, Trash2, Check, Eye, EyeOff,
-  Loader2, AlertCircle, CheckCircle2, Sun, Moon
+  Loader2, AlertCircle, CheckCircle2, Sun, Moon,
+  ExternalLink, Link2Off, Sheet
 } from 'lucide-react'
 import { cn } from '../lib/utils'
+import { toast } from 'sonner'
 
 export default function Settings() {
-  const [activeTab, setActiveTab] = useState<'accounts' | 'general' | 'queue' | 'appearance'>('accounts')
+  const [searchParams] = useSearchParams()
+  const [activeTab, setActiveTab] = useState<'accounts' | 'general' | 'queue' | 'integrations' | 'appearance'>('accounts')
+
+  // Handle OAuth callback messages
+  useEffect(() => {
+    const success = searchParams.get('success')
+    const error = searchParams.get('error')
+
+    if (success === 'google_sheets_connected') {
+      toast.success('Google Sheets connected successfully')
+      setActiveTab('integrations')
+    } else if (error) {
+      const errorMessages: Record<string, string> = {
+        auth_denied: 'Authorization was denied',
+        no_code: 'No authorization code received',
+        token_exchange_failed: 'Failed to complete authorization',
+        callback_error: 'Authorization callback error',
+      }
+      toast.error(errorMessages[error] || 'An error occurred')
+      setActiveTab('integrations')
+    }
+  }, [searchParams])
 
   const tabLabels: Record<string, string> = {
     accounts: 'Sender Accounts',
     general: 'General',
     queue: 'Queue',
+    integrations: 'Integrations',
     appearance: 'Appearance',
   }
 
@@ -29,7 +54,7 @@ export default function Settings() {
 
       {/* Tabs */}
       <div className="flex gap-1 mb-4 border-b">
-        {(['accounts', 'general', 'queue', 'appearance'] as const).map((tab) => (
+        {(['accounts', 'general', 'queue', 'integrations', 'appearance'] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -48,6 +73,7 @@ export default function Settings() {
       {activeTab === 'accounts' && <AccountsSettings />}
       {activeTab === 'general' && <GeneralSettings />}
       {activeTab === 'queue' && <QueueSettings />}
+      {activeTab === 'integrations' && <IntegrationsSettings />}
       {activeTab === 'appearance' && <AppearanceSettings />}
     </div>
   )
@@ -608,6 +634,230 @@ function QueueSettings() {
           </CardContent>
         </Card>
       )}
+    </div>
+  )
+}
+
+function IntegrationsSettings() {
+  const queryClient = useQueryClient()
+  const [showCredentialsForm, setShowCredentialsForm] = useState(false)
+  const [clientId, setClientId] = useState('')
+  const [clientSecret, setClientSecret] = useState('')
+  const [showSecret, setShowSecret] = useState(false)
+
+  const { data: status, isLoading } = useQuery({
+    queryKey: ['google-sheets-status'],
+    queryFn: googleSheetsApi.getStatus,
+  })
+
+  const saveCredentialsMutation = useMutation({
+    mutationFn: googleSheetsApi.saveCredentials,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['google-sheets-status'] })
+      setShowCredentialsForm(false)
+      setClientId('')
+      setClientSecret('')
+      toast.success('Credentials saved')
+    },
+    onError: () => {
+      toast.error('Failed to save credentials')
+    },
+  })
+
+  const connectMutation = useMutation({
+    mutationFn: googleSheetsApi.getAuthUrl,
+    onSuccess: (data) => {
+      window.location.href = data.authUrl
+    },
+    onError: () => {
+      toast.error('Failed to get authorization URL')
+    },
+  })
+
+  const disconnectMutation = useMutation({
+    mutationFn: googleSheetsApi.disconnect,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['google-sheets-status'] })
+      toast.success('Google Sheets disconnected')
+    },
+    onError: () => {
+      toast.error('Failed to disconnect')
+    },
+  })
+
+  const handleSaveCredentials = () => {
+    if (!clientId.trim() || !clientSecret.trim()) {
+      toast.error('Please fill in all fields')
+      return
+    }
+    saveCredentialsMutation.mutate({ clientId: clientId.trim(), clientSecret: clientSecret.trim() })
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center py-8">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="max-w-2xl space-y-6">
+      {/* Google Sheets Integration */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Sheet className="h-5 w-5 text-green-600" />
+            Google Sheets
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Import contacts directly from Google Sheets. Sync your spreadsheets to contact lists with automatic column mapping.
+          </p>
+
+          {/* Status */}
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium">Status:</span>
+            {status?.connected ? (
+              <span className="flex items-center gap-1 text-sm text-green-600">
+                <CheckCircle2 className="h-4 w-4" />
+                Connected
+              </span>
+            ) : status?.configured ? (
+              <span className="flex items-center gap-1 text-sm text-yellow-600">
+                <AlertCircle className="h-4 w-4" />
+                Credentials configured, not connected
+              </span>
+            ) : (
+              <span className="flex items-center gap-1 text-sm text-muted-foreground">
+                <Link2Off className="h-4 w-4" />
+                Not configured
+              </span>
+            )}
+          </div>
+
+          {/* Credentials Form */}
+          {(showCredentialsForm || !status?.configured) && (
+            <div className="space-y-3 p-4 bg-muted/50 rounded-lg">
+              <p className="text-sm font-medium">OAuth 2.0 Credentials</p>
+              <p className="text-xs text-muted-foreground">
+                Create credentials in the{' '}
+                <a
+                  href="https://console.cloud.google.com/apis/credentials"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline inline-flex items-center gap-1"
+                >
+                  Google Cloud Console
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+                . Enable the Google Sheets API and create OAuth 2.0 credentials (Web application type).
+              </p>
+              <div className="space-y-2">
+                <div className="space-y-1">
+                  <Label className="text-xs">Client ID</Label>
+                  <Input
+                    value={clientId}
+                    onChange={(e) => setClientId(e.target.value)}
+                    placeholder="xxxxx.apps.googleusercontent.com"
+                    className="h-8 text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Client Secret</Label>
+                  <div className="relative">
+                    <Input
+                      type={showSecret ? 'text' : 'password'}
+                      value={clientSecret}
+                      onChange={(e) => setClientSecret(e.target.value)}
+                      placeholder="GOCSPX-..."
+                      className="h-8 text-sm pr-8"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowSecret(!showSecret)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground"
+                    >
+                      {showSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Add this redirect URI to your OAuth credentials:{' '}
+                  <code className="bg-muted px-1 py-0.5 rounded text-xs">
+                    {window.location.origin}/api/integrations/google-sheets/callback
+                  </code>
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  onClick={handleSaveCredentials}
+                  disabled={saveCredentialsMutation.isPending}
+                >
+                  {saveCredentialsMutation.isPending && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+                  Save Credentials
+                </Button>
+                {status?.configured && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setShowCredentialsForm(false)}
+                  >
+                    Cancel
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Connect/Disconnect Buttons */}
+          {status?.configured && !showCredentialsForm && (
+            <div className="flex items-center gap-2">
+              {status.connected ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => disconnectMutation.mutate()}
+                  disabled={disconnectMutation.isPending}
+                >
+                  {disconnectMutation.isPending && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+                  <Link2Off className="h-4 w-4 mr-1" />
+                  Disconnect
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  onClick={() => connectMutation.mutate()}
+                  disabled={connectMutation.isPending}
+                >
+                  {connectMutation.isPending && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+                  <ExternalLink className="h-4 w-4 mr-1" />
+                  Connect Google Account
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setShowCredentialsForm(true)}
+              >
+                Update Credentials
+              </Button>
+            </div>
+          )}
+
+          {/* Usage Instructions */}
+          {status?.connected && (
+            <div className="p-3 bg-green-50 dark:bg-green-950 rounded-lg text-sm">
+              <p className="font-medium text-green-800 dark:text-green-200">Ready to sync</p>
+              <p className="text-green-700 dark:text-green-300 text-xs mt-1">
+                Go to any contact list and click &quot;Sync from Google Sheets&quot; to import contacts from your spreadsheets.
+              </p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }

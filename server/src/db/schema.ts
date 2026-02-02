@@ -358,6 +358,26 @@ export async function createTables() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `)
+
+  // Google Sheets sync configurations
+  await execute(`
+    CREATE TABLE IF NOT EXISTS google_sheets_syncs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      list_id INTEGER REFERENCES lists(id) ON DELETE CASCADE,
+      spreadsheet_id TEXT NOT NULL,
+      spreadsheet_name TEXT,
+      sheet_range TEXT,
+      column_mapping TEXT NOT NULL DEFAULT '{}',
+      auto_sync INTEGER DEFAULT 0,
+      sync_frequency TEXT DEFAULT 'manual',
+      last_synced_at DATETIME,
+      last_sync_count INTEGER DEFAULT 0,
+      last_sync_error TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(list_id, spreadsheet_id)
+    )
+  `)
 }
 
 // Create all database indexes
@@ -381,6 +401,7 @@ export async function createIndexes() {
   await execute('CREATE INDEX IF NOT EXISTS idx_list_contacts_contact ON list_contacts(contact_id)')
   await execute('CREATE INDEX IF NOT EXISTS idx_suppression_email ON suppression_list(email)')
   await execute('CREATE INDEX IF NOT EXISTS idx_bounces_email ON bounces(email)')
+  await execute('CREATE INDEX IF NOT EXISTS idx_google_sheets_syncs_list ON google_sheets_syncs(list_id)')
 }
 
 // Initialize default settings
