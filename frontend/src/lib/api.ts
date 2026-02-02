@@ -294,6 +294,7 @@ export interface Template {
   name: string
   description?: string
   blocks: Block[]
+  isDefault?: boolean
   createdAt: string
   updatedAt: string
 }

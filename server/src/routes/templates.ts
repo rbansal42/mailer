@@ -10,6 +10,7 @@ interface TemplateRow {
   name: string
   description: string | null
   blocks: string
+  is_default: number | null
   created_at: string
   updated_at: string
 }
@@ -20,6 +21,7 @@ function formatTemplate(row: TemplateRow) {
     name: row.name,
     description: row.description,
     blocks: JSON.parse(row.blocks || '[]'),
+    isDefault: !!row.is_default,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
@@ -109,8 +111,28 @@ templatesRouter.put('/:id', async (req, res) => {
 
 // Delete template
 templatesRouter.delete('/:id', async (req, res) => {
-  logger.info('Deleting template', { service: 'templates', templateId: req.params.id })
-  await execute('DELETE FROM templates WHERE id = ?', [req.params.id])
-  logger.info('Template deleted', { service: 'templates', templateId: req.params.id })
+  const { id } = req.params
+  logger.info('Deleting template', { service: 'templates', templateId: id })
+
+  // Check if template exists and if it's a default template
+  const template = await queryOne<{ is_default: number }>(
+    'SELECT is_default FROM templates WHERE id = ?',
+    [id]
+  )
+
+  if (!template) {
+    logger.warn('Template not found for deletion', { service: 'templates', templateId: id })
+    res.status(404).json({ error: 'Template not found' })
+    return
+  }
+
+  if (template.is_default) {
+    logger.warn('Attempted to delete default template', { service: 'templates', templateId: id })
+    res.status(403).json({ error: 'Cannot delete built-in templates' })
+    return
+  }
+
+  await execute('DELETE FROM templates WHERE id = ?', [id])
+  logger.info('Template deleted', { service: 'templates', templateId: id })
   res.status(204).send()
 })

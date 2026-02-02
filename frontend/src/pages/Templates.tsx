@@ -38,11 +38,18 @@ const BLOCK_TYPES = [
 export default function Templates() {
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null)
   const [isCreating, setIsCreating] = useState(false)
+  const [filter, setFilter] = useState<'all' | 'builtin' | 'custom'>('all')
 
   const { data: templates, isLoading } = useQuery({
     queryKey: ['templates'],
     queryFn: api.getTemplates,
   })
+
+  const filteredTemplates = templates?.filter(t => {
+    if (filter === 'builtin') return t.isDefault
+    if (filter === 'custom') return !t.isDefault
+    return true
+  }) ?? []
 
   if (editingTemplate || isCreating) {
     return (
@@ -66,20 +73,51 @@ export default function Templates() {
         </Button>
       </div>
 
+      <div className="flex gap-2 mb-4">
+        <Button 
+          variant={filter === 'all' ? 'default' : 'outline'} 
+          size="sm"
+          onClick={() => setFilter('all')}
+        >
+          All
+        </Button>
+        <Button 
+          variant={filter === 'builtin' ? 'default' : 'outline'} 
+          size="sm"
+          onClick={() => setFilter('builtin')}
+        >
+          Built-in
+        </Button>
+        <Button 
+          variant={filter === 'custom' ? 'default' : 'outline'} 
+          size="sm"
+          onClick={() => setFilter('custom')}
+        >
+          My Templates
+        </Button>
+      </div>
+
       {isLoading ? (
         <div className="flex justify-center py-8">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
-      ) : templates && templates.length > 0 ? (
+      ) : filteredTemplates.length > 0 ? (
         <div className="grid grid-cols-2 gap-3">
-          {templates.map((template) => (
+          {filteredTemplates.map((template) => (
             <Card
               key={template.id}
               className="cursor-pointer hover:border-primary/50 transition-colors"
               onClick={() => setEditingTemplate(template)}
             >
               <CardHeader className="p-3 pb-2">
-                <CardTitle className="text-sm">{template.name}</CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm">{template.name}</CardTitle>
+                  {template.isDefault && (
+                    <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
+                      Built-in
+                    </span>
+                  )}
+                </div>
               </CardHeader>
               <CardContent className="p-3 pt-0">
                 <p className="text-xs text-muted-foreground">
@@ -95,7 +133,9 @@ export default function Templates() {
       ) : (
         <Card className="border-dashed">
           <CardContent className="py-8 text-center">
-            <p className="text-muted-foreground mb-4">No templates yet</p>
+            <p className="text-muted-foreground mb-4">
+              {filter === 'all' ? 'No templates yet' : filter === 'builtin' ? 'No built-in templates' : 'No custom templates yet'}
+            </p>
             <Button size="sm" onClick={() => setIsCreating(true)}>
               <Plus className="h-4 w-4 mr-1" />
               Create Template
@@ -422,7 +462,7 @@ export function TemplateEditor({ template, onBack, isMail, onSaveAsTemplate }: E
             <Eye className="h-4 w-4 mr-1" />
             Preview
           </Button>
-          {template && (
+          {template && !template.isDefault && (
             <Button
               variant="ghost"
               size="sm"
