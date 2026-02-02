@@ -112,6 +112,8 @@ export const api = {
     }),
   deleteDraft: (id: number) =>
     request<void>(`/drafts/${id}`, { method: 'DELETE' }),
+  duplicateDraft: (id: number) =>
+    request<{ id: number; name: string }>(`/drafts/${id}/duplicate`, { method: 'POST' }),
 
   // Campaigns (History)
   getCampaigns: () => request<Campaign[]>('/campaigns'),
@@ -119,6 +121,8 @@ export const api = {
   getCampaignAnalytics: (id: number) => request<CampaignAnalytics>(`/campaigns/${id}/analytics`),
   deleteCampaign: (id: number) =>
     request<void>(`/campaigns/${id}`, { method: 'DELETE' }),
+  duplicateCampaign: (id: number) =>
+    request<{ id: number; name: string }>(`/campaigns/${id}/duplicate`, { method: 'POST' }),
 
   // Accounts
   getAccounts: () => request<SenderAccount[]>('/accounts'),
@@ -250,6 +254,13 @@ export const api = {
   
   getMediaUsage: (id: string) =>
     request<MediaUsage[]>(`/media/${id}/usage`),
+
+  // Email preview
+  preview: (blocks: unknown[], recipient: Record<string, string>) =>
+    request<{ html: string }>('/preview', {
+      method: 'POST',
+      body: JSON.stringify({ blocks, recipient }),
+    }),
 }
 
 // Types
@@ -309,6 +320,8 @@ export interface Campaign {
   successful: number
   failed: number
   queued: number
+  status?: 'sending' | 'completed' | 'scheduled' | 'failed'
+  scheduledFor?: string
   startedAt: string
   completedAt?: string
   createdAt: string

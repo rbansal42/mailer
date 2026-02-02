@@ -10,14 +10,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../components/ui/dialog'
-import { Plus, Loader2, FileText, Mail as MailIcon } from 'lucide-react'
+import { Plus, Loader2, FileText, Mail as MailIcon, Search } from 'lucide-react'
 import { TemplateEditor } from './Templates'
 import { cn } from '../lib/utils'
+import { Input } from '../components/ui/input'
 
 type Tab = 'mails' | 'templates'
 
 export default function MailLibrary() {
   const [activeTab, setActiveTab] = useState<Tab>('mails')
+  const [search, setSearch] = useState('')
   const [editingMail, setEditingMail] = useState<Mail | null>(null)
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null)
   const [isCreatingMail, setIsCreatingMail] = useState(false)
@@ -61,6 +63,12 @@ export default function MailLibrary() {
     await mails.saveAsTemplate(mailId, { name })
     queryClient.invalidateQueries({ queryKey: ['templates'] })
   }
+
+  const filteredMails = mailsList?.filter(
+    (mail) =>
+      mail.name?.toLowerCase().includes(search.toLowerCase()) ||
+      mail.description?.toLowerCase().includes(search.toLowerCase())
+  ) ?? []
 
   // Show editor for mails
   if (editingMail || isCreatingMail) {
@@ -145,13 +153,22 @@ export default function MailLibrary() {
       {/* Mails Tab */}
       {activeTab === 'mails' && (
         <>
+          <div className="relative mb-4">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search mails..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9"
+            />
+          </div>
           {mailsLoading ? (
             <div className="flex justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
-          ) : mailsList && mailsList.length > 0 ? (
+          ) : filteredMails.length > 0 ? (
             <div className="grid grid-cols-2 gap-3">
-              {mailsList.map((mail) => (
+              {filteredMails.map((mail) => (
                 <Card
                   key={mail.id}
                   className="cursor-pointer hover:border-primary/50 transition-colors"
@@ -182,7 +199,7 @@ export default function MailLibrary() {
           ) : (
             <Card className="border-dashed">
               <CardContent className="py-8 text-center">
-                <p className="text-muted-foreground mb-4">No mails yet</p>
+                <p className="text-muted-foreground mb-4">{mailsList?.length ? 'No mails match your search' : 'No mails yet'}</p>
                 <Button size="sm" onClick={handleNewMail}>
                   <Plus className="h-4 w-4 mr-1" />
                   Create Mail

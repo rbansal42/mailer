@@ -20,21 +20,35 @@ function getToken(): string | null {
   return null;
 }
 import DOMPurify from 'isomorphic-dompurify'
+import { toast } from 'sonner'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
 import { Card, CardContent, CardHeader } from '../components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog'
-import { Plus, Send, Save, ChevronLeft, ChevronRight, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react'
+import { Plus, Send, Save, ChevronLeft, ChevronRight, AlertCircle, CheckCircle2, Loader2, Search, Copy, Clock, Eye } from 'lucide-react'
 import type { Recipient } from '../lib/api'
 
 export default function Campaigns() {
+  const queryClient = useQueryClient()
   const [isComposing, setIsComposing] = useState(false)
   const [selectedDraft, setSelectedDraft] = useState<Draft | null>(null)
+  const [search, setSearch] = useState('')
   
   const { data: drafts, isLoading: loadingDrafts } = useQuery({
     queryKey: ['drafts'],
     queryFn: api.getDrafts,
+  })
+
+  const duplicateMutation = useMutation({
+    mutationFn: (id: number) => api.duplicateDraft(id),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['drafts'] })
+      toast.success(`Draft duplicated as "${data.name}"`)
+    },
+    onError: () => {
+      toast.error('Failed to duplicate draft')
+    },
   })
 
   const { data: templates } = useQuery({
@@ -46,6 +60,12 @@ export default function Campaigns() {
     queryKey: ['mails'],
     queryFn: mailsApi.list,
   })
+
+  const filteredDrafts = drafts?.filter(
+    (draft) =>
+      draft.name?.toLowerCase().includes(search.toLowerCase()) ||
+      draft.subject?.toLowerCase().includes(search.toLowerCase())
+  ) ?? []
 
   if (isComposing || selectedDraft) {
     return (
@@ -71,14 +91,24 @@ export default function Campaigns() {
         </Button>
       </div>
 
+      <div className="relative mb-4">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search drafts..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="pl-9"
+        />
+      </div>
+
       {loadingDrafts ? (
         <div className="flex justify-center py-8">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
-      ) : drafts && drafts.length > 0 ? (
+      ) : filteredDrafts.length > 0 ? (
         <div className="space-y-2">
           <h2 className="text-sm font-medium text-muted-foreground">Drafts</h2>
-          {drafts.map((draft) => (
+          {filteredDrafts.map((draft) => (
             <Card
               key={draft.id}
               className="cursor-pointer hover:border-primary/50 transition-colors"
@@ -91,9 +121,24 @@ export default function Campaigns() {
                     {draft.recipients?.length || 0} recipients
                   </p>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  {new Date(draft.updatedAt).toLocaleDateString()}
-                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      duplicateMutation.mutate(draft.id)
+                    }}
+                    title="Duplicate"
+                    disabled={duplicateMutation.isPending}
+                  >
+                    {duplicateMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Copy className="h-3 w-3" />}
+                  </Button>
+                  <p className="text-xs text-muted-foreground">
+                    {new Date(draft.updatedAt).toLocaleDateString()}
+                  </p>
+                </div>
               </CardContent>
             </Card>
           ))}
@@ -101,7 +146,7 @@ export default function Campaigns() {
       ) : (
         <Card className="border-dashed">
           <CardContent className="py-8 text-center">
-            <p className="text-muted-foreground mb-4">No drafts yet</p>
+            <p className="text-muted-foreground mb-4">{drafts?.length ? 'No drafts match your search' : 'No drafts yet'}</p>
             <Button size="sm" onClick={() => setIsComposing(true)}>
               <Plus className="h-4 w-4 mr-1" />
               Create Campaign
@@ -145,10 +190,46 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
   const [showManualEntry, setShowManualEntry] = useState(false)
   const [saveListOpen, setSaveListOpen] = useState(false)
   const [newListName, setNewListName] = useState('')
+  
+  // Scheduling state
+  const [showScheduler, setShowScheduler] = useState(false)
+  const [scheduledDateTime, setScheduledDateTime] = useState('')
+
+  // Preview state
+  const [showRenderedPreview, setShowRenderedPreview] = useState(false)
+  const [previewHtml, setPreviewHtml] = useState('')
+  const [previewLoading, setPreviewLoading] = useState(false)
 
   const selectedMail = mails.find((m) => m.id === mailId)
   const selectedTemplate = templates.find((t) => t.id === templateId)
   const selectedContent = contentSource === 'mail' ? selectedMail : selectedTemplate
+
+  // Fetch rendered preview from backend
+  const fetchPreview = async () => {
+    if (!selectedContent?.blocks || selectedContent.blocks.length === 0) {
+      setPreviewHtml('')
+      return
+    }
+
+    setPreviewLoading(true)
+    try {
+      const recipient = recipients[previewIndex] || { email: 'recipient@example.com' }
+      const result = await api.preview(selectedContent.blocks, recipient)
+      setPreviewHtml(result.html)
+    } catch (error) {
+      console.error('Preview failed:', error)
+      setPreviewHtml('<p style="color: red; padding: 16px;">Preview failed to load</p>')
+    } finally {
+      setPreviewLoading(false)
+    }
+  }
+
+  // Fetch preview when toggled on or when content/recipient changes
+  useEffect(() => {
+    if (showRenderedPreview) {
+      fetchPreview()
+    }
+  }, [showRenderedPreview, previewIndex, selectedContent])
 
   // Load lists on mount
   useEffect(() => {
@@ -191,6 +272,13 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
   }
 
   const canSend = validation.hasName && validation.hasContent && validation.hasSubject && validation.hasRecipients && validation.invalidEmails.length === 0
+
+  // Get minimum datetime for scheduling (now + 5 minutes)
+  const getMinDateTime = () => {
+    const now = new Date()
+    now.setMinutes(now.getMinutes() + 5)
+    return now.toISOString().slice(0, 16) // Format: YYYY-MM-DDTHH:mm
+  }
 
   // Parse test emails (comma, semicolon, or newline separated)
   const parseTestEmails = (text: string): string[] => {
@@ -276,7 +364,7 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
     })
   }
 
-  const handleSend = async () => {
+  const handleSend = async (scheduledFor?: string) => {
     if (!canSend) return
     setSending(true)
     setSendProgress({ current: 0, total: recipients.length, logs: [] })
@@ -287,9 +375,16 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
         ? `mailId=${mailId}` 
         : `templateId=${templateId}`
       const token = getToken()
-      const eventSource = new EventSource(
-        `/api/send?${contentParam}&subject=${encodeURIComponent(subject)}&recipients=${encodeURIComponent(JSON.stringify(recipients))}&name=${encodeURIComponent(name)}&token=${token}`
-      )
+      
+      // Build URL params
+      let url = `/api/send?${contentParam}&subject=${encodeURIComponent(subject)}&recipients=${encodeURIComponent(JSON.stringify(recipients))}&name=${encodeURIComponent(name)}&token=${token}`
+      
+      // Add scheduledFor if scheduling
+      if (scheduledFor) {
+        url += `&scheduledFor=${encodeURIComponent(scheduledFor)}`
+      }
+      
+      const eventSource = new EventSource(url)
 
       eventSource.onmessage = (event) => {
         const data = JSON.parse(event.data)
@@ -302,6 +397,9 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
         } else if (data.type === 'complete') {
           eventSource.close()
           setSending(false)
+          if (scheduledFor) {
+            toast.success('Campaign scheduled successfully')
+          }
           queryClient.invalidateQueries({ queryKey: ['campaigns'] })
           queryClient.invalidateQueries({ queryKey: ['drafts'] })
         } else if (data.type === 'error') {
@@ -317,6 +415,22 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
     } catch (error) {
       setSending(false)
     }
+  }
+
+  const handleScheduledSend = () => {
+    if (!scheduledDateTime) return
+    const scheduledDate = new Date(scheduledDateTime)
+    const minTime = new Date()
+    minTime.setMinutes(minTime.getMinutes() + 5)
+    
+    if (scheduledDate < minTime) {
+      toast.error('Scheduled time must be at least 5 minutes in the future')
+      return
+    }
+    
+    const scheduledFor = scheduledDate.toISOString()
+    setShowScheduler(false)
+    handleSend(scheduledFor)
   }
 
   // Replace variables in text
@@ -337,13 +451,26 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
           <h1 className="font-semibold">{draft ? 'Edit Draft' : 'New Campaign'}</h1>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant={showRenderedPreview ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setShowRenderedPreview(!showRenderedPreview)}
+            disabled={!selectedContent}
+          >
+            <Eye className="h-4 w-4 mr-1" />
+            Preview
+          </Button>
           <Button variant="outline" size="sm" onClick={handleSaveDraft} disabled={saveDraftMutation.isPending}>
             <Save className="h-4 w-4 mr-1" />
             Save Draft
           </Button>
-          <Button size="sm" onClick={handleSend} disabled={!canSend || sending}>
+          <Button variant="outline" size="sm" onClick={() => setShowScheduler(true)} disabled={!canSend || sending}>
+            <Clock className="h-4 w-4 mr-1" />
+            Schedule
+          </Button>
+          <Button size="sm" onClick={() => handleSend()} disabled={!canSend || sending}>
             <Send className="h-4 w-4 mr-1" />
-            Send
+            Send Now
           </Button>
         </div>
       </div>
@@ -590,7 +717,9 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
         {/* Right: Preview */}
         <div className="w-1/2 p-4 overflow-y-auto bg-muted/30">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-sm font-medium">Preview</span>
+            <span className="text-sm font-medium">
+              {showRenderedPreview ? 'Rendered Preview' : 'Preview'}
+            </span>
             {recipients.length > 0 && (
               <div className="flex items-center gap-1">
                 <Button
@@ -626,7 +755,22 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
               </p>
             </CardHeader>
             <CardContent className="p-3 pt-0">
-              {selectedContent ? (
+              {showRenderedPreview ? (
+                // Backend-rendered HTML preview
+                previewLoading ? (
+                  <div className="flex justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : previewHtml ? (
+                  <div
+                    className="border rounded bg-white overflow-auto"
+                    style={{ maxHeight: '60vh' }}
+                    dangerouslySetInnerHTML={{ __html: previewHtml }}
+                  />
+                ) : (
+                  <p className="text-sm text-muted-foreground">Select a mail or template to preview</p>
+                )
+              ) : selectedContent ? (
                 <div className="text-sm border rounded p-3 bg-background">
                   {/* Render blocks with variables replaced */}
                   {selectedContent.blocks.map((block) => (
@@ -770,6 +914,39 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
               }}
             >
               Save List
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Schedule Campaign Dialog */}
+      <Dialog open={showScheduler} onOpenChange={setShowScheduler}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Schedule Campaign</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <p className="text-sm text-muted-foreground">
+              Choose when to send this campaign to {recipients.length} recipient{recipients.length !== 1 ? 's' : ''}.
+            </p>
+            <div className="space-y-2">
+              <Label>Send at</Label>
+              <Input
+                type="datetime-local"
+                min={getMinDateTime()}
+                value={scheduledDateTime}
+                onChange={(e) => setScheduledDateTime(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Must be at least 5 minutes in the future
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowScheduler(false)}>Cancel</Button>
+            <Button onClick={handleScheduledSend} disabled={!scheduledDateTime}>
+              <Clock className="h-4 w-4 mr-1" />
+              Schedule
             </Button>
           </DialogFooter>
         </DialogContent>
