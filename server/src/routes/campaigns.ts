@@ -13,6 +13,8 @@ interface CampaignRow {
   successful: number
   failed: number
   queued: number
+  status: string | null
+  scheduled_for: string | null
   started_at: string | null
   completed_at: string | null
   created_at: string
@@ -40,6 +42,8 @@ function formatCampaign(row: CampaignRow) {
     successful: row.successful,
     failed: row.failed,
     queued: row.queued,
+    status: row.status,
+    scheduledFor: row.scheduled_for,
     startedAt: row.started_at,
     completedAt: row.completed_at,
     createdAt: row.created_at,

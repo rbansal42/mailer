@@ -656,7 +656,7 @@ export function TemplateEditor({ template, onBack, isMail, onSaveAsTemplate }: E
               ) : (
                 <div 
                   className="p-4 overflow-auto flex-1"
-                  dangerouslySetInnerHTML={{ __html: previewHtml }} 
+                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(previewHtml) }} 
                 />
               )}
             </div>

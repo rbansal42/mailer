@@ -765,7 +765,7 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
                   <div
                     className="border rounded bg-white overflow-auto"
                     style={{ maxHeight: '60vh' }}
-                    dangerouslySetInnerHTML={{ __html: previewHtml }}
+                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(previewHtml) }}
                   />
                 ) : (
                   <p className="text-sm text-muted-foreground">Select a mail or template to preview</p>

@@ -25,8 +25,18 @@ previewRouter.post('/', async (req: Request<{}, {}, PreviewRequest>, res: Respon
       return
     }
 
+    if (blocks.length > 100) {
+      res.status(400).json({ error: 'Too many blocks (max 100)' })
+      return
+    }
+
     if (!recipient || typeof recipient !== 'object') {
       res.status(400).json({ error: 'recipient object is required' })
+      return
+    }
+
+    if (Object.keys(recipient).length > 50) {
+      res.status(400).json({ error: 'Too many recipient fields (max 50)' })
       return
     }
 
