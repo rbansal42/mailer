@@ -1,3 +1,8 @@
+// Shared types for all templates
+export type { BaseTemplateProps, Signatory, Logo, ColorPalette } from './types'
+export { PALETTES } from './types'
+
+// Template components
 export { ModernClean } from './modern-clean'
 export { DarkElegant } from './dark-elegant'
 export { CleanMinimal } from './clean-minimal'

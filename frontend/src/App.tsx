@@ -1,19 +1,23 @@
-import { useEffect } from 'react'
+import { useEffect, Suspense, lazy } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import { useAuthStore } from './hooks/useAuthStore'
 import { useThemeStore } from './hooks/useThemeStore'
 import { applyTheme } from './lib/theme'
 import Layout from './components/Layout'
+
+// Eagerly loaded - needed immediately
 import Login from './pages/Login'
-import Campaigns from './pages/Campaigns'
-import MailLibrary from './pages/MailLibrary'
-import Lists from './pages/Lists'
-import ListDetail from './pages/ListDetail'
-import History from './pages/History'
-import Settings from './pages/Settings'
-import Certificates from './pages/Certificates'
-import SuppressionList from './pages/SuppressionList'
+
+// Lazy loaded pages - code split into separate chunks
+const Campaigns = lazy(() => import('./pages/Campaigns'))
+const MailLibrary = lazy(() => import('./pages/MailLibrary'))
+const Lists = lazy(() => import('./pages/Lists'))
+const ListDetail = lazy(() => import('./pages/ListDetail'))
+const History = lazy(() => import('./pages/History'))
+const Settings = lazy(() => import('./pages/Settings'))
+const Certificates = lazy(() => import('./pages/Certificates'))
+const SuppressionList = lazy(() => import('./pages/SuppressionList'))
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
@@ -36,6 +40,14 @@ function ThemeProvider({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+function PageLoader() {
+  return (
+    <div className="flex items-center justify-center h-full min-h-[200px]">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+    </div>
+  )
+}
+
 export default function App() {
   return (
     <ThemeProvider>
@@ -50,14 +62,14 @@ export default function App() {
           }
         >
           <Route index element={<Navigate to="/campaigns" replace />} />
-          <Route path="campaigns" element={<Campaigns />} />
-          <Route path="templates" element={<MailLibrary />} />
-          <Route path="lists" element={<Lists />} />
-          <Route path="lists/:id" element={<ListDetail />} />
-          <Route path="certificates" element={<Certificates />} />
-          <Route path="history" element={<History />} />
-          <Route path="settings" element={<Settings />} />
-          <Route path="suppression" element={<SuppressionList />} />
+          <Route path="campaigns" element={<Suspense fallback={<PageLoader />}><Campaigns /></Suspense>} />
+          <Route path="templates" element={<Suspense fallback={<PageLoader />}><MailLibrary /></Suspense>} />
+          <Route path="lists" element={<Suspense fallback={<PageLoader />}><Lists /></Suspense>} />
+          <Route path="lists/:id" element={<Suspense fallback={<PageLoader />}><ListDetail /></Suspense>} />
+          <Route path="certificates" element={<Suspense fallback={<PageLoader />}><Certificates /></Suspense>} />
+          <Route path="history" element={<Suspense fallback={<PageLoader />}><History /></Suspense>} />
+          <Route path="settings" element={<Suspense fallback={<PageLoader />}><Settings /></Suspense>} />
+          <Route path="suppression" element={<Suspense fallback={<PageLoader />}><SuppressionList /></Suspense>} />
         </Route>
       </Routes>
       <Toaster position="top-right" richColors />
