@@ -133,5 +133,6 @@ PORT=3342
 2. Run `bun install` in the worktree
 3. Make changes, build with `bun run build`
 4. Create PR with `gh pr create`
-5. Merge with `gh pr merge --squash --delete-branch`
-6. Clean up worktree: `git worktree remove .worktrees/<name>`
+5. **Request code review** (use `requesting-code-review` skill) - fix Critical/Important issues before proceeding
+6. Merge with `gh pr merge --squash --delete-branch`
+7. Clean up worktree: `git worktree remove .worktrees/<name>`
