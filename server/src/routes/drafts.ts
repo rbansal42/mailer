@@ -190,6 +190,52 @@ draftsRouter.put('/:id', async (req, res) => {
   }
 })
 
+// Duplicate draft
+draftsRouter.post('/:id/duplicate', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10)
+    if (isNaN(id)) {
+      res.status(400).json({ error: 'Invalid draft ID' })
+      return
+    }
+
+    const original = await queryOne<DraftRow>(
+      'SELECT * FROM drafts WHERE id = ?',
+      [id]
+    )
+
+    if (!original) {
+      res.status(404).json({ error: 'Draft not found' })
+      return
+    }
+
+    const newName = `Copy of ${original.name || 'Untitled'}`
+
+    const result = await execute(
+      `INSERT INTO drafts (name, template_id, mail_id, list_id, subject, test_email, recipients, recipients_text, variables, cc, bcc)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        newName,
+        original.template_id ?? null,
+        original.mail_id ?? null,
+        original.list_id ?? null,
+        original.subject ?? null,
+        original.test_email ?? null,
+        original.recipients ?? null,
+        original.recipients_text ?? null,
+        original.variables ?? null,
+        original.cc ?? null,
+        original.bcc ?? null,
+      ]
+    )
+
+    res.json({ id: Number(result.lastInsertRowid), name: newName })
+  } catch (error) {
+    logger.error('Failed to duplicate draft', { service: 'drafts' }, error as Error)
+    res.status(500).json({ error: 'Failed to duplicate draft' })
+  }
+})
+
 // Delete draft
 draftsRouter.delete('/:id', async (req, res) => {
   try {

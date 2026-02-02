@@ -112,6 +112,8 @@ export const api = {
     }),
   deleteDraft: (id: number) =>
     request<void>(`/drafts/${id}`, { method: 'DELETE' }),
+  duplicateDraft: (id: number) =>
+    request<{ id: number; name: string }>(`/drafts/${id}/duplicate`, { method: 'POST' }),
 
   // Campaigns (History)
   getCampaigns: () => request<Campaign[]>('/campaigns'),
@@ -119,6 +121,8 @@ export const api = {
   getCampaignAnalytics: (id: number) => request<CampaignAnalytics>(`/campaigns/${id}/analytics`),
   deleteCampaign: (id: number) =>
     request<void>(`/campaigns/${id}`, { method: 'DELETE' }),
+  duplicateCampaign: (id: number) =>
+    request<{ id: number; name: string }>(`/campaigns/${id}/duplicate`, { method: 'POST' }),
 
   // Accounts
   getAccounts: () => request<SenderAccount[]>('/accounts'),

@@ -3,8 +3,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, Campaign, CampaignAnalytics } from '../lib/api'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
-import { ChevronLeft, Download, RefreshCw, Trash2, CheckCircle2, XCircle, Clock, Loader2, Eye, MousePointer, Mail, Search } from 'lucide-react'
+import { ChevronLeft, Download, RefreshCw, Trash2, CheckCircle2, XCircle, Clock, Loader2, Eye, MousePointer, Mail, Search, Copy } from 'lucide-react'
 import { Input } from '../components/ui/input'
+import { toast } from 'sonner'
 
 
 export default function History() {
@@ -144,6 +145,17 @@ function CampaignDetails({ id, onBack }: { id: number; onBack: () => void }) {
     },
   })
 
+  const duplicateMutation = useMutation({
+    mutationFn: () => api.duplicateCampaign(id),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['drafts'] })
+      toast.success(`Duplicated as "${data.name}" - check Campaigns page`)
+    },
+    onError: () => {
+      toast.error('Failed to duplicate campaign')
+    },
+  })
+
   if (isLoading || !campaign) {
     return (
       <div className="flex justify-center py-8">
@@ -171,6 +183,15 @@ function CampaignDetails({ id, onBack }: { id: number; onBack: () => void }) {
               Retry Failed
             </Button>
           )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => duplicateMutation.mutate()}
+            disabled={duplicateMutation.isPending}
+          >
+            <Copy className="h-4 w-4 mr-1" />
+            Duplicate to Draft
+          </Button>
           <Button
             variant="ghost"
             size="sm"

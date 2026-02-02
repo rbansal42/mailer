@@ -20,15 +20,17 @@ function getToken(): string | null {
   return null;
 }
 import DOMPurify from 'isomorphic-dompurify'
+import { toast } from 'sonner'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
 import { Card, CardContent, CardHeader } from '../components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog'
-import { Plus, Send, Save, ChevronLeft, ChevronRight, AlertCircle, CheckCircle2, Loader2, Search } from 'lucide-react'
+import { Plus, Send, Save, ChevronLeft, ChevronRight, AlertCircle, CheckCircle2, Loader2, Search, Copy } from 'lucide-react'
 import type { Recipient } from '../lib/api'
 
 export default function Campaigns() {
+  const queryClient = useQueryClient()
   const [isComposing, setIsComposing] = useState(false)
   const [selectedDraft, setSelectedDraft] = useState<Draft | null>(null)
   const [search, setSearch] = useState('')
@@ -36,6 +38,17 @@ export default function Campaigns() {
   const { data: drafts, isLoading: loadingDrafts } = useQuery({
     queryKey: ['drafts'],
     queryFn: api.getDrafts,
+  })
+
+  const duplicateMutation = useMutation({
+    mutationFn: (id: number) => api.duplicateDraft(id),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['drafts'] })
+      toast.success(`Draft duplicated as "${data.name}"`)
+    },
+    onError: () => {
+      toast.error('Failed to duplicate draft')
+    },
   })
 
   const { data: templates } = useQuery({
@@ -108,9 +121,24 @@ export default function Campaigns() {
                     {draft.recipients?.length || 0} recipients
                   </p>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  {new Date(draft.updatedAt).toLocaleDateString()}
-                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      duplicateMutation.mutate(draft.id)
+                    }}
+                    title="Duplicate"
+                    disabled={duplicateMutation.isPending}
+                  >
+                    {duplicateMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Copy className="h-3 w-3" />}
+                  </Button>
+                  <p className="text-xs text-muted-foreground">
+                    {new Date(draft.updatedAt).toLocaleDateString()}
+                  </p>
+                </div>
               </CardContent>
             </Card>
           ))}

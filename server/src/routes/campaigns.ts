@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { queryAll, queryOne, execute } from '../db'
+import { logger } from '../lib/logger'
 
 export const campaignsRouter = Router()
 
@@ -15,6 +16,8 @@ interface CampaignRow {
   started_at: string | null
   completed_at: string | null
   created_at: string
+  cc: string
+  bcc: string
 }
 
 interface SendLogRow {
@@ -74,6 +77,46 @@ campaignsRouter.get('/:id', async (req, res) => {
     ...formatCampaign(campaign),
     logs: logs.map(formatSendLog),
   })
+})
+
+// Duplicate campaign (creates a new draft)
+campaignsRouter.post('/:id/duplicate', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10)
+    if (isNaN(id)) {
+      res.status(400).json({ error: 'Invalid campaign ID' })
+      return
+    }
+
+    const campaign = await queryOne<CampaignRow>(
+      'SELECT * FROM campaigns WHERE id = ?',
+      [id]
+    )
+
+    if (!campaign) {
+      res.status(404).json({ error: 'Campaign not found' })
+      return
+    }
+
+    const newName = `Copy of ${campaign.name || 'Untitled'}`
+
+    const result = await execute(
+      `INSERT INTO drafts (name, template_id, subject, cc, bcc)
+       VALUES (?, ?, ?, ?, ?)`,
+      [
+        newName,
+        campaign.template_id ?? null,
+        campaign.subject ?? null,
+        campaign.cc ?? null,
+        campaign.bcc ?? null,
+      ]
+    )
+
+    res.json({ id: Number(result.lastInsertRowid), name: newName })
+  } catch (error) {
+    logger.error('Failed to duplicate campaign', { service: 'campaigns' }, error as Error)
+    res.status(500).json({ error: 'Failed to duplicate campaign' })
+  }
 })
 
 // Delete campaign
