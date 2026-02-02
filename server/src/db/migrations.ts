@@ -3,8 +3,48 @@ import { join, dirname } from 'path'
 import { execute, queryAll } from './client'
 import { logger } from '../lib/logger'
 
+// Whitelist of valid table names to prevent SQL injection
+const VALID_TABLES = new Set([
+  'settings',
+  'sender_accounts',
+  'send_counts',
+  'templates',
+  'mails',
+  'drafts',
+  'campaigns',
+  'send_logs',
+  'email_queue',
+  'attachments',
+  'recipient_attachments',
+  'tracking_tokens',
+  'tracking_events',
+  'scheduled_batches',
+  'recurring_campaigns',
+  'certificate_configs',
+  'generated_certificates',
+  'sequences',
+  'sequence_steps',
+  'sequence_enrollments',
+  'media',
+  'contacts',
+  'lists',
+  'list_contacts',
+  'suppression_list',
+  'bounces',
+])
+
 // Migration helper - add columns if they don't exist
 async function addColumnIfNotExists(table: string, column: string, type: string, defaultValue: string) {
+  // Validate table name against whitelist to prevent SQL injection
+  if (!VALID_TABLES.has(table)) {
+    throw new Error(`Invalid table name: ${table}`)
+  }
+
+  // Validate column name (alphanumeric and underscore only)
+  if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(column)) {
+    throw new Error(`Invalid column name: ${column}`)
+  }
+
   try {
     const columns = await queryAll<any>(`PRAGMA table_info(${table})`)
     if (!columns.find(c => c.name === column)) {

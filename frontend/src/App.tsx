@@ -1,4 +1,4 @@
-import { useEffect, Suspense, lazy } from 'react'
+import { useEffect, Suspense, lazy, Component, ReactNode } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import { useAuthStore } from './hooks/useAuthStore'
@@ -18,6 +18,40 @@ const History = lazy(() => import('./pages/History'))
 const Settings = lazy(() => import('./pages/Settings'))
 const Certificates = lazy(() => import('./pages/Certificates'))
 const SuppressionList = lazy(() => import('./pages/SuppressionList'))
+
+// Error Boundary for catching lazy loading failures
+interface ErrorBoundaryState {
+  hasError: boolean
+  error?: Error
+}
+
+class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryState> {
+  constructor(props: { children: ReactNode }) {
+    super(props)
+    this.state = { hasError: false }
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full min-h-[200px] gap-4">
+          <p className="text-destructive">Failed to load page</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+          >
+            Reload
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
@@ -48,6 +82,17 @@ function PageLoader() {
   )
 }
 
+// Helper component for lazy-loaded routes with error boundary and suspense
+function LazyRoute({ component: LazyComponent }: { component: React.LazyExoticComponent<() => JSX.Element> }) {
+  return (
+    <ErrorBoundary>
+      <Suspense fallback={<PageLoader />}>
+        <LazyComponent />
+      </Suspense>
+    </ErrorBoundary>
+  )
+}
+
 export default function App() {
   return (
     <ThemeProvider>
@@ -62,14 +107,14 @@ export default function App() {
           }
         >
           <Route index element={<Navigate to="/campaigns" replace />} />
-          <Route path="campaigns" element={<Suspense fallback={<PageLoader />}><Campaigns /></Suspense>} />
-          <Route path="templates" element={<Suspense fallback={<PageLoader />}><MailLibrary /></Suspense>} />
-          <Route path="lists" element={<Suspense fallback={<PageLoader />}><Lists /></Suspense>} />
-          <Route path="lists/:id" element={<Suspense fallback={<PageLoader />}><ListDetail /></Suspense>} />
-          <Route path="certificates" element={<Suspense fallback={<PageLoader />}><Certificates /></Suspense>} />
-          <Route path="history" element={<Suspense fallback={<PageLoader />}><History /></Suspense>} />
-          <Route path="settings" element={<Suspense fallback={<PageLoader />}><Settings /></Suspense>} />
-          <Route path="suppression" element={<Suspense fallback={<PageLoader />}><SuppressionList /></Suspense>} />
+          <Route path="campaigns" element={<LazyRoute component={Campaigns} />} />
+          <Route path="templates" element={<LazyRoute component={MailLibrary} />} />
+          <Route path="lists" element={<LazyRoute component={Lists} />} />
+          <Route path="lists/:id" element={<LazyRoute component={ListDetail} />} />
+          <Route path="certificates" element={<LazyRoute component={Certificates} />} />
+          <Route path="history" element={<LazyRoute component={History} />} />
+          <Route path="settings" element={<LazyRoute component={Settings} />} />
+          <Route path="suppression" element={<LazyRoute component={SuppressionList} />} />
         </Route>
       </Routes>
       <Toaster position="top-right" richColors />

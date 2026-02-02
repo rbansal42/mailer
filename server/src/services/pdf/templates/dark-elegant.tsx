@@ -1,24 +1,12 @@
 import React from 'react'
 import { View, Text, Image, StyleSheet } from '@react-pdf/renderer'
 import { Certificate, LogoBar } from '../components'
+// Note: Not using shared Signatories component because dark theme requires
+// custom light-colored text styling (Issue #25 will address this with style props)
 import { colors, typography, getNameFontSize } from '../styles'
+import type { BaseTemplateProps, Signatory } from './types'
 
-interface Signatory {
-  name: string
-  designation: string
-  organization?: string
-  signatureUrl?: string
-}
-
-interface DarkElegantProps {
-  title: string
-  subtitle?: string
-  recipientName: string
-  description: string
-  logos?: Array<{ url: string; height?: number }>
-  signatories?: Array<Signatory>
-  certificateId?: string
-}
+type DarkElegantProps = BaseTemplateProps
 
 const styles = StyleSheet.create({
   container: {

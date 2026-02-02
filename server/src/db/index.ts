@@ -9,10 +9,12 @@ export { db, queryAll, queryOne, execute, checkDatabaseHealth, DATA_DIR } from '
 import { createTables, createIndexes, initializeSettings } from './schema'
 import { runColumnMigrations, runSqlMigrations } from './migrations'
 import { seedStarterTemplates, seedDefaultTemplates } from './seeds'
-import { DATA_DIR } from './client'
 
 // Initialize database schema, migrations, and seeds
 export async function initializeDatabase() {
+  // Import DATA_DIR here to avoid circular dependency issues
+  const { DATA_DIR } = await import('./client')
+
   // Create all tables
   await createTables()
 

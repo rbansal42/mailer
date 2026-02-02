@@ -72,4 +72,4 @@ export const PALETTES = {
     muted: '#a0aec0',
     border: '#2c5282',
   },
-} as const
+} as const satisfies Record<string, ColorPalette>
