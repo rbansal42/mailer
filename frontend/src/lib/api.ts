@@ -313,6 +313,8 @@ export interface Campaign {
   successful: number
   failed: number
   queued: number
+  status?: 'sending' | 'completed' | 'scheduled' | 'failed'
+  scheduledFor?: string
   startedAt: string
   completedAt?: string
   createdAt: string

@@ -26,7 +26,7 @@ import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
 import { Card, CardContent, CardHeader } from '../components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog'
-import { Plus, Send, Save, ChevronLeft, ChevronRight, AlertCircle, CheckCircle2, Loader2, Search, Copy } from 'lucide-react'
+import { Plus, Send, Save, ChevronLeft, ChevronRight, AlertCircle, CheckCircle2, Loader2, Search, Copy, Clock } from 'lucide-react'
 import type { Recipient } from '../lib/api'
 
 export default function Campaigns() {
@@ -190,6 +190,10 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
   const [showManualEntry, setShowManualEntry] = useState(false)
   const [saveListOpen, setSaveListOpen] = useState(false)
   const [newListName, setNewListName] = useState('')
+  
+  // Scheduling state
+  const [showScheduler, setShowScheduler] = useState(false)
+  const [scheduledDateTime, setScheduledDateTime] = useState('')
 
   const selectedMail = mails.find((m) => m.id === mailId)
   const selectedTemplate = templates.find((t) => t.id === templateId)
@@ -236,6 +240,13 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
   }
 
   const canSend = validation.hasName && validation.hasContent && validation.hasSubject && validation.hasRecipients && validation.invalidEmails.length === 0
+
+  // Get minimum datetime for scheduling (now + 5 minutes)
+  const getMinDateTime = () => {
+    const now = new Date()
+    now.setMinutes(now.getMinutes() + 5)
+    return now.toISOString().slice(0, 16) // Format: YYYY-MM-DDTHH:mm
+  }
 
   // Parse test emails (comma, semicolon, or newline separated)
   const parseTestEmails = (text: string): string[] => {
@@ -321,7 +332,7 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
     })
   }
 
-  const handleSend = async () => {
+  const handleSend = async (scheduledFor?: string) => {
     if (!canSend) return
     setSending(true)
     setSendProgress({ current: 0, total: recipients.length, logs: [] })
@@ -332,9 +343,16 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
         ? `mailId=${mailId}` 
         : `templateId=${templateId}`
       const token = getToken()
-      const eventSource = new EventSource(
-        `/api/send?${contentParam}&subject=${encodeURIComponent(subject)}&recipients=${encodeURIComponent(JSON.stringify(recipients))}&name=${encodeURIComponent(name)}&token=${token}`
-      )
+      
+      // Build URL params
+      let url = `/api/send?${contentParam}&subject=${encodeURIComponent(subject)}&recipients=${encodeURIComponent(JSON.stringify(recipients))}&name=${encodeURIComponent(name)}&token=${token}`
+      
+      // Add scheduledFor if scheduling
+      if (scheduledFor) {
+        url += `&scheduledFor=${encodeURIComponent(scheduledFor)}`
+      }
+      
+      const eventSource = new EventSource(url)
 
       eventSource.onmessage = (event) => {
         const data = JSON.parse(event.data)
@@ -347,6 +365,9 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
         } else if (data.type === 'complete') {
           eventSource.close()
           setSending(false)
+          if (scheduledFor) {
+            toast.success('Campaign scheduled successfully')
+          }
           queryClient.invalidateQueries({ queryKey: ['campaigns'] })
           queryClient.invalidateQueries({ queryKey: ['drafts'] })
         } else if (data.type === 'error') {
@@ -362,6 +383,22 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
     } catch (error) {
       setSending(false)
     }
+  }
+
+  const handleScheduledSend = () => {
+    if (!scheduledDateTime) return
+    const scheduledDate = new Date(scheduledDateTime)
+    const minTime = new Date()
+    minTime.setMinutes(minTime.getMinutes() + 5)
+    
+    if (scheduledDate < minTime) {
+      toast.error('Scheduled time must be at least 5 minutes in the future')
+      return
+    }
+    
+    const scheduledFor = scheduledDate.toISOString()
+    setShowScheduler(false)
+    handleSend(scheduledFor)
   }
 
   // Replace variables in text
@@ -386,9 +423,13 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
             <Save className="h-4 w-4 mr-1" />
             Save Draft
           </Button>
-          <Button size="sm" onClick={handleSend} disabled={!canSend || sending}>
+          <Button variant="outline" size="sm" onClick={() => setShowScheduler(true)} disabled={!canSend || sending}>
+            <Clock className="h-4 w-4 mr-1" />
+            Schedule
+          </Button>
+          <Button size="sm" onClick={() => handleSend()} disabled={!canSend || sending}>
             <Send className="h-4 w-4 mr-1" />
-            Send
+            Send Now
           </Button>
         </div>
       </div>
@@ -815,6 +856,39 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
               }}
             >
               Save List
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Schedule Campaign Dialog */}
+      <Dialog open={showScheduler} onOpenChange={setShowScheduler}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Schedule Campaign</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <p className="text-sm text-muted-foreground">
+              Choose when to send this campaign to {recipients.length} recipient{recipients.length !== 1 ? 's' : ''}.
+            </p>
+            <div className="space-y-2">
+              <Label>Send at</Label>
+              <Input
+                type="datetime-local"
+                min={getMinDateTime()}
+                value={scheduledDateTime}
+                onChange={(e) => setScheduledDateTime(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Must be at least 5 minutes in the future
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowScheduler(false)}>Cancel</Button>
+            <Button onClick={handleScheduledSend} disabled={!scheduledDateTime}>
+              <Clock className="h-4 w-4 mr-1" />
+              Schedule
             </Button>
           </DialogFooter>
         </DialogContent>

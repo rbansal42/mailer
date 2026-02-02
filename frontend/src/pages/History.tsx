@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, Campaign, CampaignAnalytics } from '../lib/api'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
-import { ChevronLeft, Download, RefreshCw, Trash2, CheckCircle2, XCircle, Clock, Loader2, Eye, MousePointer, Mail, Search, Copy } from 'lucide-react'
+import { ChevronLeft, Download, RefreshCw, Trash2, CheckCircle2, XCircle, Clock, Loader2, Eye, MousePointer, Mail, Search, Copy, CalendarClock } from 'lucide-react'
 import { Input } from '../components/ui/input'
 import { toast } from 'sonner'
 
@@ -100,6 +100,21 @@ export default function History() {
 }
 
 function StatusBadge({ campaign }: { campaign: Campaign }) {
+  if (campaign.status === 'scheduled') {
+    return (
+      <div className="flex flex-col gap-0.5">
+        <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+          <CalendarClock className="h-3 w-3" />
+          Scheduled
+        </span>
+        {campaign.scheduledFor && (
+          <span className="text-xs text-muted-foreground pl-2">
+            {new Date(campaign.scheduledFor).toLocaleString()}
+          </span>
+        )}
+      </div>
+    )
+  }
   if (campaign.queued > 0) {
     return (
       <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700">
