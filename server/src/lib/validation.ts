@@ -150,6 +150,35 @@ export type Contact = z.infer<typeof contactSchema>
 export type CreateList = z.infer<typeof createListSchema>
 export type UpdateList = z.infer<typeof updateListSchema>
 
+// Google Sheets integration schemas
+export const googleSheetsCredentialsSchema = z.object({
+  clientId: z.string().min(1, 'Client ID is required'),
+  clientSecret: z.string().min(1, 'Client Secret is required'),
+  redirectUri: z.string().url().optional(),
+})
+
+export const googleSheetsColumnMappingSchema = z.object({
+  email: z.string().min(1, 'Email column mapping is required'),
+  name: z.string().optional(),
+  first_name: z.string().optional(),
+  last_name: z.string().optional(),
+  company: z.string().optional(),
+  phone: z.string().optional(),
+  country: z.string().optional(),
+})
+
+export const googleSheetsSyncConfigSchema = z.object({
+  spreadsheetId: z.string().min(1, 'Spreadsheet ID or URL is required'),
+  sheetRange: z.string().optional(),
+  columnMapping: googleSheetsColumnMappingSchema,
+  autoSync: z.boolean().default(false),
+  syncFrequency: z.enum(['manual', 'hourly', 'daily']).default('manual'),
+})
+
+export type GoogleSheetsCredentials = z.infer<typeof googleSheetsCredentialsSchema>
+export type GoogleSheetsColumnMapping = z.infer<typeof googleSheetsColumnMappingSchema>
+export type GoogleSheetsSyncConfig = z.infer<typeof googleSheetsSyncConfigSchema>
+
 // Validation helper
 export function validate<T>(schema: z.ZodSchema<T>, data: unknown): { success: true; data: T } | { success: false; error: string } {
   const result = schema.safeParse(data)

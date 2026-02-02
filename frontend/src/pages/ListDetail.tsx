@@ -1,14 +1,15 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Search, Trash2, Upload, Download, Pencil, Loader2, X, Check } from 'lucide-react'
+import { useParams, useNavigate, Link } from 'react-router-dom'
+import { ArrowLeft, Search, Trash2, Upload, Download, Pencil, Loader2, X, Check, Sheet, RefreshCw, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { listsApi, ContactList, Contact } from '@/lib/api'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { listsApi, ContactList, Contact, googleSheetsApi, SpreadsheetPreview, ColumnMapping } from '@/lib/api'
 import { toast } from 'sonner'
 
 export default function ListDetail() {
@@ -54,6 +55,15 @@ export default function ListDetail() {
     country: '',
   })
   const [saving, setSaving] = useState(false)
+
+  // Google Sheets sync dialog
+  const [sheetSyncOpen, setSheetSyncOpen] = useState(false)
+  const [sheetsConnected, setSheetsConnected] = useState<boolean | null>(null)
+  const [spreadsheetUrl, setSpreadsheetUrl] = useState('')
+  const [sheetPreview, setSheetPreview] = useState<SpreadsheetPreview | null>(null)
+  const [columnMapping, setColumnMapping] = useState<ColumnMapping>({ email: '' })
+  const [loadingPreview, setLoadingPreview] = useState(false)
+  const [syncing, setSyncing] = useState(false)
 
   // Load list and contacts
   const loadData = useCallback(async () => {
@@ -213,6 +223,66 @@ export default function ListDetail() {
     }
   }
 
+  // Check Google Sheets connection status
+  const checkSheetsConnection = async () => {
+    try {
+      const status = await googleSheetsApi.getStatus()
+      setSheetsConnected(status.connected)
+    } catch {
+      setSheetsConnected(false)
+    }
+  }
+
+  // Open Google Sheets sync dialog
+  const openSheetSync = async () => {
+    setSheetSyncOpen(true)
+    setSpreadsheetUrl('')
+    setSheetPreview(null)
+    setColumnMapping({ email: '' })
+    await checkSheetsConnection()
+  }
+
+  // Fetch spreadsheet preview
+  const fetchSpreadsheetPreview = async () => {
+    if (!spreadsheetUrl.trim()) {
+      toast.error('Please enter a spreadsheet URL or ID')
+      return
+    }
+    setLoadingPreview(true)
+    try {
+      const preview = await googleSheetsApi.previewSpreadsheet(spreadsheetUrl.trim())
+      setSheetPreview(preview)
+      setColumnMapping(preview.suggestedMapping)
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to load spreadsheet')
+      setSheetPreview(null)
+    } finally {
+      setLoadingPreview(false)
+    }
+  }
+
+  // Sync contacts from Google Sheets
+  const handleSheetSync = async () => {
+    if (!sheetPreview || !columnMapping.email) {
+      toast.error('Please select an email column')
+      return
+    }
+    setSyncing(true)
+    try {
+      const result = await googleSheetsApi.syncToList(listId, {
+        spreadsheetId: spreadsheetUrl.trim(),
+        columnMapping,
+      })
+      toast.success(`Synced ${result.total} contacts (${result.created} new, ${result.added} added to list)`)
+      setSheetSyncOpen(false)
+      loadData()
+    } catch (error: any) {
+      toast.error(error.message || 'Sync failed')
+    } finally {
+      setSyncing(false)
+    }
+  }
+
   if (loading && !list) {
     return (
       <div className="flex justify-center py-8">
@@ -325,6 +395,10 @@ export default function ListDetail() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={openSheetSync}>
+            <Sheet className="h-4 w-4 mr-1" />
+            Google Sheets
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
             <Upload className="h-4 w-4 mr-1" />
             Import
@@ -546,6 +620,223 @@ export default function ListDetail() {
               {saving ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
               Save
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Google Sheets sync dialog */}
+      <Dialog open={sheetSyncOpen} onOpenChange={setSheetSyncOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sheet className="h-5 w-5 text-green-600" />
+              Sync from Google Sheets
+            </DialogTitle>
+            <DialogDescription>
+              Import contacts directly from a Google Spreadsheet
+            </DialogDescription>
+          </DialogHeader>
+
+          {sheetsConnected === null ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : !sheetsConnected ? (
+            <div className="py-8 text-center space-y-4">
+              <AlertCircle className="h-12 w-12 mx-auto text-yellow-500" />
+              <p className="text-muted-foreground">
+                Google Sheets is not connected. Please connect your Google account first.
+              </p>
+              <Button asChild>
+                <Link to="/settings">Go to Settings</Link>
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {/* Spreadsheet URL input */}
+              <div className="space-y-2">
+                <Label>Spreadsheet URL or ID</Label>
+                <div className="flex gap-2">
+                  <Input
+                    value={spreadsheetUrl}
+                    onChange={(e) => setSpreadsheetUrl(e.target.value)}
+                    placeholder="https://docs.google.com/spreadsheets/d/..."
+                    className="flex-1"
+                  />
+                  <Button onClick={fetchSpreadsheetPreview} disabled={loadingPreview || !spreadsheetUrl.trim()}>
+                    {loadingPreview ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Paste the full URL or just the spreadsheet ID
+                </p>
+              </div>
+
+              {/* Preview and mapping */}
+              {sheetPreview && (
+                <div className="space-y-4">
+                  <div className="p-3 bg-muted rounded-lg">
+                    <p className="font-medium">{sheetPreview.spreadsheetTitle}</p>
+                    <p className="text-sm text-muted-foreground">
+                      Sheet: {sheetPreview.sheetName} - {sheetPreview.totalRows} rows found
+                    </p>
+                  </div>
+
+                  {/* Column mapping */}
+                  <div className="space-y-3">
+                    <Label>Column Mapping</Label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Email (required)</Label>
+                        <Select
+                          value={columnMapping.email}
+                          onValueChange={(v: string) => setColumnMapping({ ...columnMapping, email: v })}
+                        >
+                          <SelectTrigger className="h-8">
+                            <SelectValue placeholder="Select column" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {sheetPreview.headers.map((h) => (
+                              <SelectItem key={h} value={h}>{h}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Name</Label>
+                        <Select
+                          value={columnMapping.name || ''}
+                          onValueChange={(v: string) => setColumnMapping({ ...columnMapping, name: v || undefined })}
+                        >
+                          <SelectTrigger className="h-8">
+                            <SelectValue placeholder="Select column" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="">None</SelectItem>
+                            {sheetPreview.headers.map((h) => (
+                              <SelectItem key={h} value={h}>{h}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">First Name</Label>
+                        <Select
+                          value={columnMapping.first_name || ''}
+                          onValueChange={(v: string) => setColumnMapping({ ...columnMapping, first_name: v || undefined })}
+                        >
+                          <SelectTrigger className="h-8">
+                            <SelectValue placeholder="Select column" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="">None</SelectItem>
+                            {sheetPreview.headers.map((h) => (
+                              <SelectItem key={h} value={h}>{h}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Last Name</Label>
+                        <Select
+                          value={columnMapping.last_name || ''}
+                          onValueChange={(v: string) => setColumnMapping({ ...columnMapping, last_name: v || undefined })}
+                        >
+                          <SelectTrigger className="h-8">
+                            <SelectValue placeholder="Select column" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="">None</SelectItem>
+                            {sheetPreview.headers.map((h) => (
+                              <SelectItem key={h} value={h}>{h}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Company</Label>
+                        <Select
+                          value={columnMapping.company || ''}
+                          onValueChange={(v: string) => setColumnMapping({ ...columnMapping, company: v || undefined })}
+                        >
+                          <SelectTrigger className="h-8">
+                            <SelectValue placeholder="Select column" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="">None</SelectItem>
+                            {sheetPreview.headers.map((h) => (
+                              <SelectItem key={h} value={h}>{h}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Country</Label>
+                        <Select
+                          value={columnMapping.country || ''}
+                          onValueChange={(v: string) => setColumnMapping({ ...columnMapping, country: v || undefined })}
+                        >
+                          <SelectTrigger className="h-8">
+                            <SelectValue placeholder="Select column" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="">None</SelectItem>
+                            {sheetPreview.headers.map((h) => (
+                              <SelectItem key={h} value={h}>{h}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Unmapped columns will be stored as custom fields
+                    </p>
+                  </div>
+
+                  {/* Sample data preview */}
+                  {sheetPreview.sampleRows.length > 0 && (
+                    <div className="space-y-2">
+                      <Label>Sample Data</Label>
+                      <div className="border rounded-lg overflow-x-auto max-h-40">
+                        <table className="w-full text-xs">
+                          <thead className="bg-muted">
+                            <tr>
+                              {sheetPreview.headers.map((h) => (
+                                <th key={h} className="px-2 py-1 text-left font-medium">{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {sheetPreview.sampleRows.slice(0, 3).map((row, i) => (
+                              <tr key={i} className="border-t">
+                                {sheetPreview.headers.map((h) => (
+                                  <td key={h} className="px-2 py-1 truncate max-w-32">{row[h] || '-'}</td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSheetSyncOpen(false)}>
+              Cancel
+            </Button>
+            {sheetsConnected && (
+              <Button
+                onClick={handleSheetSync}
+                disabled={syncing || !sheetPreview || !columnMapping.email}
+              >
+                {syncing ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+                Sync {sheetPreview?.totalRows || 0} Contacts
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
