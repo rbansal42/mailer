@@ -114,6 +114,46 @@ interface EditorProps {
   onSaveAsTemplate?: (name: string) => void
 }
 
+// Extract merge fields from template blocks
+function extractMergeFields(blocks: Block[]): string[] {
+  const fields = new Set<string>()
+  const pattern = /\{\{(\w+)\}\}/g
+  
+  const extractFromValue = (value: unknown) => {
+    if (typeof value === 'string') {
+      let match
+      // Reset lastIndex to ensure we find all matches
+      pattern.lastIndex = 0
+      while ((match = pattern.exec(value)) !== null) {
+        fields.add(match[1].toLowerCase())
+      }
+    } else if (typeof value === 'object' && value !== null) {
+      Object.values(value).forEach(extractFromValue)
+    }
+  }
+  
+  blocks.forEach(block => {
+    if (block.props) {
+      extractFromValue(block.props)
+    }
+  })
+  
+  return Array.from(fields)
+}
+
+function getDefaultFieldValue(field: string): string {
+  const defaults: Record<string, string> = {
+    name: 'John Doe',
+    email: 'john@example.com',
+    company: 'Acme Inc',
+    first_name: 'John',
+    last_name: 'Doe',
+    firstname: 'John',
+    lastname: 'Doe',
+  }
+  return defaults[field] || ''
+}
+
 export function TemplateEditor({ template, onBack, isMail, onSaveAsTemplate }: EditorProps) {
   const queryClient = useQueryClient()
   const [name, setName] = useState(template?.name || 'Untitled Template')
@@ -139,10 +179,22 @@ export function TemplateEditor({ template, onBack, isMail, onSaveAsTemplate }: E
   const [showPreview, setShowPreview] = useState(false)
   const [previewHtml, setPreviewHtml] = useState('')
   const [previewLoading, setPreviewLoading] = useState(false)
-  const [sampleData, setSampleData] = useState<Record<string, string>>({
-    name: 'John Doe',
-    email: 'john@example.com',
-    company: 'Acme Inc',
+  const [sampleData, setSampleData] = useState<Record<string, string>>(() => {
+    // Initialize with detected fields from template blocks, or defaults
+    const initialBlocks = template?.blocks || []
+    const detectedFields = extractMergeFields(initialBlocks)
+    if (detectedFields.length > 0) {
+      const data: Record<string, string> = {}
+      detectedFields.forEach(field => {
+        data[field] = getDefaultFieldValue(field)
+      })
+      return data
+    }
+    return {
+      name: 'John Doe',
+      email: 'john@example.com',
+      company: 'Acme Inc',
+    }
   })
   
   const { set: recordHistory, undo, redo, canUndo, canRedo, clear: clearHistory } = useBlockHistory()
@@ -162,6 +214,23 @@ export function TemplateEditor({ template, onBack, isMail, onSaveAsTemplate }: E
       }
     })
   }, [])
+  
+  // Auto-detect merge fields from blocks and update sample data
+  useEffect(() => {
+    if (blocks.length === 0) return
+    
+    const detectedFields = extractMergeFields(blocks)
+    if (detectedFields.length > 0) {
+      setSampleData(prevData => {
+        const newData: Record<string, string> = {}
+        detectedFields.forEach(field => {
+          // Preserve existing value if field already exists
+          newData[field] = prevData[field] ?? getDefaultFieldValue(field)
+        })
+        return newData
+      })
+    }
+  }, [blocks])
   
   // Fetch preview when modal opens or sample data changes
   useEffect(() => {

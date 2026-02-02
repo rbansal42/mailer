@@ -41,6 +41,37 @@ function formatDraft(row: DraftRow) {
   }
 }
 
+// Helper to generate unique draft names with collision handling
+export async function getUniqueDraftName(baseName: string): Promise<string> {
+  // Check if name exists
+  const existing = await queryOne<{ id: number }>(
+    'SELECT id FROM drafts WHERE name = ?',
+    [baseName]
+  )
+
+  if (!existing) {
+    return baseName
+  }
+
+  // Find next available number
+  let counter = 2
+  while (true) {
+    const numberedName = `${baseName} (${counter})`
+    const exists = await queryOne<{ id: number }>(
+      'SELECT id FROM drafts WHERE name = ?',
+      [numberedName]
+    )
+    if (!exists) {
+      return numberedName
+    }
+    counter++
+    if (counter > 100) break // Safety limit
+  }
+
+  // Fallback with timestamp
+  return `${baseName} (${Date.now()})`
+}
+
 // List drafts
 draftsRouter.get('/', async (req, res) => {
   try {
@@ -209,7 +240,7 @@ draftsRouter.post('/:id/duplicate', async (req, res) => {
       return
     }
 
-    const newName = `Copy of ${original.name || 'Untitled'}`
+    const newName = await getUniqueDraftName(`Copy of ${original.name || 'Untitled'}`)
 
     const result = await execute(
       `INSERT INTO drafts (name, template_id, mail_id, list_id, subject, test_email, recipients, recipients_text, variables, cc, bcc)

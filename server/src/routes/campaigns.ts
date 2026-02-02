@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { queryAll, queryOne, execute } from '../db'
 import { logger } from '../lib/logger'
+import { getUniqueDraftName } from './drafts'
 
 export const campaignsRouter = Router()
 
@@ -102,7 +103,7 @@ campaignsRouter.post('/:id/duplicate', async (req, res) => {
       return
     }
 
-    const newName = `Copy of ${campaign.name || 'Untitled'}`
+    const newName = await getUniqueDraftName(`Copy of ${campaign.name || 'Untitled'}`)
 
     // Determine if the stored template_id is actually a template or mail
     // Campaigns store either template ID or mail ID in the template_id column
