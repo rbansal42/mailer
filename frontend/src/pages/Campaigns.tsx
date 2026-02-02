@@ -26,7 +26,7 @@ import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
 import { Card, CardContent, CardHeader } from '../components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog'
-import { Plus, Send, Save, ChevronLeft, ChevronRight, AlertCircle, CheckCircle2, Loader2, Search, Copy, Clock, Eye } from 'lucide-react'
+import { Plus, Send, Save, ChevronLeft, ChevronRight, AlertCircle, CheckCircle2, Loader2, Search, Copy, Clock, Eye, Sun, Moon } from 'lucide-react'
 import type { Recipient } from '../lib/api'
 
 export default function Campaigns() {
@@ -199,6 +199,7 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
   const [showRenderedPreview, setShowRenderedPreview] = useState(false)
   const [previewHtml, setPreviewHtml] = useState('')
   const [previewLoading, setPreviewLoading] = useState(false)
+  const [darkModePreview, setDarkModePreview] = useState(false)
 
   const selectedMail = mails.find((m) => m.id === mailId)
   const selectedTemplate = templates.find((t) => t.id === templateId)
@@ -459,6 +460,14 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
           >
             <Eye className="h-4 w-4 mr-1" />
             Preview
+          </Button>
+          <Button
+            variant={darkModePreview ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setDarkModePreview(!darkModePreview)}
+            title="Toggle dark mode preview"
+          >
+            {darkModePreview ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </Button>
           <Button variant="outline" size="sm" onClick={handleSaveDraft} disabled={saveDraftMutation.isPending}>
             <Save className="h-4 w-4 mr-1" />
@@ -762,16 +771,18 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
                     <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                   </div>
                 ) : previewHtml ? (
-                  <div
-                    className="border rounded bg-white overflow-auto"
-                    style={{ maxHeight: '60vh' }}
-                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(previewHtml) }}
-                  />
+                  <div className={darkModePreview ? 'bg-zinc-900 p-4 rounded' : ''}>
+                    <div
+                      className={`border rounded overflow-auto ${darkModePreview ? 'bg-zinc-800' : 'bg-white'}`}
+                      style={{ maxHeight: '60vh' }}
+                      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(previewHtml) }}
+                    />
+                  </div>
                 ) : (
                   <p className="text-sm text-muted-foreground">Select a mail or template to preview</p>
                 )
               ) : selectedContent ? (
-                <div className="text-sm border rounded p-3 bg-background">
+                <div className={`text-sm border rounded p-3 ${darkModePreview ? 'bg-zinc-900' : 'bg-background'}`}>
                   {/* Render blocks with variables replaced */}
                   {selectedContent.blocks.map((block) => (
                     <div key={block.id} className="mb-2">
