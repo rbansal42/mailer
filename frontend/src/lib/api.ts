@@ -261,6 +261,31 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ blocks, recipient }),
     }),
+
+  // Suppression list
+  getSuppression: (page = 1, limit = 50, search = '') =>
+    request<{
+      items: SuppressionItem[]
+      pagination: { page: number; limit: number; total: number; totalPages: number }
+    }>(`/suppression?page=${page}&limit=${limit}&search=${encodeURIComponent(search)}`),
+
+  addSuppression: (email: string, reason = 'manual') =>
+    request<{ success: boolean }>('/suppression', {
+      method: 'POST',
+      body: JSON.stringify({ email, reason }),
+    }),
+
+  deleteSuppression: (id: number) =>
+    request<void>(`/suppression/${id}`, { method: 'DELETE' }),
+
+  importSuppression: (emails: string[], reason = 'manual') =>
+    request<{ added: number; skipped: number }>('/suppression/import', {
+      method: 'POST',
+      body: JSON.stringify({ emails, reason }),
+    }),
+
+  checkSuppression: (email: string) =>
+    request<{ suppressed: boolean; reason: string | null }>(`/suppression/check/${encodeURIComponent(email)}`),
 }
 
 // Types
@@ -348,6 +373,9 @@ export interface CampaignAnalytics {
     sent: number
     failed: number
     queued: number
+    bounced: number
+    hardBounces: number
+    softBounces: number
   }
   engagement: {
     opens: number
@@ -497,6 +525,14 @@ export interface Media {
 export interface MediaUsage {
   id: string
   name: string
+}
+
+export interface SuppressionItem {
+  id: number
+  email: string
+  reason: string
+  source: string | null
+  createdAt: string
 }
 
 export const mails = {

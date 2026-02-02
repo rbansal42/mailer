@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../hooks/useAuthStore'
 import { useThemeStore } from '../hooks/useThemeStore'
-import { Mail, FileText, History, Settings, LogOut, Sun, Moon, Menu, X, Award, Users } from 'lucide-react'
+import { Mail, FileText, History, Settings, LogOut, Sun, Moon, Menu, X, Award, Users, Ban } from 'lucide-react'
 import { cn } from '../lib/utils'
 
 const navItems = [
@@ -11,6 +11,7 @@ const navItems = [
   { to: '/lists', label: 'Lists', icon: Users },
   { to: '/certificates', label: 'Certificates', icon: Award },
   { to: '/history', label: 'History', icon: History },
+  { to: '/suppression', label: 'Suppression List', icon: Ban },
   { to: '/settings', label: 'Settings', icon: Settings },
 ]
 
