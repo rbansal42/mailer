@@ -723,6 +723,82 @@ async function seedDefaultTemplates(): Promise<void> {
         { id: '8', type: 'text', props: { content: '<h3>What\'s new since you\'ve been away</h3><ul><li>{{new_feature_1}}</li><li>{{new_feature_2}}</li></ul>' } },
         { id: '9', type: 'footer', props: { text: '© 2026 Company Name', showUnsubscribe: true } }
       ]
+    },
+    // Survey/Feedback Templates
+    {
+      name: 'Feedback Request',
+      description: 'Simple feedback collection with rating',
+      blocks: [
+        { id: '1', type: 'header', props: { logo: '', title: 'How Did We Do?' } },
+        { id: '2', type: 'text', props: { content: '<p>Hi {{name}},</p><p>We recently had the pleasure of serving you with {{product_or_service}}. Your opinion matters to us!</p>' } },
+        { id: '3', type: 'text', props: { content: '<h3 style="text-align: center;">Rate Your Experience</h3><p style="text-align: center; font-size: 32px;"><a href="{{rating_url_1}}" style="text-decoration: none;">⭐</a>&nbsp;<a href="{{rating_url_2}}" style="text-decoration: none;">⭐</a>&nbsp;<a href="{{rating_url_3}}" style="text-decoration: none;">⭐</a>&nbsp;<a href="{{rating_url_4}}" style="text-decoration: none;">⭐</a>&nbsp;<a href="{{rating_url_5}}" style="text-decoration: none;">⭐</a></p><p style="text-align: center; font-size: 12px; color: #6b7280;">Click a star to rate (1-5)</p>' } },
+        { id: '4', type: 'button', props: { label: 'Share Detailed Feedback', url: '{{feedback_url}}', align: 'center' } },
+        { id: '5', type: 'footer', props: { text: 'Your feedback helps us improve. Thank you!', showUnsubscribe: true } }
+      ]
+    },
+    {
+      name: 'NPS Survey',
+      description: 'Net Promoter Score survey with 0-10 scale',
+      blocks: [
+        { id: '1', type: 'header', props: { logo: '', title: 'Quick Question' } },
+        { id: '2', type: 'text', props: { content: '<p>Hi {{name}},</p><p>We value your feedback and would love to hear from you.</p>' } },
+        { id: '3', type: 'text', props: { content: '<h3 style="text-align: center;">How likely are you to recommend us to a friend or colleague?</h3>' } },
+        { id: '4', type: 'text', props: { content: '<p style="text-align: center;"><a href="{{nps_url_0}}" style="display: inline-block; padding: 8px 12px; margin: 2px; background: #ef4444; color: white; text-decoration: none; border-radius: 4px;">0</a><a href="{{nps_url_1}}" style="display: inline-block; padding: 8px 12px; margin: 2px; background: #f97316; color: white; text-decoration: none; border-radius: 4px;">1</a><a href="{{nps_url_2}}" style="display: inline-block; padding: 8px 12px; margin: 2px; background: #f97316; color: white; text-decoration: none; border-radius: 4px;">2</a><a href="{{nps_url_3}}" style="display: inline-block; padding: 8px 12px; margin: 2px; background: #facc15; color: black; text-decoration: none; border-radius: 4px;">3</a><a href="{{nps_url_4}}" style="display: inline-block; padding: 8px 12px; margin: 2px; background: #facc15; color: black; text-decoration: none; border-radius: 4px;">4</a><a href="{{nps_url_5}}" style="display: inline-block; padding: 8px 12px; margin: 2px; background: #facc15; color: black; text-decoration: none; border-radius: 4px;">5</a><a href="{{nps_url_6}}" style="display: inline-block; padding: 8px 12px; margin: 2px; background: #facc15; color: black; text-decoration: none; border-radius: 4px;">6</a><a href="{{nps_url_7}}" style="display: inline-block; padding: 8px 12px; margin: 2px; background: #84cc16; color: black; text-decoration: none; border-radius: 4px;">7</a><a href="{{nps_url_8}}" style="display: inline-block; padding: 8px 12px; margin: 2px; background: #84cc16; color: black; text-decoration: none; border-radius: 4px;">8</a><a href="{{nps_url_9}}" style="display: inline-block; padding: 8px 12px; margin: 2px; background: #22c55e; color: white; text-decoration: none; border-radius: 4px;">9</a><a href="{{nps_url_10}}" style="display: inline-block; padding: 8px 12px; margin: 2px; background: #22c55e; color: white; text-decoration: none; border-radius: 4px;">10</a></p>' } },
+        { id: '5', type: 'text', props: { content: '<p style="font-size: 12px; color: #6b7280;"><span style="float: left;">Not likely</span><span style="float: right;">Very likely</span></p><div style="clear: both;"></div>' } },
+        { id: '6', type: 'text', props: { content: '<p style="text-align: center; color: #6b7280;">Click a number above to submit your response</p>' } },
+        { id: '7', type: 'footer', props: { text: 'This survey takes less than 30 seconds. Thank you!', showUnsubscribe: true } }
+      ]
+    },
+    {
+      name: 'Review Request',
+      description: 'Request for product or service review',
+      blocks: [
+        { id: '1', type: 'header', props: { logo: '', title: 'Enjoying {{product}}?' } },
+        { id: '2', type: 'text', props: { content: '<p>Hi {{name}},</p><p>We hope you\'re loving your recent experience! Your opinion matters, and we\'d love to hear about it.</p>' } },
+        { id: '3', type: 'text', props: { content: '<div style="background-color: #f3f4f6; border-radius: 8px; padding: 20px; text-align: center;"><p style="margin: 0;"><strong>Your review helps others make informed decisions</strong></p><p style="margin: 8px 0 0 0; color: #6b7280;">Share your honest experience and help our community grow.</p></div>' } },
+        { id: '4', type: 'button', props: { label: 'Leave a Review', url: '{{review_url}}', align: 'center' } },
+        { id: '5', type: 'text', props: { content: '<p style="text-align: center; color: #6b7280;">Join {{review_count}}+ happy customers who\'ve shared their experience</p>' } },
+        { id: '6', type: 'footer', props: { text: 'Thank you for being a valued customer.', showUnsubscribe: true } }
+      ]
+    },
+    // Onboarding Templates
+    {
+      name: 'Onboarding: Day 1 Welcome',
+      description: 'First day onboarding with quick wins',
+      blocks: [
+        { id: '1', type: 'header', props: { logo: '', title: 'Welcome to {{app}}!', backgroundColor: '#10b981' } },
+        { id: '2', type: 'text', props: { content: '<p>Hi {{name}},</p><p>We\'re so excited to have you on board! You\'ve just taken the first step toward {{value_prop}}.</p>' } },
+        { id: '3', type: 'text', props: { content: '<p><strong>Quick wins to get started:</strong></p><ol><li>{{quick_win_1}}</li><li>{{quick_win_2}}</li><li>{{quick_win_3}}</li></ol>' } },
+        { id: '4', type: 'button', props: { label: 'Get Started', url: '{{dashboard_url}}', align: 'center', backgroundColor: '#10b981' } },
+        { id: '5', type: 'text', props: { content: '<p>Questions? Just reply to this email—we\'re here to help!</p><p>Cheers,<br>The {{app}} Team</p>' } },
+        { id: '6', type: 'footer', props: { text: '© 2026 {{company}}', showUnsubscribe: true } }
+      ]
+    },
+    {
+      name: 'Onboarding: Day 3 Feature Highlight',
+      description: 'Highlight a key feature to drive engagement',
+      blocks: [
+        { id: '1', type: 'header', props: { logo: '', title: 'Did You Know?' } },
+        { id: '2', type: 'text', props: { content: '<p>Hi {{name}},</p><p>Many users don\'t discover this until later, but we wanted to make sure you knew about one of our most powerful features.</p>' } },
+        { id: '3', type: 'text', props: { content: '<div style="background: #eff6ff; border-left: 4px solid #3b82f6; padding: 20px; border-radius: 4px;"><strong style="font-size: 18px;">{{feature_name}}</strong><br><br>{{feature_description}}</div>' } },
+        { id: '4', type: 'button', props: { label: 'Try It Now', url: '{{feature_url}}', align: 'center' } },
+        { id: '5', type: 'text', props: { content: '<p style="color: #6b7280;">Coming up next: Pro tips to get even more out of {{app}}.</p>' } },
+        { id: '6', type: 'footer', props: { text: '© 2026 {{company}}', showUnsubscribe: true } }
+      ]
+    },
+    {
+      name: 'Onboarding: Day 7 Tips & Tricks',
+      description: 'Power user tips after first week',
+      blocks: [
+        { id: '1', type: 'header', props: { logo: '', title: 'Pro Tips for {{app}}' } },
+        { id: '2', type: 'text', props: { content: '<p>Hi {{name}},</p><p>🎉 <strong>You\'ve been with us for a week now!</strong> Here are some power user tips to help you get even more out of {{app}}:</p>' } },
+        { id: '3', type: 'text', props: { content: '<p>💡 <strong>Tip #1: {{tip_1_title}}</strong><br>{{tip_1_description}}</p>' } },
+        { id: '4', type: 'text', props: { content: '<p>⚡ <strong>Tip #2: {{tip_2_title}}</strong><br>{{tip_2_description}}</p>' } },
+        { id: '5', type: 'text', props: { content: '<p>🎯 <strong>Tip #3: {{tip_3_title}}</strong><br>{{tip_3_description}}</p>' } },
+        { id: '6', type: 'button', props: { label: 'Explore Help Center', url: '{{help_url}}', align: 'center' } },
+        { id: '7', type: 'text', props: { content: '<p>Have questions? Reply to this email anytime.</p>' } },
+        { id: '8', type: 'footer', props: { text: '© 2026 {{company}}', showUnsubscribe: true } }
+      ]
     }
   ]
 
