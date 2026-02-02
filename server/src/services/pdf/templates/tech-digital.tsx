@@ -1,6 +1,8 @@
 import React from 'react'
 import { View, Text, Image, StyleSheet, Svg, Line, Rect } from '@react-pdf/renderer'
 import { Certificate, LogoBar } from '../components'
+// Note: Not using shared Signatories component because dark theme requires
+// custom light-colored text styling (same pattern as dark-elegant.tsx)
 import { typography, getNameFontSize } from '../styles'
 
 interface Signatory {

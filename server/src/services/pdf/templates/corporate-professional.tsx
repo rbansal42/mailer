@@ -160,11 +160,6 @@ export const CorporateProfessional: React.FC<CorporateProfessionalProps> = ({
   certificateId,
 }) => {
   const nameFontSize = getNameFontSize(recipientName)
-  const currentDate = new Date().toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  })
 
   return (
     <Certificate>
@@ -212,13 +207,12 @@ export const CorporateProfessional: React.FC<CorporateProfessionalProps> = ({
           )}
         </View>
 
-        {/* Clean footer with certificate ID and date */}
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>
-            {certificateId ? `Certificate ID: ${certificateId}` : ''}
-          </Text>
-          <Text style={styles.footerText}>Issued: {currentDate}</Text>
-        </View>
+        {/* Clean footer with certificate ID */}
+        {certificateId && (
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>Certificate ID: {certificateId}</Text>
+          </View>
+        )}
       </View>
     </Certificate>
   )
