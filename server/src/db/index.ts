@@ -799,6 +799,50 @@ async function seedDefaultTemplates(): Promise<void> {
         { id: '7', type: 'text', props: { content: '<p>Have questions? Reply to this email anytime.</p>' } },
         { id: '8', type: 'footer', props: { text: '© 2026 {{company}}', showUnsubscribe: true } }
       ]
+    },
+    // Holiday/Seasonal Templates
+    {
+      name: 'Holiday Greeting',
+      description: 'Warm holiday message with gratitude',
+      blocks: [
+        { id: '1', type: 'header', props: { logo: '', title: 'Happy Holidays!', backgroundColor: '#dc2626' } },
+        { id: '2', type: 'text', props: { content: '<p style="text-align: center; font-size: 24px;">✨🎄✨</p>' } },
+        { id: '3', type: 'text', props: { content: '<p>Dear {{name}},</p><p>As the holiday season approaches, we wanted to send you our warmest wishes for a joyful and peaceful celebration.</p>' } },
+        { id: '4', type: 'text', props: { content: '<p><strong>Thank you for being part of our journey.</strong></p><p>Your support throughout this year has meant the world to us. We look forward to continuing this journey together in the new year.</p>' } },
+        { id: '5', type: 'divider', props: { style: 'solid' } },
+        { id: '6', type: 'text', props: { content: '<p><strong>🕐 Holiday Hours:</strong><br>{{holiday_hours}}</p>' } },
+        { id: '7', type: 'text', props: { content: '<p>Wishing you and your loved ones a wonderful holiday season.</p><p>With gratitude,<br>The {{company}} Team</p>' } },
+        { id: '8', type: 'footer', props: { text: '© 2026 {{company}}', showUnsubscribe: true } }
+      ]
+    },
+    {
+      name: 'Happy New Year',
+      description: 'New year greeting with preview of what\'s coming',
+      blocks: [
+        { id: '1', type: 'header', props: { logo: '', title: 'Happy New Year!', backgroundColor: '#6366f1' } },
+        { id: '2', type: 'text', props: { content: '<p style="text-align: center; font-size: 64px; font-weight: bold; color: #6366f1;">{{year}}</p>' } },
+        { id: '3', type: 'text', props: { content: '<p style="text-align: center; font-size: 20px; color: #64748b;">A new year, a fresh start!</p>' } },
+        { id: '4', type: 'text', props: { content: '<p>Dear {{name}},</p><p>Thank you for being part of our journey in {{previous_year}}. Your support has meant everything to us!</p>' } },
+        { id: '5', type: 'text', props: { content: '<p><strong>Coming in {{year}}:</strong></p><ul><li>{{preview_1}}</li><li>{{preview_2}}</li><li>{{preview_3}}</li></ul>' } },
+        { id: '6', type: 'button', props: { label: 'See What\'s New', url: '{{whats_new_url}}', align: 'center', backgroundColor: '#6366f1' } },
+        { id: '7', type: 'text', props: { content: '<p>Here\'s to an amazing year ahead!</p><p>The {{company}} Team</p>' } },
+        { id: '8', type: 'footer', props: { text: '© {{year}} {{company}}', showUnsubscribe: true } }
+      ]
+    },
+    {
+      name: 'Your Year in Review',
+      description: 'Personalized year-end stats and highlights',
+      blocks: [
+        { id: '1', type: 'header', props: { logo: '', title: 'Your {{year}} in Review' } },
+        { id: '2', type: 'text', props: { content: '<p>Hi {{name}},</p><p>What a year it\'s been! Here\'s a look back at your incredible journey with us.</p>' } },
+        { id: '3', type: 'text', props: { content: '<div style="background: #6366f1; border-radius: 16px; padding: 40px; text-align: center; color: white;"><p style="font-size: 48px; font-weight: bold; margin: 0;">{{stat_1_number}}</p><p style="font-size: 16px; margin: 10px 0 0 0;">{{stat_1_label}}</p></div>' } },
+        { id: '4', type: 'text', props: { content: '<div style="display: flex; gap: 20px; margin-top: 20px;"><div style="flex: 1; background: #f3f4f6; border-radius: 12px; padding: 20px; text-align: center;"><p style="font-size: 28px; font-weight: bold; margin: 0; color: #6366f1;">{{stat_2_number}}</p><p style="font-size: 14px; color: #6b7280; margin: 8px 0 0 0;">{{stat_2_label}}</p></div><div style="flex: 1; background: #f3f4f6; border-radius: 12px; padding: 20px; text-align: center;"><p style="font-size: 28px; font-weight: bold; margin: 0; color: #6366f1;">{{stat_3_number}}</p><p style="font-size: 14px; color: #6b7280; margin: 8px 0 0 0;">{{stat_3_label}}</p></div></div>' } },
+        { id: '5', type: 'divider', props: { style: 'solid' } },
+        { id: '6', type: 'text', props: { content: '<h3 style="text-align: center;">🏆 Your Top Highlights</h3><ul><li>{{highlight_1}}</li><li>{{highlight_2}}</li><li>{{highlight_3}}</li></ul>' } },
+        { id: '7', type: 'button', props: { label: 'Share Your Year', url: '{{share_url}}', align: 'center', backgroundColor: '#6366f1' } },
+        { id: '8', type: 'text', props: { content: '<p style="text-align: center;">Thank you for being part of our story.<br><strong>Here\'s to an even better {{next_year}}! 🎉</strong></p>' } },
+        { id: '9', type: 'footer', props: { text: '© {{year}} {{company}}', showUnsubscribe: true } }
+      ]
     }
   ]
 
