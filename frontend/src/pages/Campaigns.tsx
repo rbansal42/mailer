@@ -25,12 +25,13 @@ import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
 import { Card, CardContent, CardHeader } from '../components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog'
-import { Plus, Send, Save, ChevronLeft, ChevronRight, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react'
+import { Plus, Send, Save, ChevronLeft, ChevronRight, AlertCircle, CheckCircle2, Loader2, Search } from 'lucide-react'
 import type { Recipient } from '../lib/api'
 
 export default function Campaigns() {
   const [isComposing, setIsComposing] = useState(false)
   const [selectedDraft, setSelectedDraft] = useState<Draft | null>(null)
+  const [search, setSearch] = useState('')
   
   const { data: drafts, isLoading: loadingDrafts } = useQuery({
     queryKey: ['drafts'],
@@ -46,6 +47,12 @@ export default function Campaigns() {
     queryKey: ['mails'],
     queryFn: mailsApi.list,
   })
+
+  const filteredDrafts = drafts?.filter(
+    (draft) =>
+      draft.name?.toLowerCase().includes(search.toLowerCase()) ||
+      draft.subject?.toLowerCase().includes(search.toLowerCase())
+  ) ?? []
 
   if (isComposing || selectedDraft) {
     return (
@@ -71,14 +78,24 @@ export default function Campaigns() {
         </Button>
       </div>
 
+      <div className="relative mb-4">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search drafts..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="pl-9"
+        />
+      </div>
+
       {loadingDrafts ? (
         <div className="flex justify-center py-8">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
-      ) : drafts && drafts.length > 0 ? (
+      ) : filteredDrafts.length > 0 ? (
         <div className="space-y-2">
           <h2 className="text-sm font-medium text-muted-foreground">Drafts</h2>
-          {drafts.map((draft) => (
+          {filteredDrafts.map((draft) => (
             <Card
               key={draft.id}
               className="cursor-pointer hover:border-primary/50 transition-colors"
@@ -101,7 +118,7 @@ export default function Campaigns() {
       ) : (
         <Card className="border-dashed">
           <CardContent className="py-8 text-center">
-            <p className="text-muted-foreground mb-4">No drafts yet</p>
+            <p className="text-muted-foreground mb-4">{drafts?.length ? 'No drafts match your search' : 'No drafts yet'}</p>
             <Button size="sm" onClick={() => setIsComposing(true)}>
               <Plus className="h-4 w-4 mr-1" />
               Create Campaign

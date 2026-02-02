@@ -3,16 +3,24 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, Campaign, CampaignAnalytics } from '../lib/api'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
-import { ChevronLeft, Download, RefreshCw, Trash2, CheckCircle2, XCircle, Clock, Loader2, Eye, MousePointer, Mail } from 'lucide-react'
+import { ChevronLeft, Download, RefreshCw, Trash2, CheckCircle2, XCircle, Clock, Loader2, Eye, MousePointer, Mail, Search } from 'lucide-react'
+import { Input } from '../components/ui/input'
 
 
 export default function History() {
   const [selectedCampaign, setSelectedCampaign] = useState<number | null>(null)
+  const [search, setSearch] = useState('')
 
   const { data: campaigns, isLoading } = useQuery({
     queryKey: ['campaigns'],
     queryFn: api.getCampaigns,
   })
+
+  const filteredCampaigns = campaigns?.filter(
+    (campaign) =>
+      campaign.name?.toLowerCase().includes(search.toLowerCase()) ||
+      campaign.subject?.toLowerCase().includes(search.toLowerCase())
+  ) ?? []
 
   if (selectedCampaign !== null) {
     return <CampaignDetails id={selectedCampaign} onBack={() => setSelectedCampaign(null)} />
@@ -28,11 +36,21 @@ export default function History() {
         </Button>
       </div>
 
+      <div className="relative mb-4">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search campaigns..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="pl-9"
+        />
+      </div>
+
       {isLoading ? (
         <div className="flex justify-center py-8">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
-      ) : campaigns && campaigns.length > 0 ? (
+      ) : filteredCampaigns.length > 0 ? (
         <div className="border rounded-lg overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-muted/50">
@@ -44,7 +62,7 @@ export default function History() {
               </tr>
             </thead>
             <tbody>
-              {campaigns.map((campaign) => (
+              {filteredCampaigns.map((campaign) => (
                 <tr
                   key={campaign.id}
                   className="border-t hover:bg-muted/30 cursor-pointer transition-colors"
@@ -72,7 +90,7 @@ export default function History() {
       ) : (
         <Card className="border-dashed">
           <CardContent className="py-8 text-center text-muted-foreground">
-            No campaigns sent yet
+            {campaigns?.length ? 'No campaigns match your search' : 'No campaigns sent yet'}
           </CardContent>
         </Card>
       )}
