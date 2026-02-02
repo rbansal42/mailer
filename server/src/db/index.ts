@@ -540,6 +540,9 @@ export async function initializeDatabase() {
   // Seed starter templates
   await seedTemplates()
 
+  // Seed default email templates
+  await seedDefaultTemplates()
+
   // Run SQL migrations
   await runMigrations()
 }
@@ -552,6 +555,83 @@ export async function checkDatabaseHealth(): Promise<{ ok: boolean; latencyMs: n
   } catch {
     return { ok: false, latencyMs: Date.now() - start }
   }
+}
+
+async function seedDefaultTemplates(): Promise<void> {
+  // Check if default templates already exist
+  const existing = await queryOne<{ count: number }>('SELECT COUNT(*) as count FROM templates WHERE is_default = 1')
+  if (existing && existing.count > 0) {
+    return // Already seeded
+  }
+
+  const defaultTemplates = [
+    {
+      name: 'Newsletter',
+      description: 'Multi-section newsletter with header, content blocks, and footer',
+      blocks: [
+        { id: '1', type: 'header', props: { logo: '', title: 'Company Newsletter', subtitle: 'Monthly Updates' } },
+        { id: '2', type: 'text', props: { content: '<h2>This Month\'s Highlights</h2><p>Hello {{name}},</p><p>Here are the latest updates from our team...</p>' } },
+        { id: '3', type: 'divider', props: { style: 'solid' } },
+        { id: '4', type: 'text', props: { content: '<h3>Feature Article</h3><p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore.</p>' } },
+        { id: '5', type: 'button', props: { label: 'Read More', url: 'https://example.com', align: 'center' } },
+        { id: '6', type: 'footer', props: { text: '© 2026 Company Name. All rights reserved.', showUnsubscribe: true } }
+      ]
+    },
+    {
+      name: 'Announcement',
+      description: 'Simple announcement with headline and call-to-action',
+      blocks: [
+        { id: '1', type: 'header', props: { logo: '', title: 'Important Announcement' } },
+        { id: '2', type: 'text', props: { content: '<p>Dear {{name}},</p><p>We have exciting news to share with you!</p><p>Our team has been working hard on something special, and we can\'t wait for you to see it.</p>' } },
+        { id: '3', type: 'button', props: { label: 'Learn More', url: 'https://example.com', align: 'center' } },
+        { id: '4', type: 'footer', props: { text: 'Questions? Reply to this email.', showUnsubscribe: true } }
+      ]
+    },
+    {
+      name: 'Welcome Email',
+      description: 'Onboarding email for new users or subscribers',
+      blocks: [
+        { id: '1', type: 'header', props: { logo: '', title: 'Welcome!' } },
+        { id: '2', type: 'text', props: { content: '<h2>Welcome to the team, {{name}}!</h2><p>We\'re thrilled to have you on board. Here\'s what you can expect:</p><ul><li>Regular updates and insights</li><li>Exclusive content and offers</li><li>Direct access to our support team</li></ul>' } },
+        { id: '3', type: 'button', props: { label: 'Get Started', url: 'https://example.com', align: 'center' } },
+        { id: '4', type: 'text', props: { content: '<p>If you have any questions, just reply to this email.</p><p>Best regards,<br>The Team</p>' } },
+        { id: '5', type: 'footer', props: { text: '© 2026 Company Name', showUnsubscribe: true } }
+      ]
+    },
+    {
+      name: 'Promotion',
+      description: 'Sale or discount promotional email',
+      blocks: [
+        { id: '1', type: 'header', props: { logo: '', title: 'Special Offer Inside!' } },
+        { id: '2', type: 'text', props: { content: '<h1 style="text-align: center; color: #e53e3e;">🎉 50% OFF 🎉</h1><p style="text-align: center;">For a limited time only!</p>' } },
+        { id: '3', type: 'text', props: { content: '<p>Hi {{name}},</p><p>Don\'t miss out on our biggest sale of the year. Use code <strong>SAVE50</strong> at checkout.</p>' } },
+        { id: '4', type: 'button', props: { label: 'Shop Now', url: 'https://example.com', align: 'center', backgroundColor: '#e53e3e' } },
+        { id: '5', type: 'text', props: { content: '<p style="text-align: center; font-size: 12px;">Offer expires in 48 hours. Terms and conditions apply.</p>' } },
+        { id: '6', type: 'footer', props: { text: '© 2026 Company Name', showUnsubscribe: true } }
+      ]
+    },
+    {
+      name: 'Event Invitation',
+      description: 'Event invite with date, time, and location details',
+      blocks: [
+        { id: '1', type: 'header', props: { logo: '', title: 'You\'re Invited!' } },
+        { id: '2', type: 'text', props: { content: '<h2 style="text-align: center;">Annual Company Meetup</h2><p>Dear {{name}},</p><p>We\'d love for you to join us at our upcoming event!</p>' } },
+        { id: '3', type: 'text', props: { content: '<p><strong>📅 Date:</strong> March 15, 2026<br><strong>🕐 Time:</strong> 6:00 PM - 9:00 PM<br><strong>📍 Location:</strong> 123 Main Street, City</p>' } },
+        { id: '4', type: 'button', props: { label: 'RSVP Now', url: 'https://example.com', align: 'center' } },
+        { id: '5', type: 'text', props: { content: '<p>We look forward to seeing you there!</p>' } },
+        { id: '6', type: 'footer', props: { text: 'Can\'t make it? Let us know by replying to this email.', showUnsubscribe: true } }
+      ]
+    }
+  ]
+
+  for (const template of defaultTemplates) {
+    await execute(
+      'INSERT INTO templates (name, description, blocks, is_default) VALUES (?, ?, ?, 1)',
+      [template.name, template.description, JSON.stringify(template.blocks)]
+    )
+  }
+
+  logger.info('Seeded default email templates', { service: 'db', count: defaultTemplates.length })
 }
 
 async function seedTemplates(): Promise<void> {
