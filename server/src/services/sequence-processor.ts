@@ -5,6 +5,8 @@ import { getNextAvailableAccount, incrementSendCount } from './account-manager'
 import { createProvider } from '../providers'
 import { getOrCreateToken, getTrackingSettings } from './tracking'
 
+const BRANCH_ACTION = 'action'
+
 interface Sequence {
   id: number
   name: string
@@ -67,9 +69,11 @@ export async function enrollRecipient(
   email: string,
   data: Record<string, string> = {}
 ): Promise<number> {
-  // Get first step
+  // Get first step (main branch only)
   const firstStep = await queryOne<SequenceStep>(
-    `SELECT * FROM sequence_steps WHERE sequence_id = ? ORDER BY step_order LIMIT 1`,
+    `SELECT * FROM sequence_steps 
+     WHERE sequence_id = ? AND (branch_id IS NULL OR branch_id = '')
+     ORDER BY step_order LIMIT 1`,
     [sequenceId]
   )
 
@@ -177,10 +181,10 @@ async function switchToBranch(enrollment: Enrollment): Promise<void> {
   // Find first step in the 'action' branch
   const actionBranchStep = await queryOne<SequenceStep>(
     `SELECT * FROM sequence_steps 
-     WHERE sequence_id = ? AND branch_id = 'action' 
+     WHERE sequence_id = ? AND branch_id = ? 
      ORDER BY branch_order ASC, step_order ASC 
      LIMIT 1`,
-    [enrollment.sequence_id]
+    [enrollment.sequence_id, BRANCH_ACTION]
   )
 
   if (!actionBranchStep) {
@@ -197,12 +201,12 @@ async function switchToBranch(enrollment: Enrollment): Promise<void> {
   // Update enrollment to action branch
   await execute(
     `UPDATE sequence_enrollments 
-     SET branch_id = 'action', 
+     SET branch_id = ?, 
          branch_switched_at = ?,
          current_step = ?,
          next_send_at = ?
      WHERE id = ?`,
-    [now, actionBranchStep.step_order, nextSendAt, enrollment.id]
+    [BRANCH_ACTION, now, actionBranchStep.step_order, nextSendAt, enrollment.id]
   )
 
   logger.info('Enrollment switched to action branch', {
@@ -347,9 +351,9 @@ async function processEnrollmentStep(enrollment: Enrollment & { sequence_name: s
       const nextSendAt = calculateNextSendAt(nextStep)
       await execute(
         `UPDATE sequence_enrollments 
-         SET current_step = current_step + 1, next_send_at = ?
+         SET current_step = ?, next_send_at = ?
          WHERE id = ?`,
-        [nextSendAt, enrollment.id]
+        [nextStep.step_order, nextSendAt, enrollment.id]
       )
     } else {
       // No more steps, complete
