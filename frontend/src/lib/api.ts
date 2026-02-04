@@ -313,7 +313,7 @@ export interface Mail {
 
 export interface Block {
   id: string
-  type: 'header' | 'text' | 'image' | 'button' | 'divider' | 'spacer' | 'columns' | 'footer'
+  type: 'header' | 'text' | 'image' | 'button' | 'divider' | 'spacer' | 'columns' | 'footer' | 'action-button'
   props: Record<string, unknown>
 }
 
