@@ -1,5 +1,19 @@
 import DOMPurify from 'isomorphic-dompurify'
 
+/**
+ * Escape HTML special characters to prevent XSS
+ */
+function escapeHtml(text: string): string {
+  const htmlEscapes: Record<string, string> = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  }
+  return text.replace(/[&<>"']/g, (char) => htmlEscapes[char])
+}
+
 // Block structure from frontend
 interface BlockInput {
   id: string
@@ -202,6 +216,26 @@ function compileFooter(props: Record<string, unknown>, data: Record<string, stri
 }
 
 /**
+ * Compile an action button block to HTML
+ * The {{action_url}} placeholder will be replaced by injectTracking with the tracking URL
+ */
+function compileActionButton(props: Record<string, unknown>): string {
+  const align = String(props.align || 'center')
+  const color = String(props.color || '#10b981')
+  const label = escapeHtml(String(props.label || 'Click Here'))
+
+  return `
+    <div style="text-align: ${align}; padding: 16px;">
+      <a href="{{action_url}}" 
+         data-action-button="true"
+         style="display: inline-block; padding: 14px 28px; background-color: ${color}; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px;">
+        ${label}
+      </a>
+    </div>
+  `
+}
+
+/**
  * Compile a single block to HTML
  */
 function compileBlock(block: BlockInput, data: Record<string, string>, baseUrl: string): string {
@@ -224,6 +258,8 @@ function compileBlock(block: BlockInput, data: Record<string, string>, baseUrl: 
       return compileColumns(props)
     case 'footer':
       return compileFooter(props, data)
+    case 'action-button':
+      return compileActionButton(props)
     default:
       return ''
   }
@@ -264,6 +300,18 @@ export function injectTracking(
       return `<a ${before}href="${trackingUrl}"${after}>`
     })
   }
+
+  // Handle action buttons - replace placeholder URLs with tracking URLs
+  const actionButtonRegex = /href="(#action-button|{{action_url}})"/gi
+  result = result.replace(actionButtonRegex, () => {
+    return `href="${baseUrl}/t/${trackingToken}/action"`
+  })
+
+  // Also handle action-button blocks rendered as links with data attribute
+  const actionAttrRegex = /data-action-button="true"[^>]*href="[^"]*"/gi
+  result = result.replace(actionAttrRegex, (match) => {
+    return match.replace(/href="[^"]*"/, `href="${baseUrl}/t/${trackingToken}/action"`)
+  })
 
   return result
 }
