@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -34,14 +34,21 @@ export function GenerateSequenceDialog({ open, onOpenChange, onGenerated }: Gene
   const [tone, setTone] = useState<GenerateSequenceRequest['tone']>('professional')
   const [additionalContext, setAdditionalContext] = useState('')
   const [errorCount, setErrorCount] = useState(0)
+  const [goalError, setGoalError] = useState<string | null>(null)
+  const abortControllerRef = useRef<AbortController | null>(null)
 
   const generateMutation = useMutation({
-    mutationFn: (data: GenerateSequenceRequest) => sequencesApi.generate(data),
+    mutationFn: async (data: GenerateSequenceRequest) => {
+      abortControllerRef.current = new AbortController()
+      return sequencesApi.generate(data)
+    },
     onSuccess: (result) => {
+      abortControllerRef.current = null
       onGenerated(result)
       resetForm()
     },
     onError: (error: Error) => {
+      abortControllerRef.current = null
       const newCount = errorCount + 1
       setErrorCount(newCount)
       
@@ -62,13 +69,15 @@ export function GenerateSequenceDialog({ open, onOpenChange, onGenerated }: Gene
     setTone('professional')
     setAdditionalContext('')
     setErrorCount(0)
+    setGoalError(null)
   }
 
   const handleSubmit = () => {
     if (goal.trim().length < 10) {
-      toast.error('Please describe your goal in more detail (at least 10 characters)')
+      setGoalError('Please describe your goal in more detail (at least 10 characters)')
       return
     }
+    setGoalError(null)
 
     generateMutation.mutate({
       goal: goal.trim(),
@@ -86,6 +95,14 @@ export function GenerateSequenceDialog({ open, onOpenChange, onGenerated }: Gene
     onOpenChange(newOpen)
   }
 
+  const handleCancel = () => {
+    if (generateMutation.isPending && abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      generateMutation.reset()
+    }
+    handleOpenChange(false)
+  }
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-lg">
@@ -98,15 +115,24 @@ export function GenerateSequenceDialog({ open, onOpenChange, onGenerated }: Gene
 
         <div className="space-y-4 py-4">
           <div className="space-y-2">
-            <Label htmlFor="goal">What do you want this sequence to achieve?</Label>
+            <Label htmlFor="goal">
+              What do you want this sequence to achieve? <span className="text-destructive">*</span>
+            </Label>
             <Textarea
               id="goal"
               value={goal}
-              onChange={(e) => setGoal(e.target.value)}
+              onChange={(e) => {
+                setGoal(e.target.value)
+                if (goalError) setGoalError(null)
+              }}
               placeholder="e.g., Welcome new subscribers and introduce them to our product features over the first week"
               rows={3}
+              maxLength={500}
               disabled={generateMutation.isPending}
             />
+            {goalError && (
+              <p className="text-sm text-destructive">{goalError}</p>
+            )}
             <p className="text-xs text-muted-foreground">
               {goal.length}/500 characters
             </p>
@@ -178,6 +204,7 @@ export function GenerateSequenceDialog({ open, onOpenChange, onGenerated }: Gene
               onChange={(e) => setAdditionalContext(e.target.value)}
               placeholder="e.g., Our product is a project management tool. Include a discount offer in the final email."
               rows={2}
+              maxLength={1000}
               disabled={generateMutation.isPending}
             />
             <p className="text-xs text-muted-foreground">
@@ -189,8 +216,7 @@ export function GenerateSequenceDialog({ open, onOpenChange, onGenerated }: Gene
         <DialogFooter>
           <Button
             variant="outline"
-            onClick={() => handleOpenChange(false)}
-            disabled={generateMutation.isPending}
+            onClick={handleCancel}
           >
             Cancel
           </Button>

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -33,6 +33,27 @@ export function SequencePreviewModal({
   const queryClient = useQueryClient()
   const [expandedEmails, setExpandedEmails] = useState<Set<number>>(new Set())
 
+  // Reset expanded state when a new sequence is loaded
+  useEffect(() => {
+    setExpandedEmails(new Set())
+  }, [generatedSequence])
+
+  const handleOpenChange = (newOpen: boolean) => {
+    // Don't allow closing while creation is in progress
+    if (!newOpen && createMutation.isPending) {
+      return
+    }
+    onOpenChange(newOpen)
+  }
+
+  const expandAll = () => {
+    setExpandedEmails(new Set(generatedSequence?.emails.map((_, i) => i) || []))
+  }
+
+  const collapseAll = () => {
+    setExpandedEmails(new Set())
+  }
+
   const createMutation = useMutation({
     mutationFn: async () => {
       if (!generatedSequence) throw new Error('No sequence to create')
@@ -43,14 +64,25 @@ export function SequencePreviewModal({
         description: `AI-generated sequence with ${generatedSequence.emails.length} emails`,
       })
 
-      // Add each email as a step
-      for (const email of generatedSequence.emails) {
-        await sequencesApi.addStep(id, {
-          subject: email.subject,
-          delayDays: email.delayDays,
-          // Note: blocks would need to be stored separately or in template
-          // For now, we just create the step structure
-        })
+      // Add each email as a step, tracking progress
+      let stepsCreated = 0
+      try {
+        for (const email of generatedSequence.emails) {
+          await sequencesApi.addStep(id, {
+            subject: email.subject,
+            delayDays: email.delayDays,
+            // Note: blocks would need to be stored separately or in template
+            // For now, we just create the step structure
+          })
+          stepsCreated++
+        }
+      } catch (stepError) {
+        // If we created some steps, still return success with warning
+        if (stepsCreated > 0) {
+          toast.warning(`Created sequence with ${stepsCreated} of ${generatedSequence.emails.length} steps. Some steps failed.`)
+          return id
+        }
+        throw stepError
       }
 
       return id
@@ -117,11 +149,20 @@ export function SequencePreviewModal({
   if (!generatedSequence) return null
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>Preview: {generatedSequence.name}</DialogTitle>
         </DialogHeader>
+
+        <div className="flex gap-2 justify-end">
+          <Button variant="ghost" size="sm" onClick={expandAll}>
+            Expand all
+          </Button>
+          <Button variant="ghost" size="sm" onClick={collapseAll}>
+            Collapse all
+          </Button>
+        </div>
 
         <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-md p-3 flex gap-2">
           <Info className="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
@@ -166,11 +207,15 @@ export function SequencePreviewModal({
                 </CollapsibleTrigger>
                 <CollapsibleContent>
                   <div className="px-3 pb-3 pt-1 space-y-2 border-t">
-                    {email.blocks.map((block, blockIndex) => (
-                      <div key={blockIndex}>
-                        {renderBlockPreview(block)}
-                      </div>
-                    ))}
+                    {email.blocks.length === 0 ? (
+                      <p className="text-sm text-muted-foreground italic">No content blocks</p>
+                    ) : (
+                      email.blocks.map((block, blockIndex) => (
+                        <div key={blockIndex}>
+                          {renderBlockPreview(block)}
+                        </div>
+                      ))
+                    )}
                   </div>
                 </CollapsibleContent>
               </div>

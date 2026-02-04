@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import rateLimit from 'express-rate-limit'
 import { queryAll, queryOne, execute } from '../db'
 import { logger } from '../lib/logger'
 import { enrollRecipient, pauseEnrollment, cancelEnrollment, resumeEnrollment } from '../services/sequence-processor'
@@ -6,6 +7,15 @@ import { generateSequence } from '../services/gemini'
 import { generateSequenceSchema, validate } from '../lib/validation'
 
 export const sequencesRouter = Router()
+
+// Rate limiter for AI generation endpoint
+const generateRateLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 5, // 5 requests per minute per IP
+  message: { error: 'Too many generation requests. Please wait a minute.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+})
 
 interface SequenceRow {
   id: number
@@ -68,7 +78,7 @@ sequencesRouter.get('/', async (_req, res) => {
 })
 
 // POST /generate - Generate sequence with AI (must be before /:id routes)
-sequencesRouter.post('/generate', async (req, res) => {
+sequencesRouter.post('/generate', generateRateLimiter, async (req, res) => {
   try {
     const validation = validate(generateSequenceSchema, req.body)
     if (!validation.success) {
