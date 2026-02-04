@@ -9,7 +9,7 @@ export const emailArraySchema = z.array(emailSchema).default([])
 // Template block schema
 export const blockSchema = z.object({
   id: z.string().min(1),
-  type: z.enum(['header', 'text', 'image', 'button', 'divider', 'spacer', 'columns', 'footer']),
+  type: z.enum(['header', 'text', 'image', 'button', 'divider', 'spacer', 'columns', 'footer', 'action-button']),
   props: z.record(z.string(), z.unknown())
 })
 
