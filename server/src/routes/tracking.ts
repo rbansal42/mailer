@@ -124,14 +124,14 @@ trackingRouter.get('/:token/action', async (req, res) => {
 
     if (!stepResult.rows.length) {
       // Fallback: show default thank you
-      return res.send(getHostedThankYouPage('Thank you for your response!'))
+      return res.send(getHostedThankYouPage({ message: 'Thank you for your response!' }))
     }
 
     const stepId = stepResult.rows[0].id as number
     const config = await getActionConfig(sequenceId, stepId)
 
     if (!config) {
-      return res.send(getHostedThankYouPage('Thank you for your response!'))
+      return res.send(getHostedThankYouPage({ message: 'Thank you for your response!' }))
     }
 
     if (config.destinationType === 'external' && config.destinationUrl) {
@@ -142,19 +142,71 @@ trackingRouter.get('/:token/action', async (req, res) => {
       logger.warn('Invalid external redirect URL', { service: 'tracking', token, url: config.destinationUrl })
     }
 
-    return res.send(getHostedThankYouPage(config.hostedMessage || 'Thank you for your response!'))
+    return res.send(getHostedThankYouPage({
+      message: config.hostedMessage || 'Thank you for your response!',
+      ctaLabel: config.ctaLabel ?? undefined,
+      ctaUrl: config.ctaUrl ?? undefined,
+      redirectUrl: config.redirectUrl ?? undefined,
+      redirectDelay: config.redirectDelay ?? undefined,
+    }))
   } catch (error) {
     logger.error('Failed to process action click', { service: 'tracking', token: req.params.token }, error as Error)
     return res.status(500).send('Internal server error')
   }
 })
 
-function getHostedThankYouPage(message: string): string {
+function escapeHtml(str: string): string {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
+function getHostedThankYouPage(options: {
+  message: string
+  ctaLabel?: string
+  ctaUrl?: string
+  redirectUrl?: string
+  redirectDelay?: number
+}): string {
+  const { message, ctaLabel, ctaUrl, redirectUrl } = options
+  const redirectDelay = options.redirectDelay ?? 5
+
+  const hasRedirect = redirectUrl && isValidRedirectUrl(redirectUrl)
+  const hasCta = ctaLabel && ctaUrl && isValidRedirectUrl(ctaUrl)
+
+  const metaRefresh = hasRedirect
+    ? `<meta http-equiv="refresh" content="${redirectDelay};url=${escapeHtml(redirectUrl)}">`
+    : ''
+
+  const ctaHtml = hasCta
+    ? `<a href="${escapeHtml(ctaUrl)}" class="cta-button">${escapeHtml(ctaLabel)}</a>`
+    : ''
+
+  const redirectHtml = hasRedirect
+    ? `<p class="redirect-notice">Redirecting in <span id="countdown">${redirectDelay}</span> seconds&hellip;</p>`
+    : ''
+
+  const redirectScript = hasRedirect
+    ? `<script>
+      (function() {
+        var seconds = ${redirectDelay};
+        var el = document.getElementById('countdown');
+        var timer = setInterval(function() {
+          seconds--;
+          if (el) el.textContent = seconds;
+          if (seconds <= 0) {
+            clearInterval(timer);
+            window.location.href = ${JSON.stringify(redirectUrl)};
+          }
+        }, 1000);
+      })();
+    </script>`
+    : ''
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  ${metaRefresh}
   <title>Thank You</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -195,6 +247,26 @@ function getHostedThankYouPage(message: string): string {
       color: #374151;
       line-height: 1.6;
     }
+    .cta-button {
+      display: inline-block;
+      margin-top: 24px;
+      padding: 12px 32px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      text-decoration: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      transition: opacity 0.2s;
+    }
+    .cta-button:hover {
+      opacity: 0.9;
+    }
+    .redirect-notice {
+      margin-top: 20px;
+      font-size: 14px;
+      color: #9ca3af;
+    }
   </style>
 </head>
 <body>
@@ -204,8 +276,11 @@ function getHostedThankYouPage(message: string): string {
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
       </svg>
     </div>
-    <p class="message">${message.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>
+    <p class="message">${escapeHtml(message)}</p>
+    ${ctaHtml}
+    ${redirectHtml}
   </div>
+  ${redirectScript}
 </body>
 </html>`
 }

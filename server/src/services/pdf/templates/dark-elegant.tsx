@@ -1,10 +1,8 @@
 import React from 'react'
-import { View, Text, Image, StyleSheet } from '@react-pdf/renderer'
-import { Certificate, LogoBar } from '../components'
-// Note: Not using shared Signatories component because dark theme requires
-// custom light-colored text styling (Issue #25 will address this with style props)
+import { View, Text, StyleSheet } from '@react-pdf/renderer'
+import { Certificate, LogoBar, Signatories } from '../components'
 import { colors, typography, getNameFontSize } from '../styles'
-import type { BaseTemplateProps, Signatory } from './types'
+import type { BaseTemplateProps } from './types'
 
 type DarkElegantProps = BaseTemplateProps
 
@@ -112,41 +110,6 @@ const styles = StyleSheet.create({
     opacity: 0.9,
     flexShrink: 1,
   },
-  signatories: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 60,
-    marginTop: 'auto',
-    paddingTop: 15,
-    paddingBottom: 20,
-    flexShrink: 0,
-  },
-  signatory: {
-    alignItems: 'center',
-    width: 140,
-  },
-  signatureImage: {
-    height: 35,
-    marginBottom: 5,
-  },
-  signatureLine: {
-    width: 100,
-    height: 1,
-    backgroundColor: colors.gold,
-    marginBottom: 8,
-  },
-  sigName: {
-    ...typography.signature.name,
-    color: colors.white,
-  },
-  sigTitle: {
-    ...typography.signature.title,
-    color: colors.muted,
-  },
-  sigOrg: {
-    ...typography.signature.org,
-    color: colors.muted,
-  },
   certificateId: {
     position: 'absolute',
     bottom: 28,
@@ -206,24 +169,16 @@ export const DarkElegant: React.FC<DarkElegantProps> = ({
           {/* Description */}
           <Text style={styles.description}>{description}</Text>
 
-          {/* Signatories - custom styled for dark theme */}
-          {signatories && signatories.length > 0 && (
-            <View style={styles.signatories}>
-              {signatories.map((sig, index) => (
-                <View key={index} style={styles.signatory}>
-                  {sig.signatureUrl && (
-                    <Image src={sig.signatureUrl} style={styles.signatureImage} />
-                  )}
-                  <View style={styles.signatureLine} />
-                  <Text style={styles.sigName}>{sig.name}</Text>
-                  <Text style={styles.sigTitle}>{sig.designation}</Text>
-                  {sig.organization && (
-                    <Text style={styles.sigOrg}>{sig.organization}</Text>
-                  )}
-                </View>
-              ))}
-            </View>
-          )}
+          {/* Signatories */}
+          <Signatories
+            signatories={signatories}
+            colors={{
+              name: colors.white,
+              title: colors.muted,
+              org: colors.muted,
+              line: colors.gold,
+            }}
+          />
         </View>
 
         {/* Certificate ID */}

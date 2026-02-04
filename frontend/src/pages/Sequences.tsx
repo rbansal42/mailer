@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from '@/components/ui/alert-dialog'
 import { SequenceBranchBuilder } from '@/components/SequenceBranchBuilder'
 import { GenerateSequenceDialog } from '@/components/GenerateSequenceDialog'
 import { SequencePreviewModal } from '@/components/SequencePreviewModal'
@@ -177,6 +178,7 @@ interface SequenceCardProps {
 
 function SequenceCard({ sequence, onEdit }: SequenceCardProps) {
   const queryClient = useQueryClient()
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 
   const deleteMutation = useMutation({
     mutationFn: () => sequencesApi.delete(sequence.id),
@@ -256,9 +258,7 @@ function SequenceCard({ sequence, onEdit }: SequenceCardProps) {
             className="h-8 w-8 text-destructive hover:text-destructive"
             onClick={(e) => {
               e.stopPropagation()
-              if (confirm('Delete this sequence? This cannot be undone.')) {
-                deleteMutation.mutate()
-              }
+              setDeleteDialogOpen(true)
             }}
             title="Delete sequence"
           >
@@ -266,6 +266,26 @@ function SequenceCard({ sequence, onEdit }: SequenceCardProps) {
           </Button>
         </div>
       </CardContent>
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Sequence</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the sequence.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteMutation.mutate()}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   )
 }
@@ -352,6 +372,7 @@ function SequenceEditor({ sequence, onBack, onUpdate }: SequenceEditorProps) {
   const [stepDialogOpen, setStepDialogOpen] = useState(false)
   const [stepDialogBranch, setStepDialogBranch] = useState<string | null>(null)
   const [editingStep, setEditingStep] = useState<SequenceStep | null>(null)
+  const [deletingStepId, setDeletingStepId] = useState<number | null>(null)
 
   const refreshSequence = async () => {
     try {
@@ -402,10 +423,8 @@ function SequenceEditor({ sequence, onBack, onUpdate }: SequenceEditorProps) {
     },
   })
 
-  const handleDeleteStep = async (stepId: number) => {
-    if (confirm('Delete this step?')) {
-      deleteStepMutation.mutate(stepId)
-    }
+  const handleDeleteStep = (stepId: number) => {
+    setDeletingStepId(stepId)
   }
 
   const toggleMutation = useMutation({
@@ -492,6 +511,30 @@ function SequenceEditor({ sequence, onBack, onUpdate }: SequenceEditorProps) {
         step={editingStep}
         onSaved={refreshSequence}
       />
+
+      <AlertDialog open={deletingStepId !== null} onOpenChange={(open) => { if (!open) setDeletingStepId(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Step</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this step? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (deletingStepId !== null) {
+                  deleteStepMutation.mutate(deletingStepId)
+                }
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

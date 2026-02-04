@@ -11,9 +11,15 @@ interface Signatory {
 
 interface SignatoriesProps {
   signatories: Signatory[]
+  colors?: {
+    name?: string
+    title?: string
+    org?: string
+    line?: string
+  }
 }
 
-export const Signatories: React.FC<SignatoriesProps> = ({ signatories }) => {
+export const Signatories: React.FC<SignatoriesProps> = ({ signatories, colors }) => {
   if (!signatories || signatories.length === 0) return null
   
   return (
@@ -23,11 +29,11 @@ export const Signatories: React.FC<SignatoriesProps> = ({ signatories }) => {
           {sig.signatureUrl && (
             <Image src={sig.signatureUrl} style={baseStyles.signatureImage} />
           )}
-          <View style={baseStyles.signatureLine} />
-          <Text style={baseStyles.sigName}>{sig.name}</Text>
-          <Text style={baseStyles.sigTitle}>{sig.designation}</Text>
+          <View style={colors?.line ? [baseStyles.signatureLine, { backgroundColor: colors.line }] : baseStyles.signatureLine} />
+          <Text style={colors?.name ? [baseStyles.sigName, { color: colors.name }] : baseStyles.sigName}>{sig.name}</Text>
+          <Text style={colors?.title ? [baseStyles.sigTitle, { color: colors.title }] : baseStyles.sigTitle}>{sig.designation}</Text>
           {sig.organization && (
-            <Text style={baseStyles.sigOrg}>{sig.organization}</Text>
+            <Text style={colors?.org ? [baseStyles.sigOrg, { color: colors.org }] : baseStyles.sigOrg}>{sig.organization}</Text>
           )}
         </View>
       ))}

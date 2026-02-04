@@ -203,9 +203,11 @@ export const CreativeArtistic: React.FC<CreativeArtisticProps> = ({
   signatories,
   certificateId,
 }) => {
-  // Oversized name - multiply base size by 1.2
+  // Scale name font size based on length to prevent overflow in asymmetric layout
   const baseFontSize = getNameFontSize(recipientName)
-  const nameFontSize = Math.round(baseFontSize * 1.2)
+  const nameLength = recipientName.length
+  const multiplier = nameLength <= 25 ? 1.2 : nameLength <= 35 ? 1.0 : 0.9
+  const nameFontSize = Math.min(Math.round(baseFontSize * multiplier), 50)
 
   return (
     <Certificate certificateId={certificateId}>

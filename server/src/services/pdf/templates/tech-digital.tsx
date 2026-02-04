@@ -1,10 +1,8 @@
 import React from 'react'
-import { View, Text, Image, StyleSheet, Svg, Line, Rect } from '@react-pdf/renderer'
-import { Certificate, LogoBar } from '../components'
-// Note: Not using shared Signatories component because dark theme requires
-// custom light-colored text styling (Issue #25 will address this with style props)
+import { View, Text, StyleSheet, Svg, Line, Rect } from '@react-pdf/renderer'
+import { Certificate, LogoBar, Signatories } from '../components'
 import { typography, getNameFontSize } from '../styles'
-import type { BaseTemplateProps, Signatory } from './types'
+import type { BaseTemplateProps } from './types'
 
 type TechDigitalProps = BaseTemplateProps
 
@@ -95,7 +93,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginVertical: 12,
-    gap: 8,
   },
   dividerLine: {
     width: 60,
@@ -108,6 +105,7 @@ const styles = StyleSheet.create({
     height: 6,
     borderRadius: 3,
     backgroundColor: techColors.accent,
+    marginHorizontal: 4,
   },
   // Presented to text
   presentedTo: {
@@ -142,49 +140,6 @@ const styles = StyleSheet.create({
     marginVertical: 8,
     lineHeight: 1.5,
     flexShrink: 1,
-  },
-  // Signatories section
-  signatories: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 50,
-    marginTop: 'auto',
-    paddingTop: 12,
-    paddingBottom: 10,
-    flexShrink: 0,
-  },
-  signatory: {
-    alignItems: 'center',
-    width: 130,
-  },
-  signatureImage: {
-    height: 32,
-    marginBottom: 4,
-  },
-  signatureLine: {
-    width: 90,
-    height: 1,
-    backgroundColor: techColors.primary,
-    marginBottom: 6,
-  },
-  sigName: {
-    fontFamily: 'Montserrat',
-    fontSize: 10,
-    fontWeight: 'bold',
-    color: techColors.text,
-    textAlign: 'center',
-  },
-  sigTitle: {
-    fontFamily: 'Montserrat',
-    fontSize: 8,
-    color: techColors.secondary,
-    textAlign: 'center',
-  },
-  sigOrg: {
-    fontFamily: 'Montserrat',
-    fontSize: 7,
-    color: techColors.muted,
-    textAlign: 'center',
   },
   // Certificate ID with monospace styling
   certificateIdContainer: {
@@ -343,23 +298,15 @@ export const TechDigital: React.FC<TechDigitalProps> = ({
           <Text style={styles.description}>{description}</Text>
 
           {/* Signatories */}
-          {signatories && signatories.length > 0 && (
-            <View style={styles.signatories}>
-              {signatories.map((sig, index) => (
-                <View key={index} style={styles.signatory}>
-                  {sig.signatureUrl && (
-                    <Image src={sig.signatureUrl} style={styles.signatureImage} />
-                  )}
-                  <View style={styles.signatureLine} />
-                  <Text style={styles.sigName}>{sig.name}</Text>
-                  <Text style={styles.sigTitle}>{sig.designation}</Text>
-                  {sig.organization && (
-                    <Text style={styles.sigOrg}>{sig.organization}</Text>
-                  )}
-                </View>
-              ))}
-            </View>
-          )}
+          <Signatories
+            signatories={signatories}
+            colors={{
+              name: techColors.text,
+              title: techColors.secondary,
+              org: techColors.muted,
+              line: techColors.primary,
+            }}
+          />
         </View>
 
         {/* Certificate ID with monospace styling */}
