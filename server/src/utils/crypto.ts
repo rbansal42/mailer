@@ -1,5 +1,7 @@
 import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'crypto'
+import { logger } from '../lib/logger'
 
+const SERVICE = 'crypto'
 const ALGORITHM = 'aes-256-cbc'
 
 function getKey(): Buffer {
@@ -9,19 +11,41 @@ function getKey(): Buffer {
 }
 
 export function encrypt(text: string): string {
-  const iv = randomBytes(16)
-  const cipher = createCipheriv(ALGORITHM, getKey(), iv)
-  let encrypted = cipher.update(text, 'utf8', 'hex')
-  encrypted += cipher.final('hex')
-  return iv.toString('hex') + ':' + encrypted
+  logger.debug('Encrypting data', { service: SERVICE, dataLength: text.length })
+
+  try {
+    const iv = randomBytes(16)
+    const cipher = createCipheriv(ALGORITHM, getKey(), iv)
+    let encrypted = cipher.update(text, 'utf8', 'hex')
+    encrypted += cipher.final('hex')
+
+    logger.debug('Data encrypted successfully', { service: SERVICE })
+    return iv.toString('hex') + ':' + encrypted
+  } catch (error) {
+    logger.error('Encryption failed', { service: SERVICE }, error as Error)
+    throw error
+  }
 }
 
 export function decrypt(text: string): string {
-  const [ivHex, encrypted] = text.split(':')
-  if (!ivHex || !encrypted) return text // Return as-is if not encrypted
-  const iv = Buffer.from(ivHex, 'hex')
-  const decipher = createDecipheriv(ALGORITHM, getKey(), iv)
-  let decrypted = decipher.update(encrypted, 'hex', 'utf8')
-  decrypted += decipher.final('utf8')
-  return decrypted
+  logger.debug('Decrypting data', { service: SERVICE, dataLength: text.length })
+
+  try {
+    const [ivHex, encrypted] = text.split(':')
+    if (!ivHex || !encrypted) {
+      logger.debug('Data not encrypted, returning as-is', { service: SERVICE })
+      return text // Return as-is if not encrypted
+    }
+
+    const iv = Buffer.from(ivHex, 'hex')
+    const decipher = createDecipheriv(ALGORITHM, getKey(), iv)
+    let decrypted = decipher.update(encrypted, 'hex', 'utf8')
+    decrypted += decipher.final('utf8')
+
+    logger.debug('Data decrypted successfully', { service: SERVICE })
+    return decrypted
+  } catch (error) {
+    logger.error('Decryption failed', { service: SERVICE }, error as Error)
+    throw error
+  }
 }

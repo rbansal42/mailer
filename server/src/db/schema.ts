@@ -1,13 +1,18 @@
 import { execute } from './client'
+import { logger } from '../lib/logger'
+
+const SERVICE = 'database-schema'
 
 // Create all database tables
 export async function createTables() {
-  await execute(`
-    CREATE TABLE IF NOT EXISTS settings (
-      key TEXT PRIMARY KEY,
-      value TEXT NOT NULL
-    )
-  `)
+  logger.info('Creating database tables', { service: SERVICE })
+  try {
+    await execute(`
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      )
+    `)
 
   await execute(`
     CREATE TABLE IF NOT EXISTS sender_accounts (
@@ -391,12 +396,19 @@ export async function createTables() {
       UNIQUE(list_id, spreadsheet_id)
     )
   `)
+    logger.info('Database tables created successfully', { service: SERVICE })
+  } catch (error) {
+    logger.error('Failed to create database tables', { service: SERVICE }, error as Error)
+    throw error
+  }
 }
 
 // Create all database indexes
 export async function createIndexes() {
-  await execute('CREATE INDEX IF NOT EXISTS idx_send_counts_date ON send_counts(account_id, date)')
-  await execute('CREATE INDEX IF NOT EXISTS idx_send_logs_campaign ON send_logs(campaign_id)')
+  logger.info('Creating database indexes', { service: SERVICE })
+  try {
+    await execute('CREATE INDEX IF NOT EXISTS idx_send_counts_date ON send_counts(account_id, date)')
+    await execute('CREATE INDEX IF NOT EXISTS idx_send_logs_campaign ON send_logs(campaign_id)')
   await execute('CREATE INDEX IF NOT EXISTS idx_email_queue_status ON email_queue(status, scheduled_for)')
   await execute('CREATE INDEX IF NOT EXISTS idx_tracking_events_token ON tracking_events(token_id)')
   await execute('CREATE INDEX IF NOT EXISTS idx_tracking_events_type ON tracking_events(event_type)')
@@ -418,20 +430,32 @@ export async function createIndexes() {
   await execute('CREATE INDEX IF NOT EXISTS idx_sequence_actions_enrollment ON sequence_actions(enrollment_id)')
   await execute('CREATE INDEX IF NOT EXISTS idx_sequence_actions_step ON sequence_actions(step_id)')
   await execute('CREATE INDEX IF NOT EXISTS idx_sequence_steps_branch ON sequence_steps(branch_id)')
+    logger.info('Database indexes created successfully', { service: SERVICE })
+  } catch (error) {
+    logger.error('Failed to create database indexes', { service: SERVICE }, error as Error)
+    throw error
+  }
 }
 
 // Initialize default settings
 export async function initializeSettings() {
-  const trackingDefaults = [
-    ['tracking_enabled', 'true'],
-    ['tracking_base_url', 'https://mailer.rbansal.xyz'],
-    ['tracking_open_enabled', 'true'],
-    ['tracking_click_enabled', 'true'],
-    ['tracking_hash_ips', 'true'],
-    ['tracking_retention_days', '90'],
-  ]
+  logger.info('Initializing default settings', { service: SERVICE })
+  try {
+    const trackingDefaults = [
+      ['tracking_enabled', 'true'],
+      ['tracking_base_url', 'https://mailer.rbansal.xyz'],
+      ['tracking_open_enabled', 'true'],
+      ['tracking_click_enabled', 'true'],
+      ['tracking_hash_ips', 'true'],
+      ['tracking_retention_days', '90'],
+    ]
 
-  for (const [key, value] of trackingDefaults) {
-    await execute('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO NOTHING', [key, value])
+    for (const [key, value] of trackingDefaults) {
+      await execute('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO NOTHING', [key, value])
+    }
+    logger.info('Default settings initialized', { service: SERVICE, settingsCount: trackingDefaults.length })
+  } catch (error) {
+    logger.error('Failed to initialize default settings', { service: SERVICE }, error as Error)
+    throw error
   }
 }
