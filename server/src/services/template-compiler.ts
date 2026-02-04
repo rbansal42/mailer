@@ -220,8 +220,10 @@ function compileFooter(props: Record<string, unknown>, data: Record<string, stri
  * The {{action_url}} placeholder will be replaced by injectTracking with the tracking URL
  */
 function compileActionButton(props: Record<string, unknown>): string {
-  const align = String(props.align || 'center')
-  const color = String(props.color || '#10b981')
+  const validAligns = ['left', 'center', 'right']
+  const align = validAligns.includes(String(props.align)) ? String(props.align) : 'center'
+  const isValidColor = /^#[0-9A-Fa-f]{6}$/.test(String(props.color))
+  const color = isValidColor ? String(props.color) : '#10b981'
   const label = escapeHtml(String(props.label || 'Click Here'))
 
   return `
@@ -301,16 +303,10 @@ export function injectTracking(
     })
   }
 
-  // Handle action buttons - replace placeholder URLs with tracking URLs
-  const actionButtonRegex = /href="(#action-button|{{action_url}})"/gi
-  result = result.replace(actionButtonRegex, () => {
-    return `href="${baseUrl}/t/${trackingToken}/action"`
-  })
-
-  // Also handle action-button blocks rendered as links with data attribute
-  const actionAttrRegex = /data-action-button="true"[^>]*href="[^"]*"/gi
-  result = result.replace(actionAttrRegex, (match) => {
-    return match.replace(/href="[^"]*"/, `href="${baseUrl}/t/${trackingToken}/action"`)
+  // Handle action buttons with data attribute
+  const actionAttrRegex = /(<[^>]*data-action-button="true"[^>]*)href="[^"]*"/gi
+  result = result.replace(actionAttrRegex, (_match, prefix) => {
+    return `${prefix}href="${baseUrl}/t/${trackingToken}/action"`
   })
 
   return result
