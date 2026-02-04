@@ -4,6 +4,9 @@ import { api, Template, Block, mails } from '../lib/api'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
+import { Textarea } from '../components/ui/textarea'
+import { Checkbox } from '../components/ui/checkbox'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import {
   Dialog,
@@ -14,7 +17,7 @@ import {
 import {
   Plus, ChevronLeft, Save, Trash2, Type, Image, MousePointer,
   Minus, Square, Columns, FileText, GripVertical, Loader2, Undo2, Redo2, Copy,
-  Monitor, Smartphone, Moon, Sun, Code, ImageIcon, Crop, Eye, X
+  Monitor, Smartphone, Moon, Sun, Code, ImageIcon, Crop, Eye, X, Zap
 } from 'lucide-react'
 import { MediaLibrarySidebar } from '@/components/media-library'
 import { cn } from '../lib/utils'
@@ -24,11 +27,14 @@ import DOMPurify from 'isomorphic-dompurify'
 import { useBlockHistory } from '../stores/history'
 import { useKeyboardShortcuts, createSaveShortcut, createUndoShortcut, createRedoShortcut } from '../hooks/useKeyboardShortcuts'
 
+const DEFAULT_ACTION_BUTTON_COLOR = '#10b981'
+
 const BLOCK_TYPES = [
   { type: 'header', label: 'Header', icon: FileText },
   { type: 'text', label: 'Text', icon: Type },
   { type: 'image', label: 'Image', icon: Image },
   { type: 'button', label: 'Button', icon: MousePointer },
+  { type: 'action-button', label: 'Action Button', icon: Zap },
   { type: 'divider', label: 'Divider', icon: Minus },
   { type: 'spacer', label: 'Spacer', icon: Square },
   { type: 'columns', label: 'Columns', icon: Columns },
@@ -843,6 +849,11 @@ function BlockPreview({ block, darkMode: _darkMode }: { block: Block; darkMode?:
           >
             {String(props.label) || 'Click Here'}
           </button>
+          {props.isActionTrigger && (
+            <div style={{ marginTop: '8px', fontSize: '12px', color: '#9ca3af' }}>
+              Action tracked for automation
+            </div>
+          )}
         </div>
       )
     case 'divider':
@@ -871,6 +882,29 @@ function BlockPreview({ block, darkMode: _darkMode }: { block: Block; darkMode?:
       return (
         <div className="p-4 text-center text-xs text-muted-foreground bg-muted/50">
           {String(props.text) || '© 2026 Company Name · Unsubscribe'}
+        </div>
+      )
+    case 'action-button':
+      return (
+        <div style={{ textAlign: (props.align as 'left' | 'center' | 'right') || 'center', padding: '16px' }}>
+          <a
+            href="#"
+            style={{
+              display: 'inline-block',
+              padding: '14px 28px',
+              backgroundColor: String(props.color) || DEFAULT_ACTION_BUTTON_COLOR,
+              color: 'white',
+              textDecoration: 'none',
+              borderRadius: '6px',
+              fontWeight: 600,
+              fontSize: '16px'
+            }}
+          >
+            {String(props.label) || 'Click Here'}
+          </a>
+          <div style={{ marginTop: '8px', fontSize: '12px', color: '#9ca3af' }}>
+            Action tracked for automation
+          </div>
         </div>
       )
     default:
@@ -1056,6 +1090,7 @@ function BlockProperties({ block, onChange, onOpenMediaLibrary, onOpenCropModal 
               onChange={(e) => onChange({ url: e.target.value })}
               placeholder="https://..."
               className="h-8 text-xs"
+              disabled={Boolean(props.isActionTrigger)}
             />
           </div>
           <div className="grid grid-cols-2 gap-2">
@@ -1081,6 +1116,56 @@ function BlockProperties({ block, onChange, onOpenMediaLibrary, onOpenCropModal 
               </select>
             </div>
           </div>
+          
+          <hr className="my-4 border-border" />
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="isActionTrigger"
+              checked={Boolean(props.isActionTrigger) || false}
+              onCheckedChange={(checked) => onChange({ isActionTrigger: checked })}
+            />
+            <Label htmlFor="isActionTrigger" className="text-xs">Use as action trigger</Label>
+          </div>
+          
+          {props.isActionTrigger && (
+            <>
+              <div className="space-y-1">
+                <Label className="text-xs">When Clicked</Label>
+                <Select 
+                  value={String(props.destinationType || 'hosted')} 
+                  onValueChange={(v) => onChange({ destinationType: v })}
+                >
+                  <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="hosted">Show Thank You Page</SelectItem>
+                    <SelectItem value="external">Redirect to URL</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {props.destinationType === 'external' ? (
+                <div className="space-y-1">
+                  <Label className="text-xs">Destination URL</Label>
+                  <Input
+                    value={String(props.destinationUrl || '')}
+                    onChange={(e) => onChange({ destinationUrl: e.target.value })}
+                    placeholder="https://..."
+                    className="h-8 text-xs"
+                  />
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  <Label className="text-xs">Thank You Message</Label>
+                  <Textarea
+                    value={String(props.hostedMessage || '')}
+                    onChange={(e) => onChange({ hostedMessage: e.target.value })}
+                    placeholder="Thank you for your response!"
+                    rows={3}
+                    className="text-xs"
+                  />
+                </div>
+              )}
+            </>
+          )}
         </div>
       )
     case 'divider':
@@ -1147,6 +1232,75 @@ function BlockProperties({ block, onChange, onOpenMediaLibrary, onOpenCropModal 
           />
         </div>
       )
+    case 'action-button':
+      return (
+        <>
+          <div className="space-y-2">
+            <Label className="text-xs">Button Text</Label>
+            <Input
+              value={String(props.label || '')}
+              onChange={(e) => onChange({ label: e.target.value })}
+              className="h-8 text-xs"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-xs">Button Color</Label>
+            <Input
+              type="color"
+              value={String(props.color || DEFAULT_ACTION_BUTTON_COLOR)}
+              onChange={(e) => onChange({ color: e.target.value })}
+              className="h-8"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-xs">Alignment</Label>
+            <Select value={String(props.align || 'center')} onValueChange={(v) => onChange({ align: v })}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="left">Left</SelectItem>
+                <SelectItem value="center">Center</SelectItem>
+                <SelectItem value="right">Right</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <hr className="my-4 border-border" />
+          <div className="space-y-2">
+            <Label className="text-xs">When Clicked</Label>
+            <Select 
+              value={String(props.destinationType || 'hosted')} 
+              onValueChange={(v) => onChange({ destinationType: v })}
+            >
+              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="hosted">Show Thank You Page</SelectItem>
+                <SelectItem value="external">Redirect to URL</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {props.destinationType === 'external' ? (
+            <div className="space-y-2">
+              <Label className="text-xs">Destination URL</Label>
+              <Input
+                value={String(props.destinationUrl || '')}
+                onChange={(e) => onChange({ destinationUrl: e.target.value })}
+                placeholder="https://..."
+                className="h-8 text-xs"
+              />
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Label className="text-xs">Thank You Message</Label>
+              <Textarea
+                value={String(props.hostedMessage || '')}
+                onChange={(e) => onChange({ hostedMessage: e.target.value })}
+                placeholder="Thank you for your response!"
+                rows={3}
+                className="text-xs"
+              />
+            </div>
+          )}
+        </>
+      )
     default:
       return null
   }
@@ -1170,6 +1324,15 @@ function getDefaultProps(type: Block['type']): Record<string, unknown> {
       return { count: 2 }
     case 'footer':
       return { text: '© 2026 Company Name · Unsubscribe' }
+    case 'action-button':
+      return { 
+        label: 'Yes, I\'m interested', 
+        color: DEFAULT_ACTION_BUTTON_COLOR, 
+        align: 'center',
+        destinationType: 'hosted',
+        destinationUrl: '',
+        hostedMessage: 'Thank you for your response! We\'ll be in touch soon.'
+      }
     default:
       return {}
   }

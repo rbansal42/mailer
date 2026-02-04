@@ -313,7 +313,7 @@ export interface Mail {
 
 export interface Block {
   id: string
-  type: 'header' | 'text' | 'image' | 'button' | 'divider' | 'spacer' | 'columns' | 'footer'
+  type: 'header' | 'text' | 'image' | 'button' | 'divider' | 'spacer' | 'columns' | 'footer' | 'action-button'
   props: Record<string, unknown>
 }
 
@@ -385,6 +385,8 @@ export interface CampaignAnalytics {
     clicks: number
     uniqueClicks: number
     clickRate: number
+    actionClicks?: number
+    actionRate?: number
   }
   topLinks: Array<{ url: string; clicks: number }>
   opensOverTime: Array<{ hour: string; count: number }>
@@ -759,4 +761,146 @@ export const googleSheetsApi = {
     request<SyncResult>(`/integrations/google-sheets/lists/${listId}/syncs/${syncId}/run`, {
       method: 'POST',
     }),
+}
+
+// Sequence types
+export interface SequenceStep {
+  id: number
+  sequence_id: number
+  step_order: number
+  template_id: number | null
+  subject: string
+  delay_days: number
+  delay_hours: number
+  send_time: string | null
+  branch_id: string | null
+  branch_order: number | null
+  is_branch_point: number
+}
+
+export interface Sequence {
+  id: number
+  name: string
+  description: string | null
+  enabled: boolean
+  branch_delay_hours: number
+  steps: SequenceStep[]
+}
+
+// Sequence API functions
+export function getSequence(id: number): Promise<Sequence> {
+  return request<Sequence>(`/sequences/${id}`)
+}
+
+export function addSequenceStep(sequenceId: number, step: Partial<SequenceStep>): Promise<SequenceStep> {
+  return request<SequenceStep>(`/sequences/${sequenceId}/steps`, {
+    method: 'POST',
+    body: JSON.stringify(step)
+  })
+}
+
+export function createBranchPoint(sequenceId: number, afterStep: number, delayHours: number = 0): Promise<void> {
+  return request<void>(`/sequences/${sequenceId}/branch-point`, {
+    method: 'POST',
+    body: JSON.stringify({ afterStep, delayBeforeSwitch: delayHours })
+  })
+}
+
+export interface SequenceAction {
+  id: number
+  sequence_id: number
+  step_id: number
+  enrollment_id: number
+  clicked_at: string
+  destination_type: string
+  destination_url: string | null
+  hosted_message: string | null
+  button_text: string | null
+  recipient_email: string
+  recipient_data: string | null
+}
+
+export function getSequenceActions(sequenceId: number): Promise<SequenceAction[]> {
+  return request<SequenceAction[]>(`/sequences/${sequenceId}/actions`)
+}
+
+export interface SequenceEnrollment {
+  id: number
+  sequence_id: number
+  recipient_email: string
+  recipientData: Record<string, string> | null
+  current_step: number
+  status: 'active' | 'paused' | 'completed' | 'cancelled'
+  branch_id: string | null
+  action_clicked_at: string | null
+  enrolled_at: string
+  next_send_at: string | null
+  completed_at: string | null
+}
+
+export function getSequenceEnrollments(sequenceId: number): Promise<SequenceEnrollment[]> {
+  return request<SequenceEnrollment[]>(`/sequences/${sequenceId}/enrollments`)
+}
+
+// Sequence list item (from list endpoint)
+export interface SequenceListItem {
+  id: number
+  name: string
+  description: string | null
+  enabled: boolean
+  branch_delay_hours: number
+  step_count: number
+  active_enrollments: number
+  created_at: string
+  updated_at: string
+}
+
+// Full sequences API
+export const sequences = {
+  list: () => request<SequenceListItem[]>('/sequences'),
+  
+  get: (id: number) => request<Sequence>(`/sequences/${id}`),
+  
+  create: (data: { name: string; description?: string; enabled?: boolean }) =>
+    request<{ id: number; message: string }>('/sequences', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  
+  update: (id: number, data: { name?: string; description?: string; enabled?: boolean }) =>
+    request<{ message: string }>(`/sequences/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  
+  delete: (id: number) =>
+    request<{ message: string }>(`/sequences/${id}`, { method: 'DELETE' }),
+  
+  addStep: (sequenceId: number, step: { 
+    subject: string
+    templateId?: number
+    delayDays?: number
+    delayHours?: number
+    sendTime?: string
+    branchId?: string | null
+  }) =>
+    request<{ id: number; stepOrder: number; message: string }>(`/sequences/${sequenceId}/steps`, {
+      method: 'POST',
+      body: JSON.stringify(step),
+    }),
+  
+  updateStep: (sequenceId: number, stepId: number, data: {
+    subject?: string
+    templateId?: number
+    delayDays?: number
+    delayHours?: number
+    sendTime?: string
+  }) =>
+    request<{ message: string }>(`/sequences/${sequenceId}/steps/${stepId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  
+  deleteStep: (sequenceId: number, stepId: number) =>
+    request<{ message: string }>(`/sequences/${sequenceId}/steps/${stepId}`, { method: 'DELETE' }),
 }

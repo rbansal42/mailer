@@ -1,5 +1,19 @@
 import DOMPurify from 'isomorphic-dompurify'
 
+/**
+ * Escape HTML special characters to prevent XSS
+ */
+function escapeHtml(text: string): string {
+  const htmlEscapes: Record<string, string> = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  }
+  return text.replace(/[&<>"']/g, (char) => htmlEscapes[char])
+}
+
 // Block structure from frontend
 interface BlockInput {
   id: string
@@ -102,12 +116,18 @@ function compileImage(props: Record<string, unknown>, data: Record<string, strin
 
 /**
  * Compile a button block to HTML
+ * If isActionTrigger is true, the button uses {{action_url}} and data-action-button attribute
  */
 function compileButton(props: Record<string, unknown>, data: Record<string, string>): string {
-  const color = String(props.color || '#0f172a')
-  const align = String(props.align || 'center')
-  const label = replaceVariables(String(props.label || 'Click Here'), data)
-  const url = replaceVariables(String(props.url || '#'), data)
+  const validAligns = ['left', 'center', 'right']
+  const align = validAligns.includes(String(props.align)) ? String(props.align) : 'center'
+  const isValidColor = /^#[0-9A-Fa-f]{6}$/.test(String(props.color))
+  const color = isValidColor ? String(props.color) : '#0f172a'
+  const label = escapeHtml(replaceVariables(String(props.label || 'Click Here'), data))
+  const isActionTrigger = Boolean(props.isActionTrigger)
+  const rawUrl = replaceVariables(String(props.url || '#'), data)
+  const url = isActionTrigger ? '{{action_url}}' : escapeHtml(rawUrl)
+  const dataAttr = isActionTrigger ? ' data-action-button="true"' : ''
 
   return `
     <table width="100%" cellpadding="0" cellspacing="0" border="0">
@@ -116,7 +136,7 @@ function compileButton(props: Record<string, unknown>, data: Record<string, stri
           <table cellpadding="0" cellspacing="0" border="0">
             <tr>
               <td style="background-color: ${color}; border-radius: 4px;">
-                <a href="${url}" target="_blank" style="display: inline-block; padding: 12px 24px; font-size: 16px; font-family: Arial, sans-serif; color: #ffffff; text-decoration: none; font-weight: bold;">
+                <a href="${url}"${dataAttr} target="_blank" style="display: inline-block; padding: 12px 24px; font-size: 16px; font-family: Arial, sans-serif; color: #ffffff; text-decoration: none; font-weight: bold;">
                   ${label}
                 </a>
               </td>
@@ -202,6 +222,28 @@ function compileFooter(props: Record<string, unknown>, data: Record<string, stri
 }
 
 /**
+ * Compile an action button block to HTML
+ * The {{action_url}} placeholder will be replaced by injectTracking with the tracking URL
+ */
+function compileActionButton(props: Record<string, unknown>): string {
+  const validAligns = ['left', 'center', 'right']
+  const align = validAligns.includes(String(props.align)) ? String(props.align) : 'center'
+  const isValidColor = /^#[0-9A-Fa-f]{6}$/.test(String(props.color))
+  const color = isValidColor ? String(props.color) : '#10b981'
+  const label = escapeHtml(String(props.label || 'Click Here'))
+
+  return `
+    <div style="text-align: ${align}; padding: 16px;">
+      <a href="{{action_url}}" 
+         data-action-button="true"
+         style="display: inline-block; padding: 14px 28px; background-color: ${color}; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px;">
+        ${label}
+      </a>
+    </div>
+  `
+}
+
+/**
  * Compile a single block to HTML
  */
 function compileBlock(block: BlockInput, data: Record<string, string>, baseUrl: string): string {
@@ -224,6 +266,8 @@ function compileBlock(block: BlockInput, data: Record<string, string>, baseUrl: 
       return compileColumns(props)
     case 'footer':
       return compileFooter(props, data)
+    case 'action-button':
+      return compileActionButton(props)
     default:
       return ''
   }
@@ -264,6 +308,12 @@ export function injectTracking(
       return `<a ${before}href="${trackingUrl}"${after}>`
     })
   }
+
+  // Handle action buttons with data attribute
+  const actionAttrRegex = /(<[^>]*data-action-button="true"[^>]*)href="[^"]*"/gi
+  result = result.replace(actionAttrRegex, (_match, prefix) => {
+    return `${prefix}href="${baseUrl}/t/${trackingToken}/action"`
+  })
 
   return result
 }
