@@ -1,10 +1,14 @@
 // server/src/lib/url-validation.ts
 // URL validation to prevent SSRF attacks when loading external images
 
+import { logger } from './logger'
+
+const SERVICE = 'url-validation'
+
 /**
  * Private/internal IP ranges that should be blocked:
  * - 10.0.0.0/8 (Class A private)
- * - 172.16.0.0/12 (Class B private)  
+ * - 172.16.0.0/12 (Class B private)
  * - 192.168.0.0/16 (Class C private)
  * - 127.0.0.0/8 (Loopback)
  * - 169.254.0.0/16 (Link-local)
@@ -42,7 +46,7 @@ function isPrivateIP(hostname: string): boolean {
 
 function isBlockedHostname(hostname: string): boolean {
   const lowerHostname = hostname.toLowerCase()
-  
+
   for (const blocked of BLOCKED_HOSTNAMES) {
     if (blocked.startsWith('*.')) {
       // Wildcard match
@@ -64,18 +68,21 @@ export interface UrlValidationResult {
 
 /**
  * Validates a URL to prevent SSRF attacks.
- * 
+ *
  * Allows:
  * - http:// and https:// URLs to public hosts
  * - data: URLs (base64-encoded inline images)
- * 
+ *
  * Blocks:
  * - file://, ftp://, and other dangerous protocols
  * - Private IP addresses (10.x, 172.16-31.x, 192.168.x, 127.x)
  * - localhost and other internal hostnames
  */
 export function validateImageUrl(url: string): UrlValidationResult {
+  logger.debug('Validating image URL', { service: SERVICE, urlLength: url?.length || 0 })
+
   if (!url || typeof url !== 'string') {
+    logger.warn('URL validation failed: URL is required', { service: SERVICE })
     return { valid: false, error: 'URL is required' }
   }
 
@@ -85,8 +92,10 @@ export function validateImageUrl(url: string): UrlValidationResult {
   if (trimmedUrl.startsWith('data:')) {
     // Validate it's an image data URL
     if (trimmedUrl.startsWith('data:image/')) {
+      logger.debug('Valid data URL accepted', { service: SERVICE })
       return { valid: true }
     }
+    logger.warn('URL validation failed: non-image data URL', { service: SERVICE })
     return { valid: false, error: 'Only image data URLs are allowed' }
   }
 
@@ -94,15 +103,21 @@ export function validateImageUrl(url: string): UrlValidationResult {
   let parsed: URL
   try {
     parsed = new URL(trimmedUrl)
-  } catch {
+  } catch (error) {
+    logger.warn('URL validation failed: invalid format', { service: SERVICE, url: trimmedUrl.substring(0, 50) })
     return { valid: false, error: 'Invalid URL format' }
   }
 
   // Only allow http and https protocols
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    return { 
-      valid: false, 
-      error: `Protocol "${parsed.protocol.replace(':', '')}" is not allowed. Only http and https are permitted.` 
+    logger.warn('URL validation failed: blocked protocol', {
+      service: SERVICE,
+      protocol: parsed.protocol,
+      hostname: parsed.hostname
+    })
+    return {
+      valid: false,
+      error: `Protocol "${parsed.protocol.replace(':', '')}" is not allowed. Only http and https are permitted.`
     }
   }
 
@@ -110,19 +125,23 @@ export function validateImageUrl(url: string): UrlValidationResult {
 
   // Block private IPs
   if (isPrivateIP(hostname)) {
+    logger.warn('URL validation failed: private IP address', { service: SERVICE, hostname })
     return { valid: false, error: 'Private IP addresses are not allowed' }
   }
 
   // Block localhost and internal hostnames
   if (isBlockedHostname(hostname)) {
+    logger.warn('URL validation failed: blocked hostname', { service: SERVICE, hostname })
     return { valid: false, error: 'Internal hostnames are not allowed' }
   }
 
   // Block IPv6 localhost
   if (hostname === '[::1]' || hostname === '::1') {
+    logger.warn('URL validation failed: loopback address', { service: SERVICE, hostname })
     return { valid: false, error: 'Loopback addresses are not allowed' }
   }
 
+  logger.debug('URL validation passed', { service: SERVICE, hostname })
   return { valid: true }
 }
 
@@ -135,16 +154,20 @@ export function validateLogoUrls(logos: Array<{ url: string; width?: number }> |
     return null // No logos to validate
   }
 
+  logger.debug('Validating logo URLs', { service: SERVICE, count: logos.length })
+
   for (let i = 0; i < logos.length; i++) {
     const logo = logos[i]
     if (!logo.url) continue
-    
+
     const result = validateImageUrl(logo.url)
     if (!result.valid) {
+      logger.warn('Logo URL validation failed', { service: SERVICE, logoIndex: i, error: result.error })
       return `Logo ${i + 1}: ${result.error}`
     }
   }
 
+  logger.debug('All logo URLs validated', { service: SERVICE, count: logos.length })
   return null
 }
 
@@ -159,15 +182,23 @@ export function validateSignatoryUrls(
     return null // No signatories to validate
   }
 
+  logger.debug('Validating signatory URLs', { service: SERVICE, count: signatories.length })
+
   for (let i = 0; i < signatories.length; i++) {
     const signatory = signatories[i]
     if (!signatory.signatureUrl) continue
-    
+
     const result = validateImageUrl(signatory.signatureUrl)
     if (!result.valid) {
+      logger.warn('Signatory URL validation failed', {
+        service: SERVICE,
+        signatoryName: signatory.name,
+        error: result.error
+      })
       return `Signatory "${signatory.name}" signature: ${result.error}`
     }
   }
 
+  logger.debug('All signatory URLs validated', { service: SERVICE, count: signatories.length })
   return null
 }

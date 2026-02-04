@@ -1,4 +1,7 @@
 import DOMPurify from 'isomorphic-dompurify'
+import { logger } from '../lib/logger'
+
+const SERVICE = 'template-compiler'
 
 /**
  * Escape HTML special characters to prevent XSS
@@ -249,27 +252,33 @@ function compileActionButton(props: Record<string, unknown>): string {
 function compileBlock(block: BlockInput, data: Record<string, string>, baseUrl: string): string {
   const { type, props } = block
 
-  switch (type) {
-    case 'header':
-      return compileHeader(props, baseUrl)
-    case 'text':
-      return compileText(props, data)
-    case 'image':
-      return compileImage(props, data, baseUrl)
-    case 'button':
-      return compileButton(props, data)
-    case 'divider':
-      return compileDivider(props)
-    case 'spacer':
-      return compileSpacer(props)
-    case 'columns':
-      return compileColumns(props)
-    case 'footer':
-      return compileFooter(props, data)
-    case 'action-button':
-      return compileActionButton(props)
-    default:
-      return ''
+  try {
+    switch (type) {
+      case 'header':
+        return compileHeader(props, baseUrl)
+      case 'text':
+        return compileText(props, data)
+      case 'image':
+        return compileImage(props, data, baseUrl)
+      case 'button':
+        return compileButton(props, data)
+      case 'divider':
+        return compileDivider(props)
+      case 'spacer':
+        return compileSpacer(props)
+      case 'columns':
+        return compileColumns(props)
+      case 'footer':
+        return compileFooter(props, data)
+      case 'action-button':
+        return compileActionButton(props)
+      default:
+        logger.warn('Unknown block type', { service: SERVICE, blockType: type, blockId: block.id })
+        return ''
+    }
+  } catch (error) {
+    logger.error('Failed to compile block', { service: SERVICE, blockType: type, blockId: block.id }, error as Error)
+    throw error
   }
 }
 
@@ -282,40 +291,57 @@ export function injectTracking(
   baseUrl: string,
   options: TrackingOptions
 ): string {
-  let result = html
-
-  // Inject open tracking pixel before </body>
-  if (options.openTracking) {
-    const pixel = `<img src="${baseUrl}/t/${trackingToken}/open.gif" width="1" height="1" style="display:block;width:1px;height:1px;border:0;" alt="" />`
-    result = result.replace('</body>', `${pixel}\n</body>`)
-  }
-
-  // Rewrite links for click tracking
-  if (options.clickTracking) {
-    let linkIndex = 0
-    result = result.replace(/<a\s+([^>]*?)href="([^"]+)"([^>]*)>/gi, (match, before, url, after) => {
-      // Skip mailto:, tel:, and # links
-      if (url.startsWith('mailto:') || url.startsWith('tel:') || url === '#') {
-        return match
-      }
-      
-      // Skip tracking URLs (don't double-track)
-      if (url.includes('/t/') && url.includes('/c/')) {
-        return match
-      }
-
-      const trackingUrl = `${baseUrl}/t/${trackingToken}/c/${linkIndex++}?url=${encodeURIComponent(url)}`
-      return `<a ${before}href="${trackingUrl}"${after}>`
-    })
-  }
-
-  // Handle action buttons with data attribute
-  const actionAttrRegex = /(<[^>]*data-action-button="true"[^>]*)href="[^"]*"/gi
-  result = result.replace(actionAttrRegex, (_match, prefix) => {
-    return `${prefix}href="${baseUrl}/t/${trackingToken}/action"`
+  logger.debug('Injecting tracking', {
+    service: SERVICE,
+    openTracking: options.openTracking,
+    clickTracking: options.clickTracking,
+    tokenLength: trackingToken.length
   })
 
-  return result
+  try {
+    let result = html
+    let linksRewritten = 0
+
+    // Inject open tracking pixel before </body>
+    if (options.openTracking) {
+      const pixel = `<img src="${baseUrl}/t/${trackingToken}/open.gif" width="1" height="1" style="display:block;width:1px;height:1px;border:0;" alt="" />`
+      result = result.replace('</body>', `${pixel}\n</body>`)
+      logger.debug('Open tracking pixel injected', { service: SERVICE })
+    }
+
+    // Rewrite links for click tracking
+    if (options.clickTracking) {
+      let linkIndex = 0
+      result = result.replace(/<a\s+([^>]*?)href="([^"]+)"([^>]*)>/gi, (match, before, url, after) => {
+        // Skip mailto:, tel:, and # links
+        if (url.startsWith('mailto:') || url.startsWith('tel:') || url === '#') {
+          return match
+        }
+
+        // Skip tracking URLs (don't double-track)
+        if (url.includes('/t/') && url.includes('/c/')) {
+          return match
+        }
+
+        linksRewritten++
+        const trackingUrl = `${baseUrl}/t/${trackingToken}/c/${linkIndex++}?url=${encodeURIComponent(url)}`
+        return `<a ${before}href="${trackingUrl}"${after}>`
+      })
+      logger.debug('Click tracking links rewritten', { service: SERVICE, linksRewritten })
+    }
+
+    // Handle action buttons with data attribute
+    const actionAttrRegex = /(<[^>]*data-action-button="true"[^>]*)href="[^"]*"/gi
+    result = result.replace(actionAttrRegex, (_match, prefix) => {
+      return `${prefix}href="${baseUrl}/t/${trackingToken}/action"`
+    })
+
+    logger.debug('Tracking injection complete', { service: SERVICE, linksRewritten })
+    return result
+  } catch (error) {
+    logger.error('Failed to inject tracking', { service: SERVICE }, error as Error)
+    throw error
+  }
 }
 
 /**
@@ -323,9 +349,24 @@ export function injectTracking(
  * @param baseUrl - Base URL for resolving relative media paths (e.g., https://mailer.example.com)
  */
 export function compileTemplate(blocks: BlockInput[], data: Record<string, string>, baseUrl: string = ''): string {
-  const bodyContent = blocks.map((block) => compileBlock(block, data, baseUrl)).join('')
+  const startTime = Date.now()
+  logger.debug('Compiling template', {
+    service: SERVICE,
+    blockCount: blocks.length,
+    variableCount: Object.keys(data).length
+  })
 
-  return `<!DOCTYPE html>
+  try {
+    const bodyContent = blocks.map((block) => compileBlock(block, data, baseUrl)).join('')
+
+    const durationMs = Date.now() - startTime
+    logger.info('Template compiled successfully', {
+      service: SERVICE,
+      blockCount: blocks.length,
+      durationMs
+    })
+
+    return `<!DOCTYPE html>
 <html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
 <head>
   <meta charset="UTF-8">
@@ -409,4 +450,8 @@ export function compileTemplate(blocks: BlockInput[], data: Record<string, strin
   </table>
 </body>
 </html>`
+  } catch (error) {
+    logger.error('Failed to compile template', { service: SERVICE, blockCount: blocks.length }, error as Error)
+    throw error
+  }
 }
