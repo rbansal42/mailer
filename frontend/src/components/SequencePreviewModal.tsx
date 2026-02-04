@@ -14,7 +14,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
-import { Loader2, ChevronDown, ChevronRight, Mail, Clock } from 'lucide-react'
+import { Loader2, ChevronDown, ChevronRight, Mail, Clock, Info } from 'lucide-react'
 import { sequences as sequencesApi, GenerateSequenceResponse, Block } from '@/lib/api'
 
 interface SequencePreviewModalProps {
@@ -122,6 +122,16 @@ export function SequencePreviewModal({
         <DialogHeader>
           <DialogTitle>Preview: {generatedSequence.name}</DialogTitle>
         </DialogHeader>
+
+        <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-md p-3 flex gap-2">
+          <Info className="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+          <div className="text-sm text-blue-700 dark:text-blue-300">
+            <p className="font-medium">Preview only</p>
+            <p className="text-blue-600 dark:text-blue-400">
+              This creates the sequence structure (subjects and timing). You'll add email content using the editor.
+            </p>
+          </div>
+        </div>
 
         <div className="flex-1 overflow-auto py-4 space-y-3">
           {generatedSequence.emails.map((email, index) => (
