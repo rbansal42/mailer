@@ -855,6 +855,26 @@ export interface SequenceListItem {
   updated_at: string
 }
 
+// Sequence generation types
+export interface GenerateSequenceRequest {
+  goal: string
+  emailCount: number
+  timing: 'daily' | 'every-few-days' | 'weekly'
+  tone: 'professional' | 'friendly' | 'casual'
+  additionalContext?: string
+}
+
+export interface GeneratedSequenceEmail {
+  subject: string
+  delayDays: number
+  blocks: Block[]
+}
+
+export interface GenerateSequenceResponse {
+  name: string
+  emails: GeneratedSequenceEmail[]
+}
+
 // Full sequences API
 export const sequences = {
   list: () => request<SequenceListItem[]>('/sequences'),
@@ -903,4 +923,10 @@ export const sequences = {
   
   deleteStep: (sequenceId: number, stepId: number) =>
     request<{ message: string }>(`/sequences/${sequenceId}/steps/${stepId}`, { method: 'DELETE' }),
+  
+  generate: (data: GenerateSequenceRequest) =>
+    request<GenerateSequenceResponse>('/sequences/generate', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
 }
