@@ -179,6 +179,17 @@ export type GoogleSheetsCredentials = z.infer<typeof googleSheetsCredentialsSche
 export type GoogleSheetsColumnMapping = z.infer<typeof googleSheetsColumnMappingSchema>
 export type GoogleSheetsSyncConfig = z.infer<typeof googleSheetsSyncConfigSchema>
 
+// Sequence generation schema
+export const generateSequenceSchema = z.object({
+  goal: z.string().min(10, 'Goal must be at least 10 characters').max(500, 'Goal must be under 500 characters'),
+  emailCount: z.number().int().min(3, 'Minimum 3 emails').max(7, 'Maximum 7 emails'),
+  timing: z.enum(['daily', 'every-few-days', 'weekly']),
+  tone: z.enum(['professional', 'friendly', 'casual']),
+  additionalContext: z.string().max(1000, 'Additional context must be under 1000 characters').optional(),
+})
+
+export type GenerateSequenceInput = z.infer<typeof generateSequenceSchema>
+
 // Validation helper
 export function validate<T>(schema: z.ZodSchema<T>, data: unknown): { success: true; data: T } | { success: false; error: string } {
   const result = schema.safeParse(data)

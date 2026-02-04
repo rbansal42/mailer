@@ -9,6 +9,7 @@
     "db:migrate": "bun run src/db/migrate.ts"
   },
   "dependencies": {
+    "@google/genai": "^1.39.0",
     "@libsql/client": "^0.17.0",
     "@react-pdf/font": "^4.0.4",
     "@react-pdf/renderer": "^4.3.2",

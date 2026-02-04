@@ -7,6 +7,8 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { SequenceBranchBuilder } from '@/components/SequenceBranchBuilder'
+import { GenerateSequenceDialog } from '@/components/GenerateSequenceDialog'
+import { SequencePreviewModal } from '@/components/SequencePreviewModal'
 import { 
   Plus, 
   Search, 
@@ -17,12 +19,14 @@ import {
   Pause,
   Users,
   Mail,
-  Download
+  Download,
+  Sparkles
 } from 'lucide-react'
 import { 
   Sequence, 
   SequenceStep,
   SequenceEnrollment,
+  GenerateSequenceResponse,
   getSequence, 
   getSequenceEnrollments,
   createBranchPoint,
@@ -34,6 +38,9 @@ export default function Sequences() {
   const [search, setSearch] = useState('')
   const [editingSequence, setEditingSequence] = useState<Sequence | null>(null)
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
+  const [generateDialogOpen, setGenerateDialogOpen] = useState(false)
+  const [previewModalOpen, setPreviewModalOpen] = useState(false)
+  const [generatedSequence, setGeneratedSequence] = useState<GenerateSequenceResponse | null>(null)
   
   const { data: sequencesList, isLoading } = useQuery({
     queryKey: ['sequences'],
@@ -55,6 +62,18 @@ export default function Sequences() {
     }
   }
 
+  const handleSequenceGenerated = (result: GenerateSequenceResponse) => {
+    setGeneratedSequence(result)
+    setGenerateDialogOpen(false)
+    setPreviewModalOpen(true)
+  }
+
+  const handleSequenceCreated = (id: number) => {
+    setPreviewModalOpen(false)
+    setGeneratedSequence(null)
+    handleEditSequence(id)
+  }
+
   if (editingSequence) {
     return (
       <SequenceEditor
@@ -72,10 +91,16 @@ export default function Sequences() {
     <div className="p-4">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-xl font-semibold">Sequences</h1>
-        <Button size="sm" onClick={() => setCreateDialogOpen(true)}>
-          <Plus className="h-4 w-4 mr-1" />
-          New Sequence
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setGenerateDialogOpen(true)}>
+            <Sparkles className="h-4 w-4 mr-1" />
+            AI Generate
+          </Button>
+          <Button size="sm" onClick={() => setCreateDialogOpen(true)}>
+            <Plus className="h-4 w-4 mr-1" />
+            New Sequence
+          </Button>
+        </div>
       </div>
 
       <div className="relative mb-4">
@@ -120,6 +145,19 @@ export default function Sequences() {
         open={createDialogOpen}
         onOpenChange={setCreateDialogOpen}
         onCreated={(id) => handleEditSequence(id)}
+      />
+
+      <GenerateSequenceDialog
+        open={generateDialogOpen}
+        onOpenChange={setGenerateDialogOpen}
+        onGenerated={handleSequenceGenerated}
+      />
+
+      <SequencePreviewModal
+        open={previewModalOpen}
+        onOpenChange={setPreviewModalOpen}
+        generatedSequence={generatedSequence}
+        onCreated={handleSequenceCreated}
       />
     </div>
   )

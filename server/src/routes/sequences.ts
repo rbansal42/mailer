@@ -2,6 +2,8 @@ import { Router } from 'express'
 import { queryAll, queryOne, execute } from '../db'
 import { logger } from '../lib/logger'
 import { enrollRecipient, pauseEnrollment, cancelEnrollment, resumeEnrollment } from '../services/sequence-processor'
+import { generateSequence } from '../services/gemini'
+import { generateSequenceSchema, validate } from '../lib/validation'
 
 export const sequencesRouter = Router()
 
@@ -493,5 +495,40 @@ sequencesRouter.get('/:id/actions/export', async (req, res) => {
   } catch (error) {
     logger.error('Failed to export actions', { service: 'sequences' }, error as Error)
     res.status(500).json({ error: 'Failed to export actions' })
+  }
+})
+
+// POST /generate - Generate sequence with AI
+sequencesRouter.post('/generate', async (req, res) => {
+  try {
+    const validation = validate(generateSequenceSchema, req.body)
+    if (!validation.success) {
+      res.status(400).json({ error: validation.error })
+      return
+    }
+
+    const result = await generateSequence(validation.data)
+    
+    logger.info('Generated sequence via AI', { 
+      service: 'sequences', 
+      emailCount: result.emails.length 
+    })
+
+    res.json(result)
+  } catch (error) {
+    const err = error as Error
+    logger.error('Failed to generate sequence', { service: 'sequences' }, err)
+    
+    // Provide user-friendly error messages
+    if (err.message.includes('exhausted') || err.message.includes('rate')) {
+      res.status(429).json({ error: 'Service is busy. Please try again in a moment.' })
+      return
+    }
+    if (err.message.includes('JSON') || err.message.includes('parse') || err.message.includes('Invalid response')) {
+      res.status(500).json({ error: "Couldn't generate a valid sequence. Please try again." })
+      return
+    }
+    
+    res.status(500).json({ error: 'Failed to generate sequence' })
   }
 })
