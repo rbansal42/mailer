@@ -20,6 +20,8 @@ interface SequenceStep {
   delay_days: number
   delay_hours: number
   send_time: string | null
+  branch_id: string | null
+  branch_order: number | null
 }
 
 interface Enrollment {
@@ -30,6 +32,9 @@ interface Enrollment {
   current_step: number
   status: string
   next_send_at: string | null
+  branch_id: string | null
+  action_clicked_at: string | null
+  branch_switched_at: string | null
 }
 
 interface TemplateRow {
@@ -164,15 +169,87 @@ export async function processSequenceSteps(): Promise<number> {
 }
 
 /**
+ * Switch enrollment to action branch when action is clicked
+ */
+async function switchToBranch(enrollment: Enrollment): Promise<void> {
+  const now = new Date().toISOString()
+  
+  // Find first step in the 'action' branch
+  const actionBranchStep = await queryOne<SequenceStep>(
+    `SELECT * FROM sequence_steps 
+     WHERE sequence_id = ? AND branch_id = 'action' 
+     ORDER BY branch_order ASC, step_order ASC 
+     LIMIT 1`,
+    [enrollment.sequence_id]
+  )
+
+  if (!actionBranchStep) {
+    // No action branch defined, just mark as switched but stay on current path
+    await execute(
+      `UPDATE sequence_enrollments SET branch_switched_at = ? WHERE id = ?`,
+      [now, enrollment.id]
+    )
+    return
+  }
+
+  const nextSendAt = calculateNextSendAt(actionBranchStep)
+
+  // Update enrollment to action branch
+  await execute(
+    `UPDATE sequence_enrollments 
+     SET branch_id = 'action', 
+         branch_switched_at = ?,
+         current_step = ?,
+         next_send_at = ?
+     WHERE id = ?`,
+    [now, actionBranchStep.step_order, nextSendAt, enrollment.id]
+  )
+
+  logger.info('Enrollment switched to action branch', {
+    service: 'sequence-processor',
+    enrollmentId: enrollment.id
+  })
+}
+
+/**
  * Process a single enrollment step
  */
 async function processEnrollmentStep(enrollment: Enrollment & { sequence_name: string }): Promise<void> {
+  // Check if action was clicked and we need to switch branches
+  if (enrollment.action_clicked_at && !enrollment.branch_switched_at) {
+    await switchToBranch(enrollment)
+    // Re-fetch enrollment after branch switch
+    const updated = await queryOne<Enrollment & { sequence_name: string }>(
+      `SELECT e.*, s.name as sequence_name
+       FROM sequence_enrollments e
+       JOIN sequences s ON e.sequence_id = s.id
+       WHERE e.id = ?`,
+      [enrollment.id]
+    )
+    if (updated) {
+      enrollment = updated
+    }
+  }
+
+  // Determine branch filter for step queries
+  const branchId = enrollment.branch_id
+
   // Get current step
-  const step = await queryOne<SequenceStep>(
-    `SELECT * FROM sequence_steps 
-     WHERE sequence_id = ? AND step_order = ?`,
-    [enrollment.sequence_id, enrollment.current_step]
-  )
+  let step: SequenceStep | null
+  if (branchId) {
+    step = await queryOne<SequenceStep>(
+      `SELECT * FROM sequence_steps 
+       WHERE sequence_id = ? AND step_order = ? AND branch_id = ?`,
+      [enrollment.sequence_id, enrollment.current_step, branchId]
+    )
+  } else {
+    step = await queryOne<SequenceStep>(
+      `SELECT * FROM sequence_steps 
+       WHERE sequence_id = ? AND step_order = ? 
+       AND (branch_id IS NULL OR branch_id = '')`,
+      [enrollment.sequence_id, enrollment.current_step]
+    )
+  }
 
   if (!step) {
     // No more steps, complete the enrollment
@@ -245,12 +322,26 @@ async function processEnrollmentStep(enrollment: Enrollment & { sequence_name: s
       recipient: enrollment.recipient_email
     })
 
-    // Advance to next step
-    const nextStep = await queryOne<SequenceStep>(
-      `SELECT * FROM sequence_steps 
-       WHERE sequence_id = ? AND step_order = ?`,
-      [enrollment.sequence_id, enrollment.current_step + 1]
-    )
+    // Advance to next step in same branch
+    let nextStep: SequenceStep | null
+    if (branchId) {
+      nextStep = await queryOne<SequenceStep>(
+        `SELECT * FROM sequence_steps 
+         WHERE sequence_id = ? AND step_order > ? AND branch_id = ?
+         ORDER BY step_order ASC 
+         LIMIT 1`,
+        [enrollment.sequence_id, enrollment.current_step, branchId]
+      )
+    } else {
+      nextStep = await queryOne<SequenceStep>(
+        `SELECT * FROM sequence_steps 
+         WHERE sequence_id = ? AND step_order > ? 
+         AND (branch_id IS NULL OR branch_id = '')
+         ORDER BY step_order ASC 
+         LIMIT 1`,
+        [enrollment.sequence_id, enrollment.current_step]
+      )
+    }
 
     if (nextStep) {
       const nextSendAt = calculateNextSendAt(nextStep)
