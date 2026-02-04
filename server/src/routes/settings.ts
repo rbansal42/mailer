@@ -34,10 +34,10 @@ settingsRouter.put('/', async (req: Request, res: Response) => {
     const { testEmail, timezone } = req.body
 
     if (testEmail !== undefined) {
-      await execute('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', ['test_email', testEmail])
+      await execute('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value', ['test_email', testEmail])
     }
     if (timezone !== undefined) {
-      await execute('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', ['timezone', timezone])
+      await execute('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value', ['timezone', timezone])
     }
 
     // Return updated settings
@@ -88,7 +88,7 @@ settingsRouter.put('/tracking', async (req: Request, res: Response) => {
     const { enabled, baseUrl, openEnabled, clickEnabled, hashIps, retentionDays } = req.body
 
     if (enabled !== undefined) {
-      await execute('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', ['tracking_enabled', String(enabled)])
+      await execute('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value', ['tracking_enabled', String(enabled)])
     }
     if (baseUrl !== undefined) {
       // Validate baseUrl is a valid URL
@@ -102,19 +102,19 @@ settingsRouter.put('/tracking', async (req: Request, res: Response) => {
         res.status(400).json({ error: 'Invalid base URL format' })
         return
       }
-      await execute('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', ['tracking_base_url', baseUrl])
+      await execute('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value', ['tracking_base_url', baseUrl])
     }
     if (openEnabled !== undefined) {
-      await execute('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', ['tracking_open_enabled', String(openEnabled)])
+      await execute('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value', ['tracking_open_enabled', String(openEnabled)])
     }
     if (clickEnabled !== undefined) {
-      await execute('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', ['tracking_click_enabled', String(clickEnabled)])
+      await execute('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value', ['tracking_click_enabled', String(clickEnabled)])
     }
     if (hashIps !== undefined) {
-      await execute('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', ['tracking_hash_ips', String(hashIps)])
+      await execute('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value', ['tracking_hash_ips', String(hashIps)])
     }
     if (retentionDays !== undefined) {
-      await execute('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', ['tracking_retention_days', String(retentionDays)])
+      await execute('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value', ['tracking_retention_days', String(retentionDays)])
     }
 
     // Return updated settings (reuse GET logic)
@@ -257,7 +257,7 @@ settingsRouter.put('/llm/provider', async (req: Request, res: Response) => {
     }
     
     // Save
-    await execute('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', ['llm_providers', JSON.stringify(providers)])
+    await execute('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value', ['llm_providers', JSON.stringify(providers)])
     
     logger.info('Updated LLM provider', { service: 'settings', key: 'llm', providerId: id })
     res.json({ success: true })
@@ -278,7 +278,7 @@ settingsRouter.put('/llm/active', async (req: Request, res: Response) => {
     }
     
     if (provider) {
-      await execute('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', ['llm_active_provider', provider])
+      await execute('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value', ['llm_active_provider', provider])
     } else {
       await execute('DELETE FROM settings WHERE key = ?', ['llm_active_provider'])
     }

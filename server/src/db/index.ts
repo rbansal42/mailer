@@ -3,7 +3,7 @@ import { join } from 'path'
 import { logger } from '../lib/logger'
 
 // Re-export client functions for external use
-export { db, queryAll, queryOne, execute, checkDatabaseHealth, DATA_DIR } from './client'
+export { db, sql, queryAll, queryOne, execute, checkDatabaseHealth, safeJsonParse, DATA_DIR } from './client'
 
 // Import initialization functions
 import { createTables, createIndexes, initializeSettings } from './schema'

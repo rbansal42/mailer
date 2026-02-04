@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { queryAll, queryOne, execute } from '../db'
+import { queryAll, queryOne, execute, safeJsonParse } from '../db'
 import { createDraftSchema, updateDraftSchema, validate } from '../lib/validation'
 import { logger } from '../lib/logger'
 
@@ -31,11 +31,11 @@ function formatDraft(row: DraftRow) {
     listId: row.list_id,
     subject: row.subject,
     testEmail: row.test_email,
-    recipients: JSON.parse(row.recipients || '[]'),
+    recipients: safeJsonParse(row.recipients, []),
     recipientsText: row.recipients_text || '',
-    variables: JSON.parse(row.variables || '{}'),
-    cc: JSON.parse(row.cc || '[]'),
-    bcc: JSON.parse(row.bcc || '[]'),
+    variables: safeJsonParse(row.variables, {}),
+    cc: safeJsonParse(row.cc, []),
+    bcc: safeJsonParse(row.bcc, []),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
@@ -113,7 +113,7 @@ draftsRouter.post('/', async (req, res) => {
   try {
 
     const result = await execute(
-      'INSERT INTO drafts (name, template_id, mail_id, list_id, subject, test_email, recipients, recipients_text, variables, cc, bcc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO drafts (name, template_id, mail_id, list_id, subject, test_email, recipients, recipients_text, variables, cc, bcc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id',
       [
         name,
         templateId ?? null,
@@ -244,7 +244,7 @@ draftsRouter.post('/:id/duplicate', async (req, res) => {
 
     const result = await execute(
       `INSERT INTO drafts (name, template_id, mail_id, list_id, subject, test_email, recipients, recipients_text, variables, cc, bcc)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
       [
         newName,
         original.template_id ?? null,

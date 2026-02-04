@@ -1,6 +1,6 @@
 // server/src/routes/integrations/google-sheets.ts
 import { Router, Request, Response } from 'express'
-import { queryOne, queryAll, execute } from '../../db'
+import { queryOne, queryAll, execute, safeJsonParse } from '../../db'
 import { logger } from '../../lib/logger'
 import {
   validate,
@@ -40,7 +40,7 @@ interface SyncRow {
   spreadsheet_name: string | null
   sheet_range: string | null
   column_mapping: string
-  auto_sync: number
+  auto_sync: boolean
   sync_frequency: string
   last_synced_at: string | null
   last_sync_count: number
@@ -275,6 +275,7 @@ router.post('/lists/:listId/sync', async (req: Request, res: Response) => {
           `
           INSERT INTO contacts (email, name, first_name, last_name, company, phone, country, custom_fields)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          RETURNING id
         `,
           [
             contact.email,
@@ -296,7 +297,7 @@ router.post('/lists/:listId/sync', async (req: Request, res: Response) => {
         await execute('INSERT INTO list_contacts (list_id, contact_id) VALUES (?, ?)', [listId, contactId])
         added++
       } catch (e: any) {
-        if (!e.message?.includes('UNIQUE constraint')) {
+        if ((e as any).code !== '23505') {
           throw e
         }
       }
@@ -309,13 +310,13 @@ router.post('/lists/:listId/sync', async (req: Request, res: Response) => {
         (list_id, spreadsheet_id, spreadsheet_name, sheet_range, column_mapping, auto_sync, sync_frequency, last_synced_at, last_sync_count, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, CURRENT_TIMESTAMP)
       ON CONFLICT(list_id, spreadsheet_id) DO UPDATE SET
-        spreadsheet_name = excluded.spreadsheet_name,
-        sheet_range = excluded.sheet_range,
-        column_mapping = excluded.column_mapping,
-        auto_sync = excluded.auto_sync,
-        sync_frequency = excluded.sync_frequency,
+        spreadsheet_name = EXCLUDED.spreadsheet_name,
+        sheet_range = EXCLUDED.sheet_range,
+        column_mapping = EXCLUDED.column_mapping,
+        auto_sync = EXCLUDED.auto_sync,
+        sync_frequency = EXCLUDED.sync_frequency,
         last_synced_at = CURRENT_TIMESTAMP,
-        last_sync_count = excluded.last_sync_count,
+        last_sync_count = EXCLUDED.last_sync_count,
         last_sync_error = NULL,
         updated_at = CURRENT_TIMESTAMP
     `,
@@ -325,7 +326,7 @@ router.post('/lists/:listId/sync', async (req: Request, res: Response) => {
         sheetData.spreadsheetTitle,
         sheetRange || null,
         JSON.stringify(columnMapping),
-        autoSync ? 1 : 0,
+        autoSync,
         syncFrequency,
         contacts.length,
       ]
@@ -388,8 +389,8 @@ router.get('/lists/:listId/syncs', async (req: Request, res: Response) => {
     res.json(
       syncs.map((sync) => ({
         ...sync,
-        column_mapping: JSON.parse(sync.column_mapping),
-        auto_sync: Boolean(sync.auto_sync),
+        column_mapping: safeJsonParse(sync.column_mapping, {}),
+        auto_sync: sync.auto_sync,
       }))
     )
   } catch (error) {
@@ -444,7 +445,7 @@ router.post('/lists/:listId/syncs/:syncId/run', async (req: Request, res: Respon
       })
     }
 
-    const columnMapping = JSON.parse(sync.column_mapping) as ColumnMapping
+    const columnMapping = safeJsonParse(sync.column_mapping, {}) as ColumnMapping
     const contacts = mapRowsToContacts(sheetData.rows, sheetData.headers, columnMapping)
 
     if (contacts.length === 0) {
@@ -497,6 +498,7 @@ router.post('/lists/:listId/syncs/:syncId/run', async (req: Request, res: Respon
           `
           INSERT INTO contacts (email, name, first_name, last_name, company, phone, country, custom_fields)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          RETURNING id
         `,
           [
             contact.email,
@@ -517,7 +519,7 @@ router.post('/lists/:listId/syncs/:syncId/run', async (req: Request, res: Respon
         await execute('INSERT INTO list_contacts (list_id, contact_id) VALUES (?, ?)', [listId, contactId])
         added++
       } catch (e: any) {
-        if (!e.message?.includes('UNIQUE constraint')) {
+        if ((e as any).code !== '23505') {
           throw e
         }
       }

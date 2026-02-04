@@ -1,4 +1,4 @@
-import { queryAll, queryOne, execute } from '../db'
+import { queryAll, queryOne, execute, safeJsonParse } from '../db'
 import { logger } from '../lib/logger'
 import { compileTemplate, replaceVariables, injectTracking } from './template-compiler'
 import { getNextAvailableAccount, incrementSendCount } from './account-manager'
@@ -16,7 +16,7 @@ interface RecurringCampaign {
   timezone: string
   cc: string
   bcc: string
-  enabled: number
+  enabled: boolean
   last_run_at: string | null
   next_run_at: string | null
 }
@@ -120,7 +120,7 @@ export async function fetchRecipients(source: string, data: string | null): Prom
     case 'api':
       // Fetch from API endpoint
       try {
-        const config = JSON.parse(data) as { url: string; method?: string; headers?: Record<string, string> }
+        const config = safeJsonParse<{ url: string; method?: string; headers?: Record<string, string> }>(data, { url: '' })
         const response = await fetch(config.url, {
           method: config.method || 'GET',
           headers: config.headers || {},
@@ -170,7 +170,7 @@ export async function processRecurringCampaigns(): Promise<number> {
   // Find due recurring campaigns
   const dueCampaigns = await queryAll<RecurringCampaign>(
     `SELECT * FROM recurring_campaigns 
-     WHERE enabled = 1 AND next_run_at <= ?`,
+     WHERE enabled = true AND next_run_at <= ?`,
     [now]
   )
 
@@ -236,27 +236,28 @@ async function runRecurringCampaign(campaign: RecurringCampaign): Promise<void> 
     const template = await queryOne<TemplateRow>('SELECT id, blocks FROM templates WHERE id = ?', [campaign.template_id])
 
     if (template) {
-      templateBlocks = JSON.parse(template.blocks) as BlockInput[]
+      templateBlocks = safeJsonParse(template.blocks, []) as BlockInput[]
     }
   }
 
   // Create a regular campaign record for tracking
   const result = await execute(
     `INSERT INTO campaigns (name, template_id, subject, total_recipients, cc, bcc, status, started_at)
-     VALUES (?, ?, ?, ?, ?, ?, 'sending', CURRENT_TIMESTAMP)`,
+     VALUES (?, ?, ?, ?, ?, ?, 'sending', CURRENT_TIMESTAMP)
+     RETURNING id`,
     [
       `${campaign.name} - ${new Date().toLocaleDateString()}`,
       campaign.template_id,
       campaign.subject,
       recipients.length,
-      campaign.cc,
-      campaign.bcc,
+      campaign.cc ? JSON.stringify(campaign.cc) : '[]',
+      campaign.bcc ? JSON.stringify(campaign.bcc) : '[]',
     ]
   )
   const campaignId = Number(result.lastInsertRowid)
 
-  const cc = JSON.parse(campaign.cc || '[]') as string[]
-  const bcc = JSON.parse(campaign.bcc || '[]') as string[]
+  const cc = safeJsonParse(campaign.cc, []) as string[]
+  const bcc = safeJsonParse(campaign.bcc, []) as string[]
   const trackingSettings = await getTrackingSettings()
 
   // Send to each recipient

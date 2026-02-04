@@ -1,7 +1,7 @@
 import { Router } from "express";
 import multer from "multer";
 import sharp from "sharp";
-import { queryAll, queryOne, execute } from "../db";
+import { queryAll, queryOne, execute, safeJsonParse } from "../db";
 import { nanoid } from "nanoid";
 import { join } from "path";
 import { existsSync, mkdirSync, unlinkSync } from "fs";
@@ -176,7 +176,7 @@ router.get("/:id/usage", async (req, res) => {
   
   const usage = templates.filter((t) => {
     try {
-      const blocks = JSON.parse(t.blocks);
+      const blocks = safeJsonParse(t.blocks, []);
       return blocks.some((b: any) => 
         b.props?.url === media.url || b.props?.imageUrl === media.url
       );

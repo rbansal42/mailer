@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { queryAll, queryOne, execute } from '../../db'
+import { queryAll, queryOne, execute, safeJsonParse } from '../../db'
 import { createListSchema, updateListSchema } from '../../lib/validation'
 import { logger } from '../../lib/logger'
 
@@ -20,7 +20,7 @@ router.get('/', async (req, res) => {
     const lists = await queryAll<ListRow>(`
       SELECT 
         l.*,
-        COUNT(lc.contact_id) as contact_count
+        COUNT(lc.contact_id)::integer as contact_count
       FROM lists l
       LEFT JOIN list_contacts lc ON l.id = lc.list_id
       GROUP BY l.id
@@ -40,7 +40,7 @@ router.post('/', async (req, res) => {
     const data = createListSchema.parse(req.body)
     
     const result = await execute(
-      'INSERT INTO lists (name, description) VALUES (?, ?)',
+      'INSERT INTO lists (name, description) VALUES (?, ?) RETURNING id',
       [data.name, data.description ?? null]
     )
     
@@ -62,7 +62,7 @@ router.get('/:id', async (req, res) => {
     const list = await queryOne<ListRow>(`
       SELECT 
         l.*,
-        COUNT(lc.contact_id) as contact_count
+        COUNT(lc.contact_id)::integer as contact_count
       FROM lists l
       LEFT JOIN list_contacts lc ON l.id = lc.list_id
       WHERE l.id = ?
@@ -254,6 +254,7 @@ router.post('/:id/import', async (req, res) => {
         const result = await execute(`
           INSERT INTO contacts (email, name, first_name, last_name, company, phone, country, custom_fields)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          RETURNING id
         `, [
           email,
           contactData.name || null,
@@ -273,7 +274,7 @@ router.post('/:id/import', async (req, res) => {
         await execute('INSERT INTO list_contacts (list_id, contact_id) VALUES (?, ?)', [req.params.id, contactId])
         added++
       } catch (e: any) {
-        if (!e.message?.includes('UNIQUE constraint')) throw e
+        if ((e as any).code !== '23505') throw e
       }
     }
     
@@ -322,7 +323,7 @@ router.get('/:id/export', async (req, res) => {
     // Collect all custom field keys
     const customFieldKeys = new Set<string>()
     for (const contact of contacts) {
-      const cf = JSON.parse(contact.custom_fields || '{}')
+      const cf = safeJsonParse(contact.custom_fields, {} as Record<string, string>)
       Object.keys(cf).forEach(k => customFieldKeys.add(k))
     }
     
@@ -331,7 +332,7 @@ router.get('/:id/export', async (req, res) => {
     const headers = [...standardHeaders, ...Array.from(customFieldKeys)]
     
     const rows = contacts.map(c => {
-      const cf = JSON.parse(c.custom_fields || '{}')
+      const cf = safeJsonParse(c.custom_fields, {} as Record<string, string>)
       return headers.map(h => {
         if (standardHeaders.includes(h)) {
           return (c as any)[h] || ''

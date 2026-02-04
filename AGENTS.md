@@ -10,7 +10,7 @@ Mailer is a self-hosted email campaign management system with certificate genera
 
 - **Runtime**: Bun (NOT npm/node)
 - **Frontend**: React + Vite + TypeScript + TailwindCSS + shadcn/ui
-- **Backend**: Express + TypeScript + Turso/libSQL (via @libsql/client)
+- **Backend**: Express + TypeScript + PostgreSQL (via Bun's native SQL)
 - **PDF Generation**: @react-pdf/renderer
 
 ## Commands
@@ -43,7 +43,7 @@ mailer/
 │   │   ├── services/   # Business logic
 │   │   └── lib/        # Utilities
 │   └── package.json
-├── data/               # SQLite DB, attachments, certificates
+├── data/               # Attachments, certificates
 └── package.json        # Root workspace config
 ```
 
@@ -64,7 +64,7 @@ Located in `server/src/services/pdf/templates/`:
 
 ## Database Schema
 
-Key tables in `server/src/db/index.ts`:
+Key tables defined in `server/src/db/` (PostgreSQL schema managed via migrations):
 
 - **templates** - Reusable email templates (starter designs)
   - `is_default` - Built-in templates flag
@@ -90,9 +90,8 @@ Key tables in `server/src/db/index.ts`:
 All config is in `.env` at project root (see `.env.example`):
 
 ```bash
-# Database (Turso)
-TURSO_DATABASE_URL=libsql://your-db.turso.io
-TURSO_AUTH_TOKEN=eyJ...
+# Database (PostgreSQL)
+DATABASE_URL=postgres://user:password@localhost:5432/mailer
 
 # Public URL (for media in emails and tracking)
 BASE_URL=https://mailer.example.com
@@ -111,17 +110,17 @@ PORT=3342
 
 4. **Rich text in blocks**: Text blocks use HTML content (TipTap editor). Preview must use `dangerouslySetInnerHTML` with DOMPurify sanitization.
 
-5. **libsql requires null, not undefined**: The `@libsql/client` throws errors if you pass `undefined` as a query parameter. Always use `?? null` for optional values:
+5. **Use null, not undefined for query parameters**: PostgreSQL does not accept `undefined` as a query parameter. Always use `?? null` for optional values:
    ```typescript
    // WRONG - will throw if description is undefined
-   await execute('INSERT INTO mails (name, description) VALUES (?, ?)', [name, description])
+   await sql`INSERT INTO mails (name, description) VALUES (${name}, ${description})`
    
    // CORRECT - converts undefined to null
-   await execute('INSERT INTO mails (name, description) VALUES (?, ?)', [name, description ?? null])
+   await sql`INSERT INTO mails (name, description) VALUES (${name}, ${description ?? null})`
    ```
 
 6. **Database migrations for new columns**: When adding new fields to a feature, remember to:
-   - Add `addColumnIfNotExists()` call in `server/src/db/index.ts`
+   - Add a migration in `server/src/db/migrations/`
    - Update the row interface and `formatX()` function in the route
    - Update validation schema in `server/src/lib/validation.ts`
    - Update frontend TypeScript interface in `frontend/src/lib/api.ts`

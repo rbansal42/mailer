@@ -3,7 +3,7 @@ import { logger } from '../../lib/logger'
 
 export async function seedDefaultTemplates(): Promise<void> {
   // Check if default templates already exist
-  const existing = await queryOne<{ count: number }>('SELECT COUNT(*) as count FROM templates WHERE is_default = 1')
+  const existing = await queryOne<{ count: number }>('SELECT COUNT(*)::integer as count FROM templates WHERE is_default = true')
   if (existing && existing.count > 0) {
     return // Already seeded
   }
@@ -292,7 +292,7 @@ export async function seedDefaultTemplates(): Promise<void> {
 
   for (const template of defaultTemplates) {
     await execute(
-      'INSERT INTO templates (name, description, blocks, is_default) VALUES (?, ?, ?, 1)',
+      'INSERT INTO templates (name, description, blocks, is_default) VALUES (?, ?, ?, true)',
       [template.name, template.description, JSON.stringify(template.blocks)]
     )
   }

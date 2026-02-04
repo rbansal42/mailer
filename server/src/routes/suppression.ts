@@ -35,14 +35,14 @@ suppressionRouter.get('/', async (req: Request, res: Response) => {
     const queryParams: (string | number)[] = []
     
     if (search) {
-      whereClause = 'WHERE email LIKE ?'
+      whereClause = 'WHERE email ILIKE ?'
       const searchPattern = `%${search}%`
       countParams.push(searchPattern)
       queryParams.push(searchPattern)
     }
     
     const countResult = await queryOne<{ count: number }>(
-      `SELECT COUNT(*) as count FROM suppression_list ${whereClause}`,
+      `SELECT COUNT(*)::integer as count FROM suppression_list ${whereClause}`,
       countParams
     )
     
@@ -93,7 +93,7 @@ suppressionRouter.post('/', async (req: Request, res: Response) => {
     )
     res.status(201).json({ success: true })
   } catch (error: any) {
-    if (error.message?.includes('UNIQUE constraint')) {
+    if ((error as any).code === '23505') {
       res.status(409).json({ error: 'Email already suppressed' })
       return
     }

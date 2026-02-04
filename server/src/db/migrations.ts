@@ -36,7 +36,8 @@ const VALID_TABLES = new Set([
 ])
 
 // Migration helper - add columns if they don't exist
-async function addColumnIfNotExists(table: string, column: string, type: string, defaultValue: string) {
+// PostgreSQL 9.6+ supports ADD COLUMN IF NOT EXISTS natively
+async function addColumnIfNotExists(table: string, column: string, type: string, defaultValue?: string) {
   // Validate table name against whitelist to prevent SQL injection
   if (!VALID_TABLES.has(table)) {
     throw new Error(`Invalid table name: ${table}`)
@@ -47,38 +48,34 @@ async function addColumnIfNotExists(table: string, column: string, type: string,
     throw new Error(`Invalid column name: ${column}`)
   }
 
-  try {
-    const columns = await queryAll<any>(`PRAGMA table_info(${table})`)
-    if (!columns.find(c => c.name === column)) {
-      await execute(`ALTER TABLE ${table} ADD COLUMN ${column} ${type} DEFAULT '${defaultValue}'`)
-    }
-  } catch (e) {
-    // Column might already exist or table doesn't exist
-  }
+  const defaultClause = defaultValue !== undefined && defaultValue !== ''
+    ? ` DEFAULT ${defaultValue}`
+    : ''
+  await execute(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${column} ${type}${defaultClause}`)
 }
 
 // Run column migrations - add new columns to existing tables
 export async function runColumnMigrations() {
-  await addColumnIfNotExists('drafts', 'cc', 'TEXT', '[]')
-  await addColumnIfNotExists('drafts', 'bcc', 'TEXT', '[]')
-  await addColumnIfNotExists('drafts', 'mail_id', 'INTEGER', '')
-  await addColumnIfNotExists('drafts', 'list_id', 'INTEGER', '')
-  await addColumnIfNotExists('drafts', 'test_email', 'TEXT', '')
-  await addColumnIfNotExists('drafts', 'recipients_text', 'TEXT', '')
-  await addColumnIfNotExists('campaigns', 'cc', 'TEXT', '[]')
-  await addColumnIfNotExists('campaigns', 'bcc', 'TEXT', '[]')
-  await addColumnIfNotExists('campaigns', 'scheduled_for', 'DATETIME', '')
-  await addColumnIfNotExists('campaigns', 'status', 'TEXT', 'draft')
-  await addColumnIfNotExists('send_logs', 'retry_count', 'INTEGER', '0')
-  await addColumnIfNotExists('sender_accounts', 'circuit_breaker_until', 'DATETIME', '')
+  await addColumnIfNotExists('drafts', 'cc', 'JSONB', "'[]'::jsonb")
+  await addColumnIfNotExists('drafts', 'bcc', 'JSONB', "'[]'::jsonb")
+  await addColumnIfNotExists('drafts', 'mail_id', 'INTEGER')
+  await addColumnIfNotExists('drafts', 'list_id', 'INTEGER')
+  await addColumnIfNotExists('drafts', 'test_email', 'TEXT')
+  await addColumnIfNotExists('drafts', 'recipients_text', 'TEXT')
+  await addColumnIfNotExists('campaigns', 'cc', 'JSONB', "'[]'::jsonb")
+  await addColumnIfNotExists('campaigns', 'bcc', 'JSONB', "'[]'::jsonb")
+  await addColumnIfNotExists('campaigns', 'scheduled_for', 'TIMESTAMPTZ')
+  await addColumnIfNotExists('campaigns', 'status', 'TEXT', "'draft'")
+  await addColumnIfNotExists('send_logs', 'retry_count', 'INTEGER', '1')
+  await addColumnIfNotExists('sender_accounts', 'circuit_breaker_until', 'TIMESTAMPTZ')
 
   // Sequence branching columns
-  await addColumnIfNotExists('sequence_steps', 'branch_id', 'TEXT', '')
-  await addColumnIfNotExists('sequence_steps', 'is_branch_point', 'INTEGER', '0')
-  await addColumnIfNotExists('sequence_steps', 'branch_order', 'INTEGER', '')
-  await addColumnIfNotExists('sequence_enrollments', 'branch_id', 'TEXT', '')
-  await addColumnIfNotExists('sequence_enrollments', 'action_clicked_at', 'TEXT', '')
-  await addColumnIfNotExists('sequence_enrollments', 'branch_switched_at', 'TEXT', '')
+  await addColumnIfNotExists('sequence_steps', 'branch_id', 'TEXT')
+  await addColumnIfNotExists('sequence_steps', 'is_branch_point', 'BOOLEAN', 'false')
+  await addColumnIfNotExists('sequence_steps', 'branch_order', 'INTEGER')
+  await addColumnIfNotExists('sequence_enrollments', 'branch_id', 'TEXT')
+  await addColumnIfNotExists('sequence_enrollments', 'action_clicked_at', 'TIMESTAMPTZ')
+  await addColumnIfNotExists('sequence_enrollments', 'branch_switched_at', 'TIMESTAMPTZ')
   await addColumnIfNotExists('sequences', 'branch_delay_hours', 'INTEGER', '0')
 }
 
@@ -88,7 +85,7 @@ export async function runSqlMigrations() {
   await execute(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       filename TEXT PRIMARY KEY,
-      applied_at TEXT DEFAULT CURRENT_TIMESTAMP
+      applied_at TIMESTAMPTZ DEFAULT NOW()
     )
   `)
 

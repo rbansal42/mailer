@@ -3,7 +3,7 @@ import { logger } from '../../lib/logger'
 
 export async function seedStarterTemplates(): Promise<void> {
   // Check if templates already exist
-  const count = await queryOne<{ count: number }>('SELECT COUNT(*) as count FROM templates')
+  const count = await queryOne<{ count: number }>('SELECT COUNT(*)::integer as count FROM templates')
 
   if (count && count.count > 0) {
     return // Templates already exist, skip seeding

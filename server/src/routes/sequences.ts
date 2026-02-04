@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import rateLimit from 'express-rate-limit'
-import { queryAll, queryOne, execute } from '../db'
+import { queryAll, queryOne, execute, safeJsonParse } from '../db'
 import { logger } from '../lib/logger'
 import { enrollRecipient, pauseEnrollment, cancelEnrollment, resumeEnrollment } from '../services/sequence-processor'
 import { generateSequence, getLLMSettings } from '../services/llm'
@@ -21,7 +21,7 @@ interface SequenceRow {
   id: number
   name: string
   description: string | null
-  enabled: number
+  enabled: boolean
   branch_delay_hours: number
   created_at: string
   updated_at: string
@@ -37,7 +37,7 @@ interface SequenceStepRow {
   delay_hours: number
   send_time: string | null
   branch_id: string | null
-  is_branch_point: number
+  is_branch_point: boolean
   branch_order: number | null
   created_at: string
 }
@@ -61,15 +61,15 @@ sequencesRouter.get('/', async (_req, res) => {
   try {
     const sequences = await queryAll<SequenceRow & { step_count: number; active_enrollments: number }>(`
       SELECT s.*, 
-        (SELECT COUNT(*) FROM sequence_steps WHERE sequence_id = s.id) as step_count,
-        (SELECT COUNT(*) FROM sequence_enrollments WHERE sequence_id = s.id AND status = 'active') as active_enrollments
+        (SELECT COUNT(*)::integer FROM sequence_steps WHERE sequence_id = s.id) as step_count,
+        (SELECT COUNT(*)::integer FROM sequence_enrollments WHERE sequence_id = s.id AND status = 'active') as active_enrollments
       FROM sequences s
       ORDER BY s.created_at DESC
     `)
 
     res.json(sequences.map(s => ({
       ...s,
-      enabled: Boolean(s.enabled)
+      enabled: s.enabled
     })))
   } catch (error) {
     logger.error('Failed to list sequences', { service: 'sequences' }, error as Error)
@@ -149,7 +149,7 @@ sequencesRouter.get('/:id', async (req, res) => {
 
     res.json({
       ...sequence,
-      enabled: Boolean(sequence.enabled),
+      enabled: sequence.enabled,
       steps
     })
   } catch (error) {
@@ -170,8 +170,8 @@ sequencesRouter.post('/', async (req, res) => {
     }
 
     const result = await execute(
-      `INSERT INTO sequences (name, description, enabled) VALUES (?, ?, ?)`,
-      [name.trim(), description || null, enabled !== false ? 1 : 0]
+      `INSERT INTO sequences (name, description, enabled) VALUES (?, ?, ?) RETURNING id`,
+      [name.trim(), description || null, enabled !== false]
     )
 
     const id = Number(result.lastInsertRowid)
@@ -195,7 +195,7 @@ sequencesRouter.put('/:id', async (req, res) => {
 
     if (name !== undefined) { updates.push('name = ?'); params.push(name) }
     if (description !== undefined) { updates.push('description = ?'); params.push(description) }
-    if (enabled !== undefined) { updates.push('enabled = ?'); params.push(enabled ? 1 : 0) }
+    if (enabled !== undefined) { updates.push('enabled = ?'); params.push(enabled) }
     updates.push('updated_at = CURRENT_TIMESTAMP')
 
     if (updates.length === 1) { // Only updated_at
@@ -270,7 +270,7 @@ sequencesRouter.post('/:id/steps', async (req, res) => {
     const result = await execute(
       `INSERT INTO sequence_steps 
        (sequence_id, step_order, template_id, subject, delay_days, delay_hours, send_time, branch_id, branch_order)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
       [
         sequenceId,
         nextOrder,
@@ -356,7 +356,7 @@ sequencesRouter.get('/:id/enrollments', async (req, res) => {
 
     res.json(enrollments.map(e => ({
       ...e,
-      recipientData: e.recipient_data ? JSON.parse(e.recipient_data) : null
+      recipientData: e.recipient_data ? safeJsonParse(e.recipient_data, null) : null
     })))
   } catch (error) {
     logger.error('Failed to list enrollments', { service: 'sequences' }, error as Error)
@@ -446,9 +446,9 @@ sequencesRouter.post('/:id/branch-point', async (req, res) => {
 
     // Mark that step as a branch point and store delay config
     // Note: These two UPDATEs are not atomic, but the risk of partial failure is minimal
-    // since both are simple UPDATE operations. If needed, libsql batch() could be used.
+    // since both are simple UPDATE operations. If needed, a transaction could wrap both UPDATEs.
     await execute(
-      `UPDATE sequence_steps SET is_branch_point = 1 WHERE sequence_id = ? AND step_order = ?`,
+      `UPDATE sequence_steps SET is_branch_point = true WHERE sequence_id = ? AND step_order = ?`,
       [id, afterStep]
     )
 

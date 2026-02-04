@@ -797,7 +797,7 @@ export interface SequenceStep {
   send_time: string | null
   branch_id: string | null
   branch_order: number | null
-  is_branch_point: number
+  is_branch_point: boolean
 }
 
 export interface Sequence {

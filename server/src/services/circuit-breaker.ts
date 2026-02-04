@@ -185,7 +185,7 @@ export async function getOpenCircuits(): Promise<number[]> {
   
   // Also check DB for any accounts with circuit_breaker_until set
   // that might not be in memory yet
-  const rows = await queryAll<{ id: number }>('SELECT id FROM sender_accounts WHERE circuit_breaker_until IS NOT NULL AND circuit_breaker_until > datetime(\'now\')')
+  const rows = await queryAll<{ id: number }>('SELECT id FROM sender_accounts WHERE circuit_breaker_until IS NOT NULL AND circuit_breaker_until > NOW()')
   
   for (const row of rows) {
     if (!openAccountIds.includes(row.id)) {

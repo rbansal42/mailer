@@ -1,4 +1,4 @@
-import { queryAll, queryOne, execute } from '../db'
+import { queryAll, queryOne, execute, safeJsonParse } from '../db'
 import { logger } from '../lib/logger'
 import { compileTemplate, replaceVariables, injectTracking } from './template-compiler'
 import { getNextAvailableAccount, incrementSendCount } from './account-manager'
@@ -10,7 +10,7 @@ const BRANCH_ACTION = 'action'
 interface Sequence {
   id: number
   name: string
-  enabled: number
+  enabled: boolean
 }
 
 interface SequenceStep {
@@ -89,8 +89,9 @@ export async function enrollRecipient(
      ON CONFLICT(sequence_id, recipient_email) DO UPDATE SET
        status = 'active',
        current_step = 1,
-       next_send_at = excluded.next_send_at,
-       completed_at = NULL`,
+       next_send_at = EXCLUDED.next_send_at,
+       completed_at = NULL
+     RETURNING id`,
     [sequenceId, email, JSON.stringify(data), nextSendAt]
   )
 
@@ -101,7 +102,7 @@ export async function enrollRecipient(
     nextSendAt
   })
 
-  return Number(result.lastInsertRowid)
+  return Number(result.lastInsertRowid ?? 0)
 }
 
 /**
@@ -147,7 +148,7 @@ export async function processSequenceSteps(): Promise<number> {
      JOIN sequences s ON e.sequence_id = s.id
      WHERE e.status = 'active' 
        AND e.next_send_at <= ?
-       AND s.enabled = 1`,
+        AND s.enabled = true`,
     [now]
   )
 
@@ -285,12 +286,12 @@ async function processEnrollmentStep(enrollment: Enrollment & { sequence_name: s
     const template = await queryOne<TemplateRow>('SELECT id, blocks FROM templates WHERE id = ?', [step.template_id])
     
     if (template) {
-      templateBlocks = JSON.parse(template.blocks)
+      templateBlocks = safeJsonParse(template.blocks, [])
     }
   }
 
   // Parse recipient data
-  const recipientData = enrollment.recipient_data ? JSON.parse(enrollment.recipient_data) : {}
+  const recipientData = enrollment.recipient_data ? safeJsonParse(enrollment.recipient_data, {}) : {}
   recipientData.email = enrollment.recipient_email
 
   // Get account

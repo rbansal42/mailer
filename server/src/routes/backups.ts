@@ -12,10 +12,10 @@ import { logger } from '../lib/logger'
 export const backupsRouter = Router()
 
 // GET / - List backups and settings
-backupsRouter.get('/', (_, res) => {
+backupsRouter.get('/', async (_, res) => {
   try {
     const backups = listBackups()
-    const settings = getBackupSettings()
+    const settings = await getBackupSettings()
 
     res.json({
       backups,
@@ -28,9 +28,9 @@ backupsRouter.get('/', (_, res) => {
 })
 
 // POST / - Create backup
-backupsRouter.post('/', (_, res) => {
+backupsRouter.post('/', async (_, res) => {
   try {
-    const filename = createBackup()
+    const filename = await createBackup()
 
     res.status(201).json({
       message: 'Backup created successfully',
@@ -43,11 +43,11 @@ backupsRouter.post('/', (_, res) => {
 })
 
 // POST /:filename/restore - Restore from backup
-backupsRouter.post('/:filename/restore', (req, res) => {
+backupsRouter.post('/:filename/restore', async (req, res) => {
   try {
     const { filename } = req.params
 
-    restoreBackup(filename)
+    await restoreBackup(filename)
 
     res.json({
       message: 'Backup restored successfully',
@@ -68,7 +68,7 @@ backupsRouter.post('/:filename/restore', (req, res) => {
 })
 
 // PUT /settings - Update backup settings
-backupsRouter.put('/settings', (req, res) => {
+backupsRouter.put('/settings', async (req, res) => {
   try {
     const { schedule, retention } = req.body
 
@@ -82,7 +82,7 @@ backupsRouter.put('/settings', (req, res) => {
       return
     }
 
-    saveBackupSettings(schedule, retention)
+    await saveBackupSettings(schedule, retention)
     updateBackupSchedule(schedule)
 
     res.json({

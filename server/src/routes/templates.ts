@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { queryAll, queryOne, execute } from '../db'
+import { queryAll, queryOne, execute, safeJsonParse } from '../db'
 import { createTemplateSchema, updateTemplateSchema, validate } from '../lib/validation'
 import { logger } from '../lib/logger'
 
@@ -10,7 +10,7 @@ interface TemplateRow {
   name: string
   description: string | null
   blocks: string
-  is_default: number | null
+  is_default: boolean | null
   created_at: string
   updated_at: string
 }
@@ -20,8 +20,8 @@ function formatTemplate(row: TemplateRow) {
     id: row.id,
     name: row.name,
     description: row.description,
-    blocks: JSON.parse(row.blocks || '[]'),
-    isDefault: !!row.is_default,
+    blocks: safeJsonParse(row.blocks, []),
+    isDefault: row.is_default,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
@@ -57,7 +57,7 @@ templatesRouter.post('/', async (req, res) => {
   logger.info('Creating template', { service: 'templates', name })
   
   const result = await execute(
-    'INSERT INTO templates (name, description, blocks) VALUES (?, ?, ?)',
+    'INSERT INTO templates (name, description, blocks) VALUES (?, ?, ?) RETURNING id',
     [name, description || null, JSON.stringify(blocks)]
   )
   
@@ -115,7 +115,7 @@ templatesRouter.delete('/:id', async (req, res) => {
   logger.info('Deleting template', { service: 'templates', templateId: id })
 
   // Check if template exists and if it's a default template
-  const template = await queryOne<{ is_default: number }>(
+  const template = await queryOne<{ is_default: boolean }>(
     'SELECT is_default FROM templates WHERE id = ?',
     [id]
   )

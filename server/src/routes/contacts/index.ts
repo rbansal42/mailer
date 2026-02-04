@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { queryAll, queryOne, execute } from '../../db'
+import { queryAll, queryOne, execute, safeJsonParse } from '../../db'
 import { updateContactSchema } from '../../lib/validation'
 import { logger } from '../../lib/logger'
 
@@ -18,14 +18,14 @@ router.get('/', async (req, res) => {
     const params: any[] = []
     
     if (search) {
-      whereClause = 'WHERE email LIKE ? OR name LIKE ? OR company LIKE ?'
+      whereClause = 'WHERE email ILIKE ? OR name ILIKE ? OR company ILIKE ?'
       const searchPattern = `%${search}%`
       params.push(searchPattern, searchPattern, searchPattern)
     }
     
     const contacts = await queryAll<any>(`
       SELECT c.*, 
-        (SELECT COUNT(*) FROM list_contacts WHERE contact_id = c.id) as list_count
+        (SELECT COUNT(*)::integer FROM list_contacts WHERE contact_id = c.id) as list_count
       FROM contacts c
       ${whereClause}
       ORDER BY c.created_at DESC
@@ -33,7 +33,7 @@ router.get('/', async (req, res) => {
     `, [...params, limitNum, offset])
     
     const totalResult = await queryOne<{ count: number }>(`
-      SELECT COUNT(*) as count FROM contacts c ${whereClause}
+      SELECT COUNT(*)::integer as count FROM contacts c ${whereClause}
     `, params)
     
     const total = totalResult?.count ?? 0
@@ -41,7 +41,7 @@ router.get('/', async (req, res) => {
     res.json({
       contacts: contacts.map((c: any) => ({
         ...c,
-        custom_fields: JSON.parse(c.custom_fields || '{}')
+        custom_fields: safeJsonParse(c.custom_fields, {})
       })),
       pagination: {
         page: pageNum,
@@ -74,7 +74,7 @@ router.get('/:id', async (req, res) => {
     
     res.json({
       ...contact,
-      custom_fields: JSON.parse(contact.custom_fields || '{}'),
+      custom_fields: safeJsonParse(contact.custom_fields, {}),
       lists
     })
   } catch (error) {
@@ -119,7 +119,7 @@ router.put('/:id', async (req, res) => {
     logger.info('Contact updated', { service: 'contacts', contactId: req.params.id })
     res.json({
       ...contact,
-      custom_fields: JSON.parse(contact?.custom_fields || '{}')
+      custom_fields: safeJsonParse(contact?.custom_fields, {})
     })
   } catch (error: any) {
     if (error.name === 'ZodError') {

@@ -2,7 +2,7 @@ import { Router } from 'express'
 import archiver from 'archiver'
 import { join } from 'path'
 import { mkdirSync, existsSync, writeFileSync, unlinkSync } from 'fs'
-import { db, queryAll, queryOne, execute } from '../db'
+import { queryAll, queryOne, execute, sql, safeJsonParse } from '../db'
 import { logger } from '../lib/logger'
 import { 
   generateCertificateId,
@@ -95,9 +95,9 @@ function formatConfig(row: CertificateConfigRow): CertificateConfig {
     id: row.id,
     name: row.name,
     templateId: row.template_id,
-    colors: JSON.parse(row.colors),
-    logos: JSON.parse(row.logos || '[]'),
-    signatories: JSON.parse(row.signatories || '[]'),
+    colors: safeJsonParse(row.colors, {}),
+    logos: safeJsonParse(row.logos, []),
+    signatories: safeJsonParse(row.signatories, []),
     titleText: row.title_text,
     subtitleText: row.subtitle_text,
     descriptionTemplate: row.description_template,
@@ -113,7 +113,7 @@ function formatGeneratedCertificate(row: GeneratedCertificateRow): GeneratedCert
     configId: row.config_id,
     recipientName: row.recipient_name,
     recipientEmail: row.recipient_email || undefined,
-    data: JSON.parse(row.data || '{}'),
+    data: safeJsonParse(row.data, {}),
     pdfPath: row.pdf_path || undefined,
     campaignId: row.campaign_id || undefined,
     generatedAt: row.generated_at,
@@ -227,7 +227,7 @@ certificatesRouter.post('/configs', async (req, res) => {
   const result = await execute(
     `INSERT INTO certificate_configs 
      (name, template_id, colors, logos, signatories, title_text, subtitle_text, description_template)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
     [
       name,
       templateId,
@@ -497,25 +497,24 @@ certificatesRouter.post('/generate', async (req, res) => {
     }
     
     // Use transaction for all database inserts
-    const tx = await db.transaction('write')
-    try {
+    await sql.begin(async (tx) => {
       for (const { recipientData, certificateId, pdfBuffer } of generatedPdfs) {
         const base64 = pdfBuffer.toString('base64')
         
         // Save to database
         const dataWithId = { ...recipientData, certificate_id: certificateId }
-        await tx.execute({
-          sql: `INSERT INTO generated_certificates 
+        await tx.unsafe(
+          `INSERT INTO generated_certificates 
            (certificate_id, config_id, recipient_name, recipient_email, data)
-           VALUES (?, ?, ?, ?, ?)`,
-          args: [
+           VALUES ($1, $2, $3, $4, $5)`,
+          [
             certificateId,
             configId,
             recipientData.name,
             recipientData.email || null,
             JSON.stringify(dataWithId),
           ]
-        })
+        )
         
         results.push({
           certificateId,
@@ -523,11 +522,7 @@ certificatesRouter.post('/generate', async (req, res) => {
           pdf: base64,
         })
       }
-      await tx.commit()
-    } catch (error) {
-      await tx.rollback()
-      throw error
-    }
+    })
     
     logger.info('Bulk certificate generation complete', { 
       service: 'certificates', 
@@ -619,32 +614,27 @@ certificatesRouter.post('/generate/zip', async (req, res) => {
     }
     
     // Use transaction for all database inserts
-    const tx = await db.transaction('write')
-    try {
+    await sql.begin(async (tx) => {
       for (const { recipientData, certificateId, pdfBuffer, filename } of generatedPdfs) {
         // Add to archive
         archive.append(pdfBuffer, { name: filename })
         
         // Save to database
         const dataWithId = { ...recipientData, certificate_id: certificateId }
-        await tx.execute({
-          sql: `INSERT INTO generated_certificates 
+        await tx.unsafe(
+          `INSERT INTO generated_certificates 
            (certificate_id, config_id, recipient_name, recipient_email, data)
-           VALUES (?, ?, ?, ?, ?)`,
-          args: [
+           VALUES ($1, $2, $3, $4, $5)`,
+          [
             certificateId,
             configId,
             recipientData.name,
             recipientData.email || null,
             JSON.stringify(dataWithId),
           ]
-        })
+        )
       }
-      await tx.commit()
-    } catch (error) {
-      await tx.rollback()
-      throw error
-    }
+    })
     
     // Finalize archive
     await archive.finalize()
@@ -746,64 +736,63 @@ certificatesRouter.post('/generate/campaign', async (req, res) => {
     }
     
     // Use transaction for all database inserts
-    const tx = await db.transaction('write')
     try {
-      for (const { recipientData, certificateId, pdfBuffer, safeName, filename, filepath } of generatedPdfs) {
-        // Create attachment record
-        const attachmentResult = await tx.execute({
-          sql: `INSERT INTO attachments (draft_id, filename, original_filename, filepath, size_bytes, mime_type)
-           VALUES (?, ?, ?, ?, ?, ?)`,
-          args: [
-            draftId ?? null,
-            filename,
-            `Certificate_${safeName}.pdf`,
-            filepath,
-            pdfBuffer.length,
-            'application/pdf',
-          ]
-        })
-        const attachmentId = Number(attachmentResult.lastInsertRowid)
-        
-        // Create recipient-attachment mapping
-        const email = recipientData.email!
-        const name = recipientData.name!
-        const dataWithId = { ...recipientData, certificate_id: certificateId }
-        
-        await tx.execute({
-          sql: `INSERT INTO recipient_attachments (draft_id, recipient_email, attachment_id, matched_by)
-           VALUES (?, ?, ?, ?)`,
-          args: [
-            draftId ?? null,
-            email,
-            attachmentId,
-            'certificate:auto-generated',
-          ]
-        })
-        
-        // Save certificate record
-        await tx.execute({
-          sql: `INSERT INTO generated_certificates 
-           (certificate_id, config_id, recipient_name, recipient_email, data, pdf_path)
-           VALUES (?, ?, ?, ?, ?, ?)`,
-          args: [
+      await sql.begin(async (tx) => {
+        for (const { recipientData, certificateId, pdfBuffer, safeName, filename, filepath } of generatedPdfs) {
+          // Create attachment record
+          const attachmentResult = await tx.unsafe(
+            `INSERT INTO attachments (draft_id, filename, original_filename, filepath, size_bytes, mime_type)
+             VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+            [
+              draftId ?? null,
+              filename,
+              `Certificate_${safeName}.pdf`,
+              filepath,
+              pdfBuffer.length,
+              'application/pdf',
+            ]
+          )
+          const attachmentId = Number(attachmentResult[0].id)
+          
+          // Create recipient-attachment mapping
+          const email = recipientData.email!
+          const name = recipientData.name!
+          const dataWithId = { ...recipientData, certificate_id: certificateId }
+          
+          await tx.unsafe(
+            `INSERT INTO recipient_attachments (draft_id, recipient_email, attachment_id, matched_by)
+             VALUES ($1, $2, $3, $4)`,
+            [
+              draftId ?? null,
+              email,
+              attachmentId,
+              'certificate:auto-generated',
+            ]
+          )
+          
+          // Save certificate record
+          await tx.unsafe(
+            `INSERT INTO generated_certificates 
+             (certificate_id, config_id, recipient_name, recipient_email, data, pdf_path)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [
+              certificateId,
+              configId,
+              name,
+              email,
+              JSON.stringify(dataWithId),
+              filepath,
+            ]
+          )
+          
+          results.push({
+            email: recipientData.email!,
             certificateId,
-            configId,
-            name,
-            email,
-            JSON.stringify(dataWithId),
-            filepath,
-          ]
-        })
-        
-        results.push({
-          email: recipientData.email!,
-          certificateId,
-          attachmentId,
-        })
-      }
-      await tx.commit()
+            attachmentId,
+          })
+        }
+      })
     } catch (error) {
-      await tx.rollback()
       // Clean up orphan PDF files on rollback
       for (const { filepath } of generatedPdfs) {
         try {

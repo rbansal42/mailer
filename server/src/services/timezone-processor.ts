@@ -1,4 +1,4 @@
-import { queryAll, queryOne, execute } from '../db'
+import { queryAll, queryOne, execute, safeJsonParse } from '../db'
 import { logger } from '../lib/logger'
 
 interface Recipient {
@@ -142,7 +142,7 @@ export async function markBatchCompleted(batchId: number): Promise<void> {
  * Get recipients from a batch
  */
 export function getBatchRecipients(batch: ScheduledBatch): string[] {
-  return JSON.parse(batch.recipient_emails)
+  return safeJsonParse(batch.recipient_emails, [])
 }
 
 /**

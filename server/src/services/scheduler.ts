@@ -89,7 +89,7 @@ export async function runScheduledBackup(): Promise<void> {
     logger.info('Starting scheduled backup', { service: 'scheduler' })
 
     // Create the backup
-    const filename = createBackup()
+    const filename = await createBackup()
 
     // Get retention settings and prune old backups
     const settings = await getBackupSettings()
