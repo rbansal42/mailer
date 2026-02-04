@@ -95,50 +95,58 @@ trackingRouter.get('/:token/c/:linkIndex', (req, res) => {
 
 // GET /:token/action - Track action button click
 trackingRouter.get('/:token/action', async (req, res) => {
-  const { token } = req.params
-  const forwarded = req.headers['x-forwarded-for']
-  const ipAddress = req.ip || (Array.isArray(forwarded) ? forwarded[0] : forwarded?.split(',')[0]) || null
-  const userAgent = req.headers['user-agent'] || null
-  const buttonText = req.query.text as string || null
+  try {
+    const { token } = req.params
+    const forwarded = req.headers['x-forwarded-for']
+    const ipAddress = req.ip || (Array.isArray(forwarded) ? forwarded[0] : forwarded?.split(',')[0]) || null
+    const userAgent = req.headers['user-agent'] || null
 
-  const result = await recordAction(token, ipAddress, userAgent, buttonText)
+    const result = await recordAction(token, ipAddress, userAgent)
 
-  if (!result.success) {
-    return res.status(404).send('Not found')
+    if (!result.success) {
+      return res.status(404).send('Not found')
+    }
+
+    // Get action config to determine response
+    const tokenDetails = await getTokenDetails(token)
+    if (!tokenDetails) {
+      return res.status(404).send('Not found')
+    }
+
+    const sequenceId = Math.abs(tokenDetails.campaignId)
+    
+    // Find current step from enrollment
+    const enrollment = result.enrollment
+    const stepResult = await db.execute({
+      sql: `SELECT id FROM sequence_steps WHERE sequence_id = ? AND step_order = ?`,
+      args: [sequenceId, enrollment.current_step]
+    })
+
+    if (!stepResult.rows.length) {
+      // Fallback: show default thank you
+      return res.send(getHostedThankYouPage('Thank you for your response!'))
+    }
+
+    const stepId = stepResult.rows[0].id as number
+    const config = await getActionConfig(sequenceId, stepId)
+
+    if (!config) {
+      return res.send(getHostedThankYouPage('Thank you for your response!'))
+    }
+
+    if (config.destinationType === 'external' && config.destinationUrl) {
+      if (isValidRedirectUrl(config.destinationUrl)) {
+        return res.redirect(config.destinationUrl)
+      }
+      // Invalid URL, fall through to hosted page
+      logger.warn('Invalid external redirect URL', { service: 'tracking', token, url: config.destinationUrl })
+    }
+
+    return res.send(getHostedThankYouPage(config.hostedMessage || 'Thank you for your response!'))
+  } catch (error) {
+    logger.error('Failed to process action click', { service: 'tracking', token: req.params.token }, error as Error)
+    return res.status(500).send('Internal server error')
   }
-
-  // Get action config to determine response
-  const tokenDetails = await getTokenDetails(token)
-  if (!tokenDetails) {
-    return res.status(404).send('Not found')
-  }
-
-  const sequenceId = Math.abs(tokenDetails.campaignId)
-  
-  // Find current step from enrollment
-  const enrollment = result.enrollment
-  const stepResult = await db.execute({
-    sql: `SELECT id FROM sequence_steps WHERE sequence_id = ? AND step_order = ?`,
-    args: [sequenceId, enrollment.current_step]
-  })
-
-  if (!stepResult.rows.length) {
-    // Fallback: show default thank you
-    return res.send(getHostedThankYouPage('Thank you for your response!'))
-  }
-
-  const stepId = stepResult.rows[0].id as number
-  const config = await getActionConfig(sequenceId, stepId)
-
-  if (!config) {
-    return res.send(getHostedThankYouPage('Thank you for your response!'))
-  }
-
-  if (config.destinationType === 'external' && config.destinationUrl) {
-    return res.redirect(config.destinationUrl)
-  }
-
-  return res.send(getHostedThankYouPage(config.hostedMessage || 'Thank you for your response!'))
 })
 
 function getHostedThankYouPage(message: string): string {

@@ -174,9 +174,8 @@ export async function recordClick(
 export async function recordAction(
   token: string,
   ipAddress: string | null,
-  userAgent: string | null,
-  buttonText: string | null
-): Promise<{ success: boolean; enrollment?: any; action?: any }> {
+  userAgent: string | null
+): Promise<{ success: boolean; enrollment?: any }> {
   const tokenDetails = await getTokenDetails(token)
   if (!tokenDetails) {
     return { success: false }
@@ -242,7 +241,12 @@ export async function getActionConfig(sequenceId: number, stepId: number): Promi
 
   if (!step.rows.length) return null
 
-  const blocks = JSON.parse(step.rows[0].blocks as string || '[]')
+  let blocks = []
+  try {
+    blocks = JSON.parse(step.rows[0].blocks as string || '[]')
+  } catch {
+    return null
+  }
   const actionBlock = blocks.find((b: any) => 
     b.type === 'action-button' || (b.type === 'button' && b.props?.isActionTrigger)
   )
