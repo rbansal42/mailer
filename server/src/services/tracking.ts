@@ -1,4 +1,4 @@
-import { queryAll, queryOne, execute } from '../db'
+import { queryAll, queryOne, execute, db } from '../db'
 import { randomUUID } from 'crypto'
 import { createHash } from 'crypto'
 
@@ -168,6 +168,92 @@ export async function recordClick(
   )
 
   return true
+}
+
+// Record an action button click event
+export async function recordAction(
+  token: string,
+  ipAddress: string | null,
+  userAgent: string | null,
+  buttonText: string | null
+): Promise<{ success: boolean; enrollment?: any; action?: any }> {
+  const tokenDetails = await getTokenDetails(token)
+  if (!tokenDetails) {
+    return { success: false }
+  }
+
+  // For sequences, campaign_id is negative (synthetic)
+  const sequenceId = tokenDetails.campaignId < 0 ? Math.abs(tokenDetails.campaignId) : null
+  if (!sequenceId) {
+    return { success: false } // Action buttons only work in sequences
+  }
+
+  // Find enrollment
+  const enrollment = await db.execute({
+    sql: `SELECT * FROM sequence_enrollments 
+          WHERE sequence_id = ? AND recipient_email = ? AND status = 'active'`,
+    args: [sequenceId, tokenDetails.recipientEmail]
+  })
+
+  if (!enrollment.rows.length) {
+    return { success: false }
+  }
+
+  const enrollmentRow = enrollment.rows[0]
+
+  // Check if already clicked (idempotent)
+  if (enrollmentRow.action_clicked_at) {
+    return { success: true, enrollment: enrollmentRow }
+  }
+
+  // Record tracking event
+  await db.execute({
+    sql: `INSERT INTO tracking_events (token_id, event_type, ip_address, user_agent)
+          VALUES (?, 'action', ?, ?)`,
+    args: [tokenDetails.id, ipAddress ?? null, userAgent ?? null]
+  })
+
+  // Update enrollment
+  const now = new Date().toISOString()
+  await db.execute({
+    sql: `UPDATE sequence_enrollments SET action_clicked_at = ? WHERE id = ?`,
+    args: [now, enrollmentRow.id]
+  })
+
+  return { 
+    success: true, 
+    enrollment: { ...enrollmentRow, action_clicked_at: now }
+  }
+}
+
+// Get action button configuration from a sequence step
+export async function getActionConfig(sequenceId: number, stepId: number): Promise<{
+  destinationType: 'external' | 'hosted'
+  destinationUrl: string | null
+  hostedMessage: string | null
+} | null> {
+  // Action config is stored in the step's template blocks
+  const step = await db.execute({
+    sql: `SELECT t.blocks FROM sequence_steps ss
+          JOIN templates t ON ss.template_id = t.id
+          WHERE ss.id = ?`,
+    args: [stepId]
+  })
+
+  if (!step.rows.length) return null
+
+  const blocks = JSON.parse(step.rows[0].blocks as string || '[]')
+  const actionBlock = blocks.find((b: any) => 
+    b.type === 'action-button' || (b.type === 'button' && b.props?.isActionTrigger)
+  )
+
+  if (!actionBlock) return null
+
+  return {
+    destinationType: actionBlock.props.destinationType || 'hosted',
+    destinationUrl: actionBlock.props.destinationUrl || null,
+    hostedMessage: actionBlock.props.hostedMessage || 'Thank you for your response!'
+  }
 }
 
 // Get campaign analytics
