@@ -253,7 +253,7 @@ function CampaignDetails({ id, onBack }: { id: number; onBack: () => void }) {
           <CardHeader className="p-3 pb-2">
             <CardTitle className="text-sm">Engagement</CardTitle>
           </CardHeader>
-          <CardContent className="p-4 pt-0 grid grid-cols-3 gap-4 text-sm">
+          <CardContent className={`p-4 pt-0 grid gap-4 text-sm ${analytics.engagement.actionClicks !== undefined ? 'grid-cols-4' : 'grid-cols-3'}`}>
             <div className="flex items-center gap-2">
               <div className="p-2 rounded-full bg-blue-100">
                 <Mail className="h-4 w-4 text-blue-600" />
@@ -281,6 +281,17 @@ function CampaignDetails({ id, onBack }: { id: number; onBack: () => void }) {
                 <p className="font-semibold">{analytics.engagement.uniqueClicks} <span className="text-muted-foreground font-normal">({analytics.engagement.clickRate}%)</span></p>
               </div>
             </div>
+            {analytics.engagement.actionClicks !== undefined && (
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-full bg-orange-100">
+                  <MousePointer className="h-4 w-4 text-orange-600" />
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-xs">Action Taken</p>
+                  <p className="font-semibold">{analytics.engagement.actionClicks} <span className="text-muted-foreground font-normal">({analytics.engagement.actionRate || 0}%)</span></p>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

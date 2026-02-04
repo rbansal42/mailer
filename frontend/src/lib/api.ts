@@ -385,6 +385,8 @@ export interface CampaignAnalytics {
     clicks: number
     uniqueClicks: number
     clickRate: number
+    actionClicks?: number
+    actionRate?: number
   }
   topLinks: Array<{ url: string; clicks: number }>
   opensOverTime: Array<{ hour: string; count: number }>
@@ -820,6 +822,24 @@ export interface SequenceAction {
 
 export function getSequenceActions(sequenceId: number): Promise<SequenceAction[]> {
   return request<SequenceAction[]>(`/sequences/${sequenceId}/actions`)
+}
+
+export interface SequenceEnrollment {
+  id: number
+  sequence_id: number
+  recipient_email: string
+  recipient_data: Record<string, string> | null
+  current_step: number
+  status: 'active' | 'paused' | 'completed' | 'cancelled'
+  branch_id: string | null
+  action_clicked_at: string | null
+  enrolled_at: string
+  next_send_at: string | null
+  completed_at: string | null
+}
+
+export function getSequenceEnrollments(sequenceId: number): Promise<SequenceEnrollment[]> {
+  return request<SequenceEnrollment[]>(`/sequences/${sequenceId}/enrollments`)
 }
 
 // Sequence list item (from list endpoint)

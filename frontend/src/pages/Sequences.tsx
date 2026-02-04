@@ -4,7 +4,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Card, CardContent } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { SequenceBranchBuilder } from '@/components/SequenceBranchBuilder'
 import { 
@@ -16,12 +16,15 @@ import {
   Play,
   Pause,
   Users,
-  Mail
+  Mail,
+  Download
 } from 'lucide-react'
 import { 
   Sequence, 
   SequenceStep,
+  SequenceEnrollment,
   getSequence, 
+  getSequenceEnrollments,
   createBranchPoint,
   sequences as sequencesApi
 } from '@/lib/api'
@@ -389,6 +392,15 @@ function SequenceEditor({ sequence, onBack, onUpdate }: SequenceEditorProps) {
         </div>
         <div className="flex items-center gap-2">
           <Button
+            variant="outline"
+            size="sm"
+            onClick={() => window.open(`/api/sequences/${sequence.id}/actions/export`, '_blank')}
+            title="Export action clicks as CSV"
+          >
+            <Download className="h-4 w-4 mr-1" />
+            Export Actions
+          </Button>
+          <Button
             variant={sequence.enabled ? 'outline' : 'default'}
             size="sm"
             onClick={() => toggleMutation.mutate()}
@@ -410,13 +422,20 @@ function SequenceEditor({ sequence, onBack, onUpdate }: SequenceEditorProps) {
 
       {/* Main Content */}
       <div className="flex-1 p-4 overflow-auto">
-        <SequenceBranchBuilder
-          steps={sequence.steps}
-          onAddStep={handleAddStep}
-          onAddBranchPoint={handleAddBranchPoint}
-          onEditStep={handleEditStep}
-          onDeleteStep={handleDeleteStep}
-        />
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+          <div className="lg:col-span-3">
+            <SequenceBranchBuilder
+              steps={sequence.steps}
+              onAddStep={handleAddStep}
+              onAddBranchPoint={handleAddBranchPoint}
+              onEditStep={handleEditStep}
+              onDeleteStep={handleDeleteStep}
+            />
+          </div>
+          <div className="lg:col-span-1">
+            <SequencePathStats sequenceId={sequence.id} />
+          </div>
+        </div>
       </div>
 
       {/* Step Dialog */}
@@ -541,5 +560,53 @@ function StepDialog({ open, onOpenChange, sequenceId, branchId, step, onSaved }:
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+// Sequence path stats component
+function SequencePathStats({ sequenceId }: { sequenceId: number }) {
+  const { data: enrollments } = useQuery({
+    queryKey: ['sequence-enrollments', sequenceId],
+    queryFn: () => getSequenceEnrollments(sequenceId)
+  })
+
+  if (!enrollments || enrollments.length === 0) return null
+
+  const total = enrollments.length
+  const onDefault = enrollments.filter((e) => !e.branch_id || e.branch_id === 'default').length
+  const onAction = enrollments.filter((e) => e.branch_id === 'action').length
+  const completed = enrollments.filter((e) => e.status === 'completed').length
+  const actionClicked = enrollments.filter((e) => e.action_clicked_at).length
+
+  return (
+    <Card>
+      <CardHeader className="p-3 pb-2">
+        <CardTitle className="text-sm">Enrollments by Path</CardTitle>
+      </CardHeader>
+      <CardContent className="p-3 pt-0 space-y-2">
+        <div className="flex justify-between text-sm">
+          <span className="text-muted-foreground">Total enrolled</span>
+          <span className="font-medium">{total}</span>
+        </div>
+        <div className="flex justify-between text-sm">
+          <span className="text-muted-foreground">On default path</span>
+          <span className="font-medium">{onDefault} ({total > 0 ? ((onDefault/total)*100).toFixed(0) : 0}%)</span>
+        </div>
+        <div className="flex justify-between text-sm">
+          <span className="text-muted-foreground">On action path</span>
+          <span className="font-medium">{onAction} ({total > 0 ? ((onAction/total)*100).toFixed(0) : 0}%)</span>
+        </div>
+        <div className="flex justify-between text-sm">
+          <span className="text-muted-foreground">Completed</span>
+          <span className="font-medium">{completed} ({total > 0 ? ((completed/total)*100).toFixed(0) : 0}%)</span>
+        </div>
+        {actionClicked > 0 && (
+          <div className="flex justify-between text-sm border-t pt-2 mt-2">
+            <span className="text-muted-foreground">Action button clicked</span>
+            <span className="font-medium text-orange-600">{actionClicked} ({total > 0 ? ((actionClicked/total)*100).toFixed(0) : 0}%)</span>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }

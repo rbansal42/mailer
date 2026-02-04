@@ -37,6 +37,8 @@ interface EnrollmentRow {
   recipient_data: string | null
   current_step: number
   status: string
+  branch_id: string | null
+  action_clicked_at: string | null
   enrolled_at: string
   next_send_at: string | null
   completed_at: string | null
