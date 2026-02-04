@@ -422,6 +422,8 @@ export async function createIndexes() {
   await execute('CREATE INDEX IF NOT EXISTS idx_bounces_email ON bounces(email)')
   await execute('CREATE INDEX IF NOT EXISTS idx_google_sheets_syncs_list ON google_sheets_syncs(list_id)')
   await execute('CREATE INDEX IF NOT EXISTS idx_sequence_actions_enrollment ON sequence_actions(enrollment_id)')
+  await execute('CREATE INDEX IF NOT EXISTS idx_sequence_actions_step ON sequence_actions(step_id)')
+  await execute('CREATE INDEX IF NOT EXISTS idx_sequence_steps_branch ON sequence_steps(branch_id)')
 }
 
 // Initialize default settings
