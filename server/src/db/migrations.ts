@@ -25,12 +25,14 @@ const VALID_TABLES = new Set([
   'sequences',
   'sequence_steps',
   'sequence_enrollments',
+  'sequence_actions',
   'media',
   'contacts',
   'lists',
   'list_contacts',
   'suppression_list',
   'bounces',
+  'google_sheets_syncs',
 ])
 
 // Migration helper - add columns if they don't exist
@@ -69,6 +71,15 @@ export async function runColumnMigrations() {
   await addColumnIfNotExists('campaigns', 'status', 'TEXT', 'draft')
   await addColumnIfNotExists('send_logs', 'retry_count', 'INTEGER', '0')
   await addColumnIfNotExists('sender_accounts', 'circuit_breaker_until', 'DATETIME', '')
+
+  // Sequence branching columns
+  await addColumnIfNotExists('sequence_steps', 'branch_id', 'TEXT', '')
+  await addColumnIfNotExists('sequence_steps', 'is_branch_point', 'INTEGER', '0')
+  await addColumnIfNotExists('sequence_steps', 'branch_order', 'INTEGER', '')
+  await addColumnIfNotExists('sequence_enrollments', 'branch_id', 'TEXT', '')
+  await addColumnIfNotExists('sequence_enrollments', 'action_clicked_at', 'TEXT', '')
+  await addColumnIfNotExists('sequence_enrollments', 'branch_switched_at', 'TEXT', '')
+  await addColumnIfNotExists('sequences', 'branch_delay_hours', 'INTEGER', '0')
 }
 
 // Run SQL migrations from the migrations directory (with tracking)

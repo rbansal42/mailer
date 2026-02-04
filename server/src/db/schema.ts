@@ -284,6 +284,25 @@ export async function createTables() {
     )
   `)
 
+  // Sequence actions - tracks button clicks for branching
+  await execute(`
+    CREATE TABLE IF NOT EXISTS sequence_actions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sequence_id INTEGER NOT NULL,
+      step_id INTEGER NOT NULL,
+      enrollment_id INTEGER NOT NULL,
+      clicked_at TEXT NOT NULL,
+      destination_type TEXT NOT NULL,
+      destination_url TEXT,
+      hosted_message TEXT,
+      button_text TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (sequence_id) REFERENCES sequences(id) ON DELETE CASCADE,
+      FOREIGN KEY (step_id) REFERENCES sequence_steps(id) ON DELETE CASCADE,
+      FOREIGN KEY (enrollment_id) REFERENCES sequence_enrollments(id) ON DELETE CASCADE
+    )
+  `)
+
   // Media library table for uploaded images
   await execute(`
     CREATE TABLE IF NOT EXISTS media (
@@ -402,6 +421,7 @@ export async function createIndexes() {
   await execute('CREATE INDEX IF NOT EXISTS idx_suppression_email ON suppression_list(email)')
   await execute('CREATE INDEX IF NOT EXISTS idx_bounces_email ON bounces(email)')
   await execute('CREATE INDEX IF NOT EXISTS idx_google_sheets_syncs_list ON google_sheets_syncs(list_id)')
+  await execute('CREATE INDEX IF NOT EXISTS idx_sequence_actions_enrollment ON sequence_actions(enrollment_id)')
 }
 
 // Initialize default settings
