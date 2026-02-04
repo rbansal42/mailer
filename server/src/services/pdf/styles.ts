@@ -84,7 +84,6 @@ export const baseStyles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 20,
     marginBottom: 20,
     flexWrap: 'wrap',
     maxHeight: 70,
@@ -94,6 +93,7 @@ export const baseStyles = StyleSheet.create({
     height: 45,
     maxWidth: 120,
     objectFit: 'contain' as const,
+    marginHorizontal: 10,
   },
   contentCenter: {
     alignItems: 'center',
@@ -140,13 +140,13 @@ export const baseStyles = StyleSheet.create({
   signatories: {
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 60,
     marginTop: 'auto',
     paddingTop: 30,
   },
   signatory: {
     alignItems: 'center',
     width: 140,
+    marginHorizontal: 30,
   },
   signatureImage: {
     height: 35,

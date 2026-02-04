@@ -244,6 +244,10 @@ export async function getActionConfig(sequenceId: number, stepId: number): Promi
   destinationType: 'external' | 'hosted'
   destinationUrl: string | null
   hostedMessage: string | null
+  ctaLabel: string | null
+  ctaUrl: string | null
+  redirectUrl: string | null
+  redirectDelay: number | null
 } | null> {
   // Action config is stored in the step's template blocks
   const step = await db.execute({
@@ -270,7 +274,11 @@ export async function getActionConfig(sequenceId: number, stepId: number): Promi
   return {
     destinationType: actionBlock.props.destinationType || 'hosted',
     destinationUrl: actionBlock.props.destinationUrl || null,
-    hostedMessage: actionBlock.props.hostedMessage || 'Thank you for your response!'
+    hostedMessage: actionBlock.props.hostedMessage || 'Thank you for your response!',
+    ctaLabel: actionBlock.props.ctaLabel || null,
+    ctaUrl: actionBlock.props.ctaUrl || null,
+    redirectUrl: actionBlock.props.redirectUrl || null,
+    redirectDelay: actionBlock.props.redirectDelay != null ? Math.max(1, Math.min(Math.round(Number(actionBlock.props.redirectDelay) || 5), 60)) : null,
   }
 }
 

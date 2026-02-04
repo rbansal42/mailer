@@ -138,8 +138,9 @@ const styles = StyleSheet.create({
   watermarkContainer: {
     position: 'absolute',
     top: '35%',
-    left: '50%',
-    transform: 'translateX(-50%)',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
     opacity: 0.03,
   },
   // Bottom decorative bar
