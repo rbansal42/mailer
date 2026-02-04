@@ -10,6 +10,7 @@ interface SequenceRow {
   name: string
   description: string | null
   enabled: number
+  branch_delay_hours: number
   created_at: string
   updated_at: string
 }
@@ -23,6 +24,9 @@ interface SequenceStepRow {
   delay_days: number
   delay_hours: number
   send_time: string | null
+  branch_id: string | null
+  is_branch_point: number
+  branch_order: number | null
   created_at: string
 }
 
@@ -71,7 +75,11 @@ sequencesRouter.get('/:id', async (req, res) => {
       return
     }
 
-    const steps = await queryAll<SequenceStepRow>('SELECT * FROM sequence_steps WHERE sequence_id = ? ORDER BY step_order', [id])
+    const steps = await queryAll<SequenceStepRow>(
+      `SELECT * FROM sequence_steps WHERE sequence_id = ? 
+       ORDER BY branch_id NULLS FIRST, COALESCE(branch_order, step_order) ASC`,
+      [id]
+    )
 
     res.json({
       ...sequence,
@@ -158,7 +166,7 @@ sequencesRouter.delete('/:id', async (req, res) => {
 sequencesRouter.post('/:id/steps', async (req, res) => {
   try {
     const sequenceId = parseInt(req.params.id, 10)
-    const { templateId, subject, delayDays, delayHours, sendTime } = req.body
+    const { templateId, subject, delayDays, delayHours, sendTime, branchId, branchOrder } = req.body
 
     // Validate required fields
     if (!subject || typeof subject !== 'string' || subject.trim().length === 0) {
@@ -174,21 +182,46 @@ sequencesRouter.post('/:id/steps', async (req, res) => {
       return
     }
 
-    // Get next step order
-    const maxOrder = await queryOne<{ max_order: number | null }>('SELECT MAX(step_order) as max_order FROM sequence_steps WHERE sequence_id = ?', [sequenceId])
+    // Get next step order - check if in a branch
+    let nextOrder: number
+    if (branchId) {
+      const maxOrder = await queryOne<{ max_order: number | null }>(
+        `SELECT MAX(COALESCE(branch_order, step_order)) as max_order 
+         FROM sequence_steps WHERE sequence_id = ? AND branch_id = ?`,
+        [sequenceId, branchId]
+      )
+      nextOrder = ((maxOrder?.max_order as number) || 0) + 1
+    } else {
+      const maxOrder = await queryOne<{ max_order: number | null }>(
+        `SELECT MAX(step_order) as max_order 
+         FROM sequence_steps WHERE sequence_id = ? AND (branch_id IS NULL OR branch_id = '')`,
+        [sequenceId]
+      )
+      nextOrder = ((maxOrder?.max_order as number) || 0) + 1
+    }
 
-    const stepOrder = (maxOrder?.max_order || 0) + 1
-
+    // Insert with branch fields
     const result = await execute(
-      `INSERT INTO sequence_steps (sequence_id, step_order, template_id, subject, delay_days, delay_hours, send_time)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [sequenceId, stepOrder, templateId || null, subject, delayDays || 0, delayHours || 0, sendTime || null]
+      `INSERT INTO sequence_steps 
+       (sequence_id, step_order, template_id, subject, delay_days, delay_hours, send_time, branch_id, branch_order)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        sequenceId,
+        nextOrder,
+        templateId ?? null,
+        subject,
+        delayDays ?? 0,
+        delayHours ?? 0,
+        sendTime ?? null,
+        branchId ?? null,
+        branchId ? nextOrder : null
+      ]
     )
 
     const id = Number(result.lastInsertRowid)
-    logger.info('Added step to sequence', { service: 'sequences', sequenceId, stepId: id })
+    logger.info('Added step to sequence', { service: 'sequences', sequenceId, stepId: id, branchId })
 
-    res.status(201).json({ id, stepOrder, message: 'Step added' })
+    res.status(201).json({ id, stepOrder: nextOrder, message: 'Step added' })
   } catch (error) {
     logger.error('Failed to add step', { service: 'sequences' }, error as Error)
     res.status(500).json({ error: 'Failed to add step' })
@@ -324,5 +357,105 @@ sequencesRouter.put('/:id/enrollments/:enrollmentId', async (req, res) => {
   } catch (error) {
     logger.error('Failed to update enrollment', { service: 'sequences' }, error as Error)
     res.status(500).json({ error: 'Failed to update enrollment' })
+  }
+})
+
+// POST /:id/branch-point - Create a branch point in the sequence
+sequencesRouter.post('/:id/branch-point', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10)
+    const { afterStep, delayBeforeSwitch } = req.body
+
+    if (afterStep === undefined || typeof afterStep !== 'number') {
+      res.status(400).json({ error: 'afterStep is required and must be a number' })
+      return
+    }
+
+    // Mark that step as a branch point
+    await execute(
+      `UPDATE sequence_steps SET is_branch_point = 1 WHERE sequence_id = ? AND step_order = ?`,
+      [id, afterStep]
+    )
+
+    // Store delay config in sequence
+    await execute(
+      `UPDATE sequences SET branch_delay_hours = ? WHERE id = ?`,
+      [delayBeforeSwitch ?? 0, id]
+    )
+
+    logger.info('Created branch point', { service: 'sequences', sequenceId: id, afterStep })
+    res.json({ success: true })
+  } catch (error) {
+    logger.error('Failed to create branch point', { service: 'sequences' }, error as Error)
+    res.status(500).json({ error: 'Failed to create branch point' })
+  }
+})
+
+// GET /:id/actions - Get action clicks for a sequence
+sequencesRouter.get('/:id/actions', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10)
+
+    const actions = await queryAll<{
+      id: number
+      sequence_id: number
+      step_id: number
+      enrollment_id: number
+      clicked_at: string
+      destination_type: string
+      destination_url: string | null
+      hosted_message: string | null
+      button_text: string | null
+      recipient_email: string
+      recipient_data: string | null
+    }>(
+      `SELECT sa.*, se.recipient_email, se.recipient_data
+       FROM sequence_actions sa
+       JOIN sequence_enrollments se ON sa.enrollment_id = se.id
+       WHERE sa.sequence_id = ?
+       ORDER BY sa.clicked_at DESC`,
+      [id]
+    )
+
+    res.json(actions)
+  } catch (error) {
+    logger.error('Failed to get actions', { service: 'sequences' }, error as Error)
+    res.status(500).json({ error: 'Failed to get actions' })
+  }
+})
+
+// GET /:id/actions/export - Export action clicks as CSV
+sequencesRouter.get('/:id/actions/export', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10)
+
+    const actions = await queryAll<{
+      recipient_email: string
+      clicked_at: string
+      button_text: string | null
+      from_step: string
+    }>(
+      `SELECT se.recipient_email, sa.clicked_at, sa.button_text, ss.subject as from_step
+       FROM sequence_actions sa
+       JOIN sequence_enrollments se ON sa.enrollment_id = se.id
+       JOIN sequence_steps ss ON sa.step_id = ss.id
+       WHERE sa.sequence_id = ?
+       ORDER BY sa.clicked_at DESC`,
+      [id]
+    )
+
+    const csv = [
+      'email,clicked_at,button_text,from_step',
+      ...actions.map((row) =>
+        `${row.recipient_email},${row.clicked_at},${row.button_text || ''},${row.from_step}`
+      )
+    ].join('\n')
+
+    res.setHeader('Content-Type', 'text/csv')
+    res.setHeader('Content-Disposition', `attachment; filename=sequence-${id}-actions.csv`)
+    res.send(csv)
+  } catch (error) {
+    logger.error('Failed to export actions', { service: 'sequences' }, error as Error)
+    res.status(500).json({ error: 'Failed to export actions' })
   }
 })
