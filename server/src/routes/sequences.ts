@@ -371,6 +371,13 @@ sequencesRouter.post('/:id/branch-point', async (req, res) => {
       return
     }
 
+    // Verify the step exists
+    const stepCheck = await queryOne(`SELECT id FROM sequence_steps WHERE sequence_id = ? AND step_order = ?`, [id, afterStep])
+    if (!stepCheck) {
+      res.status(404).json({ error: 'Step not found' })
+      return
+    }
+
     // Mark that step as a branch point
     await execute(
       `UPDATE sequence_steps SET is_branch_point = 1 WHERE sequence_id = ? AND step_order = ?`,
@@ -395,6 +402,12 @@ sequencesRouter.post('/:id/branch-point', async (req, res) => {
 sequencesRouter.get('/:id/actions', async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10)
+
+    const sequence = await queryOne(`SELECT id FROM sequences WHERE id = ?`, [id])
+    if (!sequence) {
+      res.status(404).json({ error: 'Sequence not found' })
+      return
+    }
 
     const actions = await queryAll<{
       id: number
@@ -429,6 +442,12 @@ sequencesRouter.get('/:id/actions/export', async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10)
 
+    const sequence = await queryOne(`SELECT id FROM sequences WHERE id = ?`, [id])
+    if (!sequence) {
+      res.status(404).json({ error: 'Sequence not found' })
+      return
+    }
+
     const actions = await queryAll<{
       recipient_email: string
       clicked_at: string
@@ -444,10 +463,24 @@ sequencesRouter.get('/:id/actions/export', async (req, res) => {
       [id]
     )
 
+    const escapeCSV = (value: string | null): string => {
+      if (value === null || value === undefined) return ''
+      const str = String(value)
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return `"${str.replace(/"/g, '""')}"`
+      }
+      return str
+    }
+
     const csv = [
       'email,clicked_at,button_text,from_step',
       ...actions.map((row) =>
-        `${row.recipient_email},${row.clicked_at},${row.button_text || ''},${row.from_step}`
+        [
+          escapeCSV(row.recipient_email),
+          escapeCSV(row.clicked_at),
+          escapeCSV(row.button_text),
+          escapeCSV(row.from_step)
+        ].join(',')
       )
     ].join('\n')
 
