@@ -786,33 +786,24 @@ export interface Sequence {
 }
 
 // Sequence API functions
-export async function getSequence(id: number): Promise<Sequence> {
-  const res = await fetch(`${API_BASE}/api/sequences/${id}`)
-  if (!res.ok) throw new Error('Failed to fetch sequence')
-  return res.json()
+export function getSequence(id: number): Promise<Sequence> {
+  return request<Sequence>(`/sequences/${id}`)
 }
 
-export async function addSequenceStep(sequenceId: number, step: Partial<SequenceStep>): Promise<SequenceStep> {
-  const res = await fetch(`${API_BASE}/api/sequences/${sequenceId}/steps`, {
+export function addSequenceStep(sequenceId: number, step: Partial<SequenceStep>): Promise<SequenceStep> {
+  return request<SequenceStep>(`/sequences/${sequenceId}/steps`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(step)
   })
-  if (!res.ok) throw new Error('Failed to add step')
-  return res.json()
 }
 
-export async function createBranchPoint(sequenceId: number, afterStep: number, delayHours: number = 0): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/sequences/${sequenceId}/branch-point`, {
+export function createBranchPoint(sequenceId: number, afterStep: number, delayHours: number = 0): Promise<void> {
+  return request<void>(`/sequences/${sequenceId}/branch-point`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ afterStep, delayBeforeSwitch: delayHours })
   })
-  if (!res.ok) throw new Error('Failed to create branch point')
 }
 
-export async function getSequenceActions(sequenceId: number): Promise<any[]> {
-  const res = await fetch(`${API_BASE}/api/sequences/${sequenceId}/actions`)
-  if (!res.ok) throw new Error('Failed to fetch actions')
-  return res.json()
+export function getSequenceActions(sequenceId: number): Promise<unknown[]> {
+  return request<unknown[]>(`/sequences/${sequenceId}/actions`)
 }
