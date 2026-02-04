@@ -804,6 +804,20 @@ export function createBranchPoint(sequenceId: number, afterStep: number, delayHo
   })
 }
 
-export function getSequenceActions(sequenceId: number): Promise<unknown[]> {
-  return request<unknown[]>(`/sequences/${sequenceId}/actions`)
+export interface SequenceAction {
+  id: number
+  sequence_id: number
+  step_id: number
+  enrollment_id: number
+  clicked_at: string
+  destination_type: string
+  destination_url: string | null
+  hosted_message: string | null
+  button_text: string | null
+  recipient_email: string
+  recipient_data: string | null
+}
+
+export function getSequenceActions(sequenceId: number): Promise<SequenceAction[]> {
+  return request<SequenceAction[]>(`/sequences/${sequenceId}/actions`)
 }

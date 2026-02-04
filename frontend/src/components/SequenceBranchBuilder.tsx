@@ -3,6 +3,9 @@ import { Button } from '@/components/ui/button'
 import { Plus, GitBranch, Clock } from 'lucide-react'
 import { SequenceStep } from '@/lib/api'
 
+const BRANCH_ACTION = 'action'
+const BRANCH_DEFAULT = 'default'
+
 interface Props {
   steps: SequenceStep[]
   onAddStep: (branchId: string | null) => void
@@ -14,8 +17,8 @@ interface Props {
 export function SequenceBranchBuilder({ steps, onAddStep, onAddBranchPoint, onEditStep, onDeleteStep }: Props) {
   // Group steps by branch
   const mainSteps = steps.filter(s => !s.branch_id)
-  const actionSteps = steps.filter(s => s.branch_id === 'action')
-  const defaultSteps = steps.filter(s => s.branch_id === 'default')
+  const actionSteps = steps.filter(s => s.branch_id === BRANCH_ACTION)
+  const defaultSteps = steps.filter(s => s.branch_id === BRANCH_DEFAULT)
   
   const branchPoint = steps.find(s => s.is_branch_point)
 
@@ -27,6 +30,11 @@ export function SequenceBranchBuilder({ steps, onAddStep, onAddBranchPoint, onEd
           <CardTitle className="text-sm font-medium">Main Path</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
+          {mainSteps.length === 0 && (
+            <p className="text-sm text-muted-foreground py-2">
+              No steps yet. Add your first step to get started.
+            </p>
+          )}
           {mainSteps.map((step, i) => (
             <StepCard 
               key={step.id} 
@@ -70,7 +78,7 @@ export function SequenceBranchBuilder({ steps, onAddStep, onAddBranchPoint, onEd
                     onDelete={() => onDeleteStep(step.id)}
                   />
                 ))}
-                <Button variant="outline" size="sm" onClick={() => onAddStep('default')}>
+                <Button variant="outline" size="sm" onClick={() => onAddStep(BRANCH_DEFAULT)}>
                   <Plus className="w-4 h-4 mr-2" /> Add Step
                 </Button>
               </CardContent>
@@ -91,7 +99,7 @@ export function SequenceBranchBuilder({ steps, onAddStep, onAddBranchPoint, onEd
                     onDelete={() => onDeleteStep(step.id)}
                   />
                 ))}
-                <Button variant="outline" size="sm" onClick={() => onAddStep('action')}>
+                <Button variant="outline" size="sm" onClick={() => onAddStep(BRANCH_ACTION)}>
                   <Plus className="w-4 h-4 mr-2" /> Add Step
                 </Button>
               </CardContent>
@@ -125,12 +133,12 @@ function StepCard({ step, index, onEdit, onDelete, showBranchButton, onAddBranch
       </div>
       <div className="flex gap-1">
         {showBranchButton && (
-          <Button variant="ghost" size="sm" onClick={onAddBranchPoint}>
+          <Button variant="ghost" size="sm" onClick={onAddBranchPoint} aria-label="Add branch point">
             <GitBranch className="w-4 h-4" />
           </Button>
         )}
-        <Button variant="ghost" size="sm" onClick={onEdit}>Edit</Button>
-        <Button variant="ghost" size="sm" onClick={onDelete}>Delete</Button>
+        <Button variant="ghost" size="sm" onClick={onEdit} aria-label={`Edit step ${index}`}>Edit</Button>
+        <Button variant="ghost" size="sm" onClick={onDelete} aria-label={`Delete step ${index}`}>Delete</Button>
       </div>
     </div>
   )
