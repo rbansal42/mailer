@@ -9,6 +9,7 @@
     "db:migrate": "bun run src/db/migrate.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.72.1",
     "@google/genai": "^1.39.0",
     "@libsql/client": "^0.17.0",
     "@react-pdf/font": "^4.0.4",
@@ -27,6 +28,7 @@
     "nanoid": "^5.1.6",
     "node-cron": "^3.0.3",
     "nodemailer": "^6.9.16",
+    "openai": "^6.17.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "sharp": "^0.34.5",

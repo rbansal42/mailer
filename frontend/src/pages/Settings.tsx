@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
-import { api, SenderAccount, GmailConfig, SmtpConfig, googleSheetsApi } from '../lib/api'
+import { api, SenderAccount, GmailConfig, SmtpConfig, googleSheetsApi, LLMProviderInfo, LLMProviderId } from '../lib/api'
 import { useThemeStore } from '../hooks/useThemeStore'
 import { COLOR_PRESETS, THEME_COLORS } from '../lib/theme'
 import { Button } from '../components/ui/button'
@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import {
   Plus, GripVertical, Trash2, Check, Eye, EyeOff,
   Loader2, AlertCircle, CheckCircle2, Sun, Moon,
-  ExternalLink, Link2Off, Sheet
+  ExternalLink, Link2Off, Sheet, Sparkles
 } from 'lucide-react'
 import { cn } from '../lib/utils'
 import { toast } from 'sonner'
@@ -638,6 +638,218 @@ function QueueSettings() {
   )
 }
 
+function LLMProvidersSettings() {
+  const queryClient = useQueryClient()
+  const [editingProvider, setEditingProvider] = useState<LLMProviderId | null>(null)
+  const [apiKeyInput, setApiKeyInput] = useState('')
+  const [showApiKey, setShowApiKey] = useState(false)
+  const [selectedModel, setSelectedModel] = useState('')
+
+  const { data: providersInfo } = useQuery({
+    queryKey: ['llm-providers-info'],
+    queryFn: api.getLLMProvidersInfo,
+  })
+
+  const { data: settings, isLoading } = useQuery({
+    queryKey: ['llm-settings'],
+    queryFn: api.getLLMSettings,
+  })
+
+  const updateProviderMutation = useMutation({
+    mutationFn: api.updateLLMProvider,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['llm-settings'] })
+      setEditingProvider(null)
+      setApiKeyInput('')
+      setShowApiKey(false)
+      toast.success('Provider settings saved')
+    },
+    onError: () => {
+      toast.error('Failed to save provider settings')
+    },
+  })
+
+  const setActiveMutation = useMutation({
+    mutationFn: api.setActiveLLMProvider,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['llm-settings'] })
+      toast.success('Active provider updated')
+    },
+    onError: () => {
+      toast.error('Failed to update active provider')
+    },
+  })
+
+  const handleSaveProvider = (providerId: LLMProviderId) => {
+    updateProviderMutation.mutate({
+      id: providerId,
+      apiKey: apiKeyInput || undefined,
+      model: selectedModel || undefined,
+      enabled: true,
+    })
+  }
+
+  const handleSetActive = (providerId: LLMProviderId) => {
+    setActiveMutation.mutate(providerId)
+  }
+
+  const startEditing = (providerId: LLMProviderId) => {
+    const provider = settings?.providers.find(p => p.id === providerId)
+    const providerInfo = providersInfo?.find(p => p.id === providerId)
+    setEditingProvider(providerId)
+    setApiKeyInput('')
+    setSelectedModel(provider?.model || providerInfo?.models[0]?.id || '')
+    setShowApiKey(false)
+  }
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardContent className="py-8 flex justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Sparkles className="h-5 w-5 text-purple-600" />
+          AI Providers
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Configure AI providers for sequence generation. Add your API keys and select which provider to use.
+        </p>
+
+        <div className="space-y-3">
+          {providersInfo?.map((providerInfo) => {
+            const configured = settings?.providers.find(p => p.id === providerInfo.id)
+            const isActive = settings?.activeProvider === providerInfo.id
+            const isEditing = editingProvider === providerInfo.id
+
+            return (
+              <div
+                key={providerInfo.id}
+                className={cn(
+                  'p-4 rounded-lg border transition-colors',
+                  isActive && 'border-primary bg-primary/5'
+                )}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">{providerInfo.name}</span>
+                    {configured?.apiKeyMasked && (
+                      <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
+                        {configured.apiKeyMasked}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {configured?.enabled && configured.apiKeyMasked && (
+                      <Button
+                        size="sm"
+                        variant={isActive ? 'default' : 'outline'}
+                        onClick={() => handleSetActive(providerInfo.id)}
+                        disabled={isActive || setActiveMutation.isPending}
+                      >
+                        {isActive ? (
+                          <>
+                            <Check className="h-3 w-3 mr-1" />
+                            Active
+                          </>
+                        ) : (
+                          'Set Active'
+                        )}
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => isEditing ? setEditingProvider(null) : startEditing(providerInfo.id)}
+                    >
+                      {isEditing ? 'Cancel' : configured?.apiKeyMasked ? 'Edit' : 'Configure'}
+                    </Button>
+                  </div>
+                </div>
+
+                {isEditing && (
+                  <div className="mt-3 space-y-3 p-3 bg-muted/50 rounded-lg">
+                    <div className="space-y-1">
+                      <Label className="text-xs">API Key</Label>
+                      <div className="relative">
+                        <Input
+                          type={showApiKey ? 'text' : 'password'}
+                          value={apiKeyInput}
+                          onChange={(e) => setApiKeyInput(e.target.value)}
+                          placeholder={configured?.apiKeyMasked ? `Current: ${configured.apiKeyMasked}` : 'Enter API key'}
+                          className="h-8 text-sm pr-8"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowApiKey(!showApiKey)}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground"
+                        >
+                          {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label className="text-xs">Model</Label>
+                      <select
+                        value={selectedModel}
+                        onChange={(e) => setSelectedModel(e.target.value)}
+                        className="w-full h-8 text-sm px-2 rounded-md border border-input bg-background"
+                      >
+                        {providerInfo.models.map((model) => (
+                          <option key={model.id} value={model.id}>
+                            {model.name} {model.description && `- ${model.description}`}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-muted-foreground">
+                        Or enter a custom model ID in the field above (coming soon)
+                      </p>
+                    </div>
+
+                    <Button
+                      size="sm"
+                      onClick={() => handleSaveProvider(providerInfo.id)}
+                      disabled={updateProviderMutation.isPending}
+                    >
+                      {updateProviderMutation.isPending && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+                      Save
+                    </Button>
+                  </div>
+                )}
+
+                {configured?.model && !isEditing && (
+                  <p className="text-xs text-muted-foreground">
+                    Model: {providerInfo.models.find(m => m.id === configured.model)?.name || configured.model}
+                  </p>
+                )}
+              </div>
+            )
+          })}
+        </div>
+
+        {settings?.activeProvider && (
+          <div className="p-3 bg-purple-50 dark:bg-purple-950 rounded-lg text-sm">
+            <p className="font-medium text-purple-800 dark:text-purple-200">Ready for AI generation</p>
+            <p className="text-purple-700 dark:text-purple-300 text-xs mt-1">
+              Using {providersInfo?.find(p => p.id === settings.activeProvider)?.name} for sequence generation.
+            </p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 function IntegrationsSettings() {
   const queryClient = useQueryClient()
   const [showCredentialsForm, setShowCredentialsForm] = useState(false)
@@ -858,6 +1070,9 @@ function IntegrationsSettings() {
           )}
         </CardContent>
       </Card>
+
+      {/* LLM Providers */}
+      <LLMProvidersSettings />
     </div>
   )
 }
