@@ -24,6 +24,7 @@ import {
   Sparkles
 } from 'lucide-react'
 import { 
+  api,
   Sequence, 
   SequenceStep,
   SequenceEnrollment,
@@ -46,6 +47,11 @@ export default function Sequences() {
   const { data: sequencesList, isLoading } = useQuery({
     queryKey: ['sequences'],
     queryFn: sequencesApi.list,
+  })
+
+  const { data: llmStatus } = useQuery({
+    queryKey: ['llm-status'],
+    queryFn: api.getLLMStatus,
   })
 
   const filteredSequences = sequencesList?.filter(
@@ -93,10 +99,12 @@ export default function Sequences() {
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-xl font-semibold">Sequences</h1>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => setGenerateDialogOpen(true)}>
-            <Sparkles className="h-4 w-4 mr-1" />
-            AI Generate
-          </Button>
+          {llmStatus?.available && (
+            <Button variant="outline" size="sm" onClick={() => setGenerateDialogOpen(true)}>
+              <Sparkles className="h-4 w-4 mr-1" />
+              AI Generate
+            </Button>
+          )}
           <Button size="sm" onClick={() => setCreateDialogOpen(true)}>
             <Plus className="h-4 w-4 mr-1" />
             New Sequence

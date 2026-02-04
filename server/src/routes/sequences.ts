@@ -3,7 +3,7 @@ import rateLimit from 'express-rate-limit'
 import { queryAll, queryOne, execute } from '../db'
 import { logger } from '../lib/logger'
 import { enrollRecipient, pauseEnrollment, cancelEnrollment, resumeEnrollment } from '../services/sequence-processor'
-import { generateSequence } from '../services/llm'
+import { generateSequence, getLLMSettings } from '../services/llm'
 import { generateSequenceSchema, validate } from '../lib/validation'
 
 export const sequencesRouter = Router()
@@ -78,6 +78,19 @@ sequencesRouter.get('/', async (_req, res) => {
 })
 
 // POST /generate - Generate sequence with AI (must be before /:id routes)
+// GET /generate/status - Check if AI generation is available
+sequencesRouter.get('/generate/status', async (_req, res) => {
+  try {
+    const settings = await getLLMSettings()
+    const hasProvider = settings.providers.some(p => p.enabled && p.apiKey)
+    const activeProvider = settings.activeProvider
+    res.json({ available: hasProvider, activeProvider })
+  } catch (error) {
+    logger.error('Failed to check LLM status', { service: 'sequences' }, error as Error)
+    res.json({ available: false, activeProvider: null })
+  }
+})
+
 sequencesRouter.post('/generate', generateRateLimiter, async (req, res) => {
   try {
     const validation = validate(generateSequenceSchema, req.body)
@@ -99,6 +112,10 @@ sequencesRouter.post('/generate', generateRateLimiter, async (req, res) => {
     logger.error('Failed to generate sequence', { service: 'sequences' }, err)
     
     // Provide user-friendly error messages
+    if (err.message.includes('No LLM provider configured')) {
+      res.status(503).json({ error: err.message })
+      return
+    }
     if (err.message.includes('exhausted') || err.message.includes('rate')) {
       res.status(429).json({ error: 'Service is busy. Please try again in a moment.' })
       return

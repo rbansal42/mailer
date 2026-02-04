@@ -300,6 +300,9 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
+  getLLMStatus: () =>
+    request<{ available: boolean; activeProvider: LLMProviderId | null }>('/sequences/generate/status'),
+
   setActiveLLMProvider: (provider: LLMProviderId | null) =>
     request<{ success: boolean; activeProvider: LLMProviderId | null }>('/settings/llm/active', {
       method: 'PUT',
