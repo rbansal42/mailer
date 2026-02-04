@@ -278,7 +278,7 @@ export async function getActionConfig(sequenceId: number, stepId: number): Promi
     ctaLabel: actionBlock.props.ctaLabel || null,
     ctaUrl: actionBlock.props.ctaUrl || null,
     redirectUrl: actionBlock.props.redirectUrl || null,
-    redirectDelay: actionBlock.props.redirectDelay != null ? Number(actionBlock.props.redirectDelay) : null,
+    redirectDelay: actionBlock.props.redirectDelay != null ? Math.max(1, Math.min(Math.round(Number(actionBlock.props.redirectDelay) || 5), 60)) : null,
   }
 }
 
