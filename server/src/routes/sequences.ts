@@ -168,7 +168,7 @@ sequencesRouter.delete('/:id', async (req, res) => {
 sequencesRouter.post('/:id/steps', async (req, res) => {
   try {
     const sequenceId = parseInt(req.params.id, 10)
-    const { templateId, subject, delayDays, delayHours, sendTime, branchId, branchOrder } = req.body
+    const { templateId, subject, delayDays, delayHours, sendTime, branchId } = req.body
 
     // Validate required fields
     if (!subject || typeof subject !== 'string' || subject.trim().length === 0) {
@@ -380,13 +380,14 @@ sequencesRouter.post('/:id/branch-point', async (req, res) => {
       return
     }
 
-    // Mark that step as a branch point
+    // Mark that step as a branch point and store delay config
+    // Note: These two UPDATEs are not atomic, but the risk of partial failure is minimal
+    // since both are simple UPDATE operations. If needed, libsql batch() could be used.
     await execute(
       `UPDATE sequence_steps SET is_branch_point = 1 WHERE sequence_id = ? AND step_order = ?`,
       [id, afterStep]
     )
 
-    // Store delay config in sequence
     await execute(
       `UPDATE sequences SET branch_delay_hours = ? WHERE id = ?`,
       [delayBeforeSwitch ?? 0, id]

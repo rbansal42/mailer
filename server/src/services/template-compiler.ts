@@ -119,11 +119,14 @@ function compileImage(props: Record<string, unknown>, data: Record<string, strin
  * If isActionTrigger is true, the button uses {{action_url}} and data-action-button attribute
  */
 function compileButton(props: Record<string, unknown>, data: Record<string, string>): string {
-  const color = String(props.color || '#0f172a')
-  const align = String(props.align || 'center')
+  const validAligns = ['left', 'center', 'right']
+  const align = validAligns.includes(String(props.align)) ? String(props.align) : 'center'
+  const isValidColor = /^#[0-9A-Fa-f]{6}$/.test(String(props.color))
+  const color = isValidColor ? String(props.color) : '#0f172a'
   const label = escapeHtml(replaceVariables(String(props.label || 'Click Here'), data))
   const isActionTrigger = Boolean(props.isActionTrigger)
-  const url = isActionTrigger ? '{{action_url}}' : replaceVariables(String(props.url || '#'), data)
+  const rawUrl = replaceVariables(String(props.url || '#'), data)
+  const url = isActionTrigger ? '{{action_url}}' : escapeHtml(rawUrl)
   const dataAttr = isActionTrigger ? ' data-action-button="true"' : ''
 
   return `

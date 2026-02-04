@@ -205,19 +205,33 @@ export async function recordAction(
     return { success: true, enrollment: enrollmentRow }
   }
 
+  // Apply IP hashing based on privacy settings
+  const settings = await getTrackingSettings()
+  const finalIp = settings.hashIps && ipAddress 
+    ? hashIpAddress(ipAddress) 
+    : ipAddress
+
   // Record tracking event
   await db.execute({
     sql: `INSERT INTO tracking_events (token_id, event_type, ip_address, user_agent)
           VALUES (?, 'action', ?, ?)`,
-    args: [tokenDetails.id, ipAddress ?? null, userAgent ?? null]
+    args: [tokenDetails.id, finalIp ?? null, userAgent ?? null]
   })
 
-  // Update enrollment
+  // Atomically update enrollment only if not already clicked
   const now = new Date().toISOString()
-  await db.execute({
-    sql: `UPDATE sequence_enrollments SET action_clicked_at = ? WHERE id = ?`,
+  const updateResult = await db.execute({
+    sql: `UPDATE sequence_enrollments 
+          SET action_clicked_at = ? 
+          WHERE id = ? AND action_clicked_at IS NULL`,
     args: [now, enrollmentRow.id]
   })
+
+  // Check if update actually happened (another request may have won the race)
+  if (updateResult.rowsAffected === 0) {
+    // Already clicked by concurrent request, return success with existing data
+    return { success: true, enrollment: enrollmentRow }
+  }
 
   return { 
     success: true, 
