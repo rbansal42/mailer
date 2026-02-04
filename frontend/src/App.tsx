@@ -18,6 +18,7 @@ const History = lazy(() => import('./pages/History'))
 const Settings = lazy(() => import('./pages/Settings'))
 const Certificates = lazy(() => import('./pages/Certificates'))
 const SuppressionList = lazy(() => import('./pages/SuppressionList'))
+const Sequences = lazy(() => import('./pages/Sequences'))
 
 // Error Boundary for catching lazy loading failures
 interface ErrorBoundaryState {
@@ -115,6 +116,7 @@ export default function App() {
           <Route path="history" element={<LazyRoute component={History} />} />
           <Route path="settings" element={<LazyRoute component={Settings} />} />
           <Route path="suppression" element={<LazyRoute component={SuppressionList} />} />
+          <Route path="sequences" element={<LazyRoute component={Sequences} />} />
         </Route>
       </Routes>
       <Toaster position="top-right" richColors />

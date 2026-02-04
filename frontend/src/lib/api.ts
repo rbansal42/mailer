@@ -821,3 +821,66 @@ export interface SequenceAction {
 export function getSequenceActions(sequenceId: number): Promise<SequenceAction[]> {
   return request<SequenceAction[]>(`/sequences/${sequenceId}/actions`)
 }
+
+// Sequence list item (from list endpoint)
+export interface SequenceListItem {
+  id: number
+  name: string
+  description: string | null
+  enabled: boolean
+  branch_delay_hours: number
+  step_count: number
+  active_enrollments: number
+  created_at: string
+  updated_at: string
+}
+
+// Full sequences API
+export const sequences = {
+  list: () => request<SequenceListItem[]>('/sequences'),
+  
+  get: (id: number) => request<Sequence>(`/sequences/${id}`),
+  
+  create: (data: { name: string; description?: string; enabled?: boolean }) =>
+    request<{ id: number; message: string }>('/sequences', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  
+  update: (id: number, data: { name?: string; description?: string; enabled?: boolean }) =>
+    request<{ message: string }>(`/sequences/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  
+  delete: (id: number) =>
+    request<{ message: string }>(`/sequences/${id}`, { method: 'DELETE' }),
+  
+  addStep: (sequenceId: number, step: { 
+    subject: string
+    templateId?: number
+    delayDays?: number
+    delayHours?: number
+    sendTime?: string
+    branchId?: string | null
+  }) =>
+    request<{ id: number; stepOrder: number; message: string }>(`/sequences/${sequenceId}/steps`, {
+      method: 'POST',
+      body: JSON.stringify(step),
+    }),
+  
+  updateStep: (sequenceId: number, stepId: number, data: {
+    subject?: string
+    templateId?: number
+    delayDays?: number
+    delayHours?: number
+    sendTime?: string
+  }) =>
+    request<{ message: string }>(`/sequences/${sequenceId}/steps/${stepId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  
+  deleteStep: (sequenceId: number, stepId: number) =>
+    request<{ message: string }>(`/sequences/${sequenceId}/steps/${stepId}`, { method: 'DELETE' }),
+}
