@@ -116,12 +116,15 @@ function compileImage(props: Record<string, unknown>, data: Record<string, strin
 
 /**
  * Compile a button block to HTML
+ * If isActionTrigger is true, the button uses {{action_url}} and data-action-button attribute
  */
 function compileButton(props: Record<string, unknown>, data: Record<string, string>): string {
   const color = String(props.color || '#0f172a')
   const align = String(props.align || 'center')
-  const label = replaceVariables(String(props.label || 'Click Here'), data)
-  const url = replaceVariables(String(props.url || '#'), data)
+  const label = escapeHtml(replaceVariables(String(props.label || 'Click Here'), data))
+  const isActionTrigger = Boolean(props.isActionTrigger)
+  const url = isActionTrigger ? '{{action_url}}' : replaceVariables(String(props.url || '#'), data)
+  const dataAttr = isActionTrigger ? ' data-action-button="true"' : ''
 
   return `
     <table width="100%" cellpadding="0" cellspacing="0" border="0">
@@ -130,7 +133,7 @@ function compileButton(props: Record<string, unknown>, data: Record<string, stri
           <table cellpadding="0" cellspacing="0" border="0">
             <tr>
               <td style="background-color: ${color}; border-radius: 4px;">
-                <a href="${url}" target="_blank" style="display: inline-block; padding: 12px 24px; font-size: 16px; font-family: Arial, sans-serif; color: #ffffff; text-decoration: none; font-weight: bold;">
+                <a href="${url}"${dataAttr} target="_blank" style="display: inline-block; padding: 12px 24px; font-size: 16px; font-family: Arial, sans-serif; color: #ffffff; text-decoration: none; font-weight: bold;">
                   ${label}
                 </a>
               </td>

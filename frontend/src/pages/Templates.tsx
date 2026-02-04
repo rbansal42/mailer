@@ -6,6 +6,7 @@ import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
 import { Textarea } from '../components/ui/textarea'
+import { Checkbox } from '../components/ui/checkbox'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import {
   Dialog,
@@ -848,6 +849,11 @@ function BlockPreview({ block, darkMode: _darkMode }: { block: Block; darkMode?:
           >
             {String(props.label) || 'Click Here'}
           </button>
+          {props.isActionTrigger && (
+            <div style={{ marginTop: '8px', fontSize: '12px', color: '#9ca3af' }}>
+              Action tracked for automation
+            </div>
+          )}
         </div>
       )
     case 'divider':
@@ -1084,6 +1090,7 @@ function BlockProperties({ block, onChange, onOpenMediaLibrary, onOpenCropModal 
               onChange={(e) => onChange({ url: e.target.value })}
               placeholder="https://..."
               className="h-8 text-xs"
+              disabled={Boolean(props.isActionTrigger)}
             />
           </div>
           <div className="grid grid-cols-2 gap-2">
@@ -1109,6 +1116,56 @@ function BlockProperties({ block, onChange, onOpenMediaLibrary, onOpenCropModal 
               </select>
             </div>
           </div>
+          
+          <hr className="my-4 border-border" />
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="isActionTrigger"
+              checked={Boolean(props.isActionTrigger) || false}
+              onCheckedChange={(checked) => onChange({ isActionTrigger: checked })}
+            />
+            <Label htmlFor="isActionTrigger" className="text-xs">Use as action trigger</Label>
+          </div>
+          
+          {props.isActionTrigger && (
+            <>
+              <div className="space-y-1">
+                <Label className="text-xs">When Clicked</Label>
+                <Select 
+                  value={String(props.destinationType || 'hosted')} 
+                  onValueChange={(v) => onChange({ destinationType: v })}
+                >
+                  <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="hosted">Show Thank You Page</SelectItem>
+                    <SelectItem value="external">Redirect to URL</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {props.destinationType === 'external' ? (
+                <div className="space-y-1">
+                  <Label className="text-xs">Destination URL</Label>
+                  <Input
+                    value={String(props.destinationUrl || '')}
+                    onChange={(e) => onChange({ destinationUrl: e.target.value })}
+                    placeholder="https://..."
+                    className="h-8 text-xs"
+                  />
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  <Label className="text-xs">Thank You Message</Label>
+                  <Textarea
+                    value={String(props.hostedMessage || '')}
+                    onChange={(e) => onChange({ hostedMessage: e.target.value })}
+                    placeholder="Thank you for your response!"
+                    rows={3}
+                    className="text-xs"
+                  />
+                </div>
+              )}
+            </>
+          )}
         </div>
       )
     case 'divider':
