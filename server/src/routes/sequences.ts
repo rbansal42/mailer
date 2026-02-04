@@ -3,7 +3,7 @@ import rateLimit from 'express-rate-limit'
 import { queryAll, queryOne, execute } from '../db'
 import { logger } from '../lib/logger'
 import { enrollRecipient, pauseEnrollment, cancelEnrollment, resumeEnrollment } from '../services/sequence-processor'
-import { generateSequence } from '../services/gemini'
+import { generateSequence } from '../services/llm'
 import { generateSequenceSchema, validate } from '../lib/validation'
 
 export const sequencesRouter = Router()

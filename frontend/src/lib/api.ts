@@ -286,6 +286,25 @@ export const api = {
 
   checkSuppression: (email: string) =>
     request<{ suppressed: boolean; reason: string | null }>(`/suppression/check/${encodeURIComponent(email)}`),
+
+  // LLM Settings
+  getLLMProvidersInfo: () =>
+    request<LLMProviderInfo[]>('/settings/llm/providers-info'),
+
+  getLLMSettings: () =>
+    request<LLMSettings>('/settings/llm'),
+
+  updateLLMProvider: (data: { id: LLMProviderId; apiKey?: string; model?: string; enabled?: boolean }) =>
+    request<{ success: boolean }>('/settings/llm/provider', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  setActiveLLMProvider: (provider: LLMProviderId | null) =>
+    request<{ success: boolean; activeProvider: LLMProviderId | null }>('/settings/llm/active', {
+      method: 'PUT',
+      body: JSON.stringify({ provider }),
+    }),
 }
 
 // Types
@@ -929,4 +948,33 @@ export const sequences = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+}
+
+// LLM Provider types
+export type LLMProviderId = 'gemini' | 'openai' | 'anthropic'
+
+export interface LLMModelInfo {
+  id: string
+  name: string
+  description?: string
+}
+
+export interface LLMProviderInfo {
+  id: LLMProviderId
+  name: string
+  models: LLMModelInfo[]
+  envVar: string
+}
+
+export interface StoredLLMProvider {
+  id: LLMProviderId
+  apiKey: string
+  apiKeyMasked: string
+  model: string
+  enabled: boolean
+}
+
+export interface LLMSettings {
+  providers: StoredLLMProvider[]
+  activeProvider: LLMProviderId | null
 }

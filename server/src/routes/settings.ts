@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express'
 import { queryOne, execute } from '../db'
 import { logger } from '../lib/logger'
+import { encrypt, decrypt } from '../utils/crypto'
+import { LLM_PROVIDERS, LLMProviderId, StoredLLMProvider } from '../services/llm/types'
 
 export const settingsRouter = Router()
 
@@ -137,5 +139,154 @@ settingsRouter.put('/tracking', async (req: Request, res: Response) => {
   } catch (error) {
     logger.error('Failed to update tracking settings', { service: 'settings', key: 'tracking' }, error as Error)
     res.status(500).json({ error: 'Failed to update tracking settings' })
+  }
+})
+
+// ============ LLM Settings ============
+
+// Helper to mask API key for display
+function maskApiKey(key: string): string {
+  if (!key || key.length < 8) return key ? '****' : ''
+  return key.slice(0, 4) + '****' + key.slice(-4)
+}
+
+// GET /llm/providers-info - Get available providers and their models (static info)
+settingsRouter.get('/llm/providers-info', (_req: Request, res: Response) => {
+  res.json(LLM_PROVIDERS)
+})
+
+// GET /llm - Get LLM settings
+settingsRouter.get('/llm', async (_req: Request, res: Response) => {
+  try {
+    const providersRow = await queryOne<SettingRow>('SELECT value FROM settings WHERE key = ?', ['llm_providers'])
+    const activeRow = await queryOne<SettingRow>('SELECT value FROM settings WHERE key = ?', ['llm_active_provider'])
+    
+    let providers: Array<StoredLLMProvider & { apiKeyMasked: string }> = []
+    
+    if (providersRow?.value) {
+      try {
+        const parsed = JSON.parse(providersRow.value) as StoredLLMProvider[]
+        providers = parsed.map(p => ({
+          ...p,
+          apiKey: '', // Don't send actual key to frontend
+          apiKeyMasked: maskApiKey(p.apiKey ? decrypt(p.apiKey) : '')
+        }))
+      } catch {
+        logger.warn('Failed to parse LLM providers from database')
+      }
+    }
+    
+    // Check env vars for unconfigured providers
+    for (const providerInfo of LLM_PROVIDERS) {
+      const existing = providers.find(p => p.id === providerInfo.id)
+      if (!existing) {
+        const envKey = process.env[providerInfo.envVar]
+        if (envKey) {
+          providers.push({
+            id: providerInfo.id,
+            apiKey: '',
+            apiKeyMasked: maskApiKey(envKey) + ' (env)',
+            model: providerInfo.models[0].id,
+            enabled: true
+          })
+        }
+      }
+    }
+    
+    logger.info('Fetched LLM settings', { service: 'settings', key: 'llm' })
+    res.json({
+      providers,
+      activeProvider: activeRow?.value || null
+    })
+  } catch (error) {
+    logger.error('Failed to fetch LLM settings', { service: 'settings', key: 'llm' }, error as Error)
+    res.status(500).json({ error: 'Failed to fetch LLM settings' })
+  }
+})
+
+// PUT /llm/provider - Update a provider's config
+settingsRouter.put('/llm/provider', async (req: Request, res: Response) => {
+  try {
+    const { id, apiKey, model, enabled } = req.body as {
+      id: LLMProviderId
+      apiKey?: string
+      model?: string
+      enabled?: boolean
+    }
+    
+    if (!id || !LLM_PROVIDERS.find(p => p.id === id)) {
+      res.status(400).json({ error: 'Invalid provider ID' })
+      return
+    }
+    
+    // Get existing providers
+    const providersRow = await queryOne<SettingRow>('SELECT value FROM settings WHERE key = ?', ['llm_providers'])
+    let providers: StoredLLMProvider[] = []
+    
+    if (providersRow?.value) {
+      try {
+        providers = JSON.parse(providersRow.value)
+      } catch {
+        providers = []
+      }
+    }
+    
+    // Find or create provider entry
+    let provider = providers.find(p => p.id === id)
+    if (!provider) {
+      const providerInfo = LLM_PROVIDERS.find(p => p.id === id)!
+      provider = {
+        id,
+        apiKey: '',
+        model: providerInfo.models[0].id,
+        enabled: false
+      }
+      providers.push(provider)
+    }
+    
+    // Update fields
+    if (apiKey !== undefined) {
+      // Encrypt API key before storing
+      provider.apiKey = apiKey ? encrypt(apiKey) : ''
+    }
+    if (model !== undefined) {
+      provider.model = model
+    }
+    if (enabled !== undefined) {
+      provider.enabled = enabled
+    }
+    
+    // Save
+    await execute('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', ['llm_providers', JSON.stringify(providers)])
+    
+    logger.info('Updated LLM provider', { service: 'settings', key: 'llm', providerId: id })
+    res.json({ success: true })
+  } catch (error) {
+    logger.error('Failed to update LLM provider', { service: 'settings', key: 'llm' }, error as Error)
+    res.status(500).json({ error: 'Failed to update LLM provider' })
+  }
+})
+
+// PUT /llm/active - Set the active provider
+settingsRouter.put('/llm/active', async (req: Request, res: Response) => {
+  try {
+    const { provider } = req.body as { provider: LLMProviderId | null }
+    
+    if (provider !== null && !LLM_PROVIDERS.find(p => p.id === provider)) {
+      res.status(400).json({ error: 'Invalid provider ID' })
+      return
+    }
+    
+    if (provider) {
+      await execute('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', ['llm_active_provider', provider])
+    } else {
+      await execute('DELETE FROM settings WHERE key = ?', ['llm_active_provider'])
+    }
+    
+    logger.info('Updated active LLM provider', { service: 'settings', key: 'llm', provider })
+    res.json({ success: true, activeProvider: provider })
+  } catch (error) {
+    logger.error('Failed to update active LLM provider', { service: 'settings', key: 'llm' }, error as Error)
+    res.status(500).json({ error: 'Failed to update active LLM provider' })
   }
 })

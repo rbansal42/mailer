@@ -65,7 +65,7 @@ export function SequenceBranchBuilder({ steps, onAddStep, onAddBranchPoint, onEd
           <div className="grid grid-cols-2 gap-4">
             {/* Default Path */}
             <Card>
-              <CardHeader className="py-3 bg-slate-50">
+              <CardHeader className="py-3 bg-muted/50">
                 <CardTitle className="text-sm font-medium">Default Path (no action)</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2 pt-4">
@@ -120,8 +120,8 @@ function StepCard({ step, index, onEdit, onDelete, showBranchButton, onAddBranch
   onAddBranchPoint?: () => void
 }) {
   return (
-    <div className="flex items-center gap-3 p-3 border rounded-lg hover:bg-slate-50">
-      <div className="flex items-center justify-center w-8 h-8 bg-slate-100 rounded-full text-sm font-medium">
+    <div className="flex items-center gap-3 p-3 border rounded-lg hover:bg-muted/50">
+      <div className="flex items-center justify-center w-8 h-8 bg-muted rounded-full text-sm font-medium">
         {index}
       </div>
       <div className="flex-1 min-w-0">
