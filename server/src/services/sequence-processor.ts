@@ -221,17 +221,30 @@ async function switchToBranch(enrollment: Enrollment): Promise<void> {
 async function processEnrollmentStep(enrollment: Enrollment & { sequence_name: string }): Promise<void> {
   // Check if action was clicked and we need to switch branches
   if (enrollment.action_clicked_at && !enrollment.branch_switched_at) {
-    await switchToBranch(enrollment)
-    // Re-fetch enrollment after branch switch
-    const updated = await queryOne<Enrollment & { sequence_name: string }>(
-      `SELECT e.*, s.name as sequence_name
-       FROM sequence_enrollments e
-       JOIN sequences s ON e.sequence_id = s.id
-       WHERE e.id = ?`,
-      [enrollment.id]
+    // Check branch delay
+    const sequence = await queryOne<{ branch_delay_hours: number }>(
+      'SELECT branch_delay_hours FROM sequences WHERE id = ?',
+      [enrollment.sequence_id]
     )
-    if (updated) {
-      enrollment = updated
+    
+    const delayHours = sequence?.branch_delay_hours || 0
+    const actionTime = new Date(enrollment.action_clicked_at).getTime()
+    const delayMs = delayHours * 60 * 60 * 1000
+    const now = Date.now()
+    
+    if (now >= actionTime + delayMs) {
+      await switchToBranch(enrollment)
+      // Re-fetch enrollment after branch switch
+      const updated = await queryOne<Enrollment & { sequence_name: string }>(
+        `SELECT e.*, s.name as sequence_name
+         FROM sequence_enrollments e
+         JOIN sequences s ON e.sequence_id = s.id
+         WHERE e.id = ?`,
+        [enrollment.id]
+      )
+      if (updated) {
+        enrollment = updated
+      }
     }
   }
 

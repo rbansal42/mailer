@@ -768,14 +768,14 @@ export interface SequenceStep {
   id: number
   sequence_id: number
   step_order: number
-  template_id: number
+  template_id: number | null
   subject: string
   delay_days: number
   delay_hours: number
   send_time: string | null
   branch_id: string | null
   branch_order: number | null
-  is_branch_point: boolean
+  is_branch_point: number
 }
 
 export interface Sequence {
@@ -828,7 +828,7 @@ export interface SequenceEnrollment {
   id: number
   sequence_id: number
   recipient_email: string
-  recipient_data: Record<string, string> | null
+  recipientData: Record<string, string> | null
   current_step: number
   status: 'active' | 'paused' | 'completed' | 'cancelled'
   branch_id: string | null

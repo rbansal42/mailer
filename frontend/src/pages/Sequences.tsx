@@ -330,14 +330,21 @@ function SequenceEditor({ sequence, onBack, onUpdate }: SequenceEditorProps) {
     setStepDialogOpen(true)
   }
 
-  const handleAddBranchPoint = async (afterStep: number) => {
-    try {
-      await createBranchPoint(sequence.id, afterStep, 0)
-      await refreshSequence()
+  const addBranchPointMutation = useMutation({
+    mutationFn: (afterStep: number) => createBranchPoint(sequence.id, afterStep, 0),
+    onSuccess: async () => {
+      const updated = await getSequence(sequence.id)
+      onUpdate(updated)
+      queryClient.invalidateQueries({ queryKey: ['sequences'] })
       toast.success('Branch point added')
-    } catch {
+    },
+    onError: () => {
       toast.error('Failed to add branch point')
     }
+  })
+
+  const handleAddBranchPoint = (afterStep: number) => {
+    addBranchPointMutation.mutate(afterStep)
   }
 
   const handleEditStep = (step: SequenceStep) => {
