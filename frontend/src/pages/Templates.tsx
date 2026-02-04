@@ -26,6 +26,8 @@ import DOMPurify from 'isomorphic-dompurify'
 import { useBlockHistory } from '../stores/history'
 import { useKeyboardShortcuts, createSaveShortcut, createUndoShortcut, createRedoShortcut } from '../hooks/useKeyboardShortcuts'
 
+const DEFAULT_ACTION_BUTTON_COLOR = '#10b981'
+
 const BLOCK_TYPES = [
   { type: 'header', label: 'Header', icon: FileText },
   { type: 'text', label: 'Text', icon: Type },
@@ -878,13 +880,13 @@ function BlockPreview({ block, darkMode: _darkMode }: { block: Block; darkMode?:
       )
     case 'action-button':
       return (
-        <div style={{ textAlign: props.align as 'left' | 'center' | 'right' || 'center', padding: '16px' }}>
+        <div style={{ textAlign: (props.align as 'left' | 'center' | 'right') || 'center', padding: '16px' }}>
           <a
             href="#"
             style={{
               display: 'inline-block',
               padding: '14px 28px',
-              backgroundColor: String(props.color) || '#10b981',
+              backgroundColor: String(props.color) || DEFAULT_ACTION_BUTTON_COLOR,
               color: 'white',
               textDecoration: 'none',
               borderRadius: '6px',
@@ -895,7 +897,7 @@ function BlockPreview({ block, darkMode: _darkMode }: { block: Block; darkMode?:
             {String(props.label) || 'Click Here'}
           </a>
           <div style={{ marginTop: '8px', fontSize: '12px', color: '#9ca3af' }}>
-            Zap Action Button - triggers sequence branch
+            Action tracked for automation
           </div>
         </div>
       )
@@ -1188,7 +1190,7 @@ function BlockProperties({ block, onChange, onOpenMediaLibrary, onOpenCropModal 
             <Label className="text-xs">Button Color</Label>
             <Input
               type="color"
-              value={String(props.color || '#10b981')}
+              value={String(props.color || DEFAULT_ACTION_BUTTON_COLOR)}
               onChange={(e) => onChange({ color: e.target.value })}
               className="h-8"
             />
@@ -1268,7 +1270,7 @@ function getDefaultProps(type: Block['type']): Record<string, unknown> {
     case 'action-button':
       return { 
         label: 'Yes, I\'m interested', 
-        color: '#10b981', 
+        color: DEFAULT_ACTION_BUTTON_COLOR, 
         align: 'center',
         destinationType: 'hosted',
         destinationUrl: '',
