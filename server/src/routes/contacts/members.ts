@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { queryAll, queryOne, execute } from '../../db'
+import { queryAll, queryOne, execute, safeJsonParse } from '../../db'
 import { addContactsToListSchema } from '../../lib/validation'
 import { logger } from '../../lib/logger'
 
@@ -48,7 +48,7 @@ router.get('/', async (req, res) => {
     const params: any[] = [listId]
     
     if (search) {
-      whereClause += ' AND (c.email LIKE ? OR c.name LIKE ? OR c.company LIKE ?)'
+      whereClause += ' AND (c.email ILIKE ? OR c.name ILIKE ? OR c.company ILIKE ?)'
       const searchPattern = `%${search}%`
       params.push(searchPattern, searchPattern, searchPattern)
     }
@@ -63,7 +63,7 @@ router.get('/', async (req, res) => {
     `, [...params, limitNum, offset])
     
     const totalResult = await queryOne<CountRow>(`
-      SELECT COUNT(*) as count
+      SELECT COUNT(*)::integer as count
       FROM contacts c
       JOIN list_contacts lc ON c.id = lc.contact_id
       ${whereClause}
@@ -74,7 +74,7 @@ router.get('/', async (req, res) => {
     res.json({
       contacts: contacts.map((c) => ({
         ...c,
-        custom_fields: JSON.parse(c.custom_fields || '{}')
+        custom_fields: safeJsonParse(c.custom_fields, {})
       })),
       pagination: {
         page: pageNum,
@@ -141,6 +141,7 @@ router.post('/', async (req, res) => {
         const result = await execute(`
           INSERT INTO contacts (email, name, first_name, last_name, company, phone, country, custom_fields)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          RETURNING id
         `, [
           contact.email,
           contact.name ?? null,
@@ -164,7 +165,7 @@ router.post('/', async (req, res) => {
         added++
       } catch (e: any) {
         // Ignore duplicate key errors
-        if (!e.message?.includes('UNIQUE constraint')) {
+        if ((e as any).code !== '23505') {
           throw e
         }
       }

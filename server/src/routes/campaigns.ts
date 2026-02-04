@@ -123,14 +123,14 @@ campaignsRouter.post('/:id/duplicate', async (req, res) => {
 
     const result = await execute(
       `INSERT INTO drafts (name, template_id, mail_id, subject, cc, bcc)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
       [
         newName,
         templateId,
         mailId,
         campaign.subject ?? null,
-        campaign.cc ?? null,
-        campaign.bcc ?? null,
+        campaign.cc ? JSON.stringify(campaign.cc) : null,
+        campaign.bcc ? JSON.stringify(campaign.bcc) : null,
       ]
     )
 

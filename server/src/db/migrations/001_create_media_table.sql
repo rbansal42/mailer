@@ -6,8 +6,8 @@ CREATE TABLE IF NOT EXISTS media (
   original_filename TEXT NOT NULL,
   alt_text TEXT DEFAULT '',
   size_bytes INTEGER,
-  uploaded_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  deleted_at TEXT DEFAULT NULL
+  uploaded_at TIMESTAMPTZ DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ DEFAULT NULL
 );
 
 -- Index for listing non-deleted media

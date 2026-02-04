@@ -65,7 +65,7 @@ app.get('/api/health', async (_, res) => {
   // Check queue status
   let queuePending = 0
   try {
-    const result = await queryOne<{ count: number }>("SELECT COUNT(*) as count FROM email_queue WHERE status = 'pending'")
+    const result = await queryOne<{ count: number }>("SELECT COUNT(*)::integer as count FROM email_queue WHERE status = 'pending'")
     queuePending = result?.count || 0
   } catch {
     // Queue table might not exist yet
@@ -75,7 +75,7 @@ app.get('/api/health', async (_, res) => {
   let accountsInfo = { total: 0, enabled: 0, atCap: 0 }
   try {
     const today = new Date().toISOString().split('T')[0]
-    const accounts = await queryAll<{ id: number; daily_cap: number; enabled: number; sent_today: number }>(`
+    const accounts = await queryAll<{ id: number; daily_cap: number; enabled: boolean; sent_today: number }>(`
       SELECT sa.id, sa.daily_cap, sa.enabled,
              COALESCE(sc.count, 0) as sent_today
       FROM sender_accounts sa

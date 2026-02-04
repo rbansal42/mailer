@@ -15,7 +15,7 @@ interface AccountRow {
   daily_cap: number
   campaign_cap: number
   priority: number
-  enabled: number
+  enabled: boolean
   created_at: string
 }
 
@@ -48,7 +48,7 @@ async function formatAccount(row: AccountRow, includeConfig = true) {
     dailyCap: row.daily_cap,
     campaignCap: row.campaign_cap,
     priority: row.priority,
-    enabled: Boolean(row.enabled),
+    enabled: row.enabled,
     createdAt: row.created_at,
     todayCount: await getTodayCount(row.id),
   }
@@ -91,8 +91,8 @@ accountsRouter.post('/', async (req, res) => {
   const newPriority = priority ?? ((maxPriority?.max ?? -1) + 1)
 
   const result = await execute(
-    'INSERT INTO sender_accounts (name, provider_type, config, daily_cap, campaign_cap, priority, enabled) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    [name, providerType, encryptedConfig, dailyCap, campaignCap, newPriority, enabled ? 1 : 0]
+    'INSERT INTO sender_accounts (name, provider_type, config, daily_cap, campaign_cap, priority, enabled) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id',
+    [name, providerType, encryptedConfig, dailyCap, campaignCap, newPriority, enabled]
   )
   
   const row = await queryOne<AccountRow>('SELECT * FROM sender_accounts WHERE id = ?', [result.lastInsertRowid])
@@ -115,7 +115,7 @@ accountsRouter.put('/:id', async (req, res) => {
   
   await execute(
     'UPDATE sender_accounts SET name = ?, provider_type = ?, config = ?, daily_cap = ?, campaign_cap = ?, priority = ?, enabled = ? WHERE id = ?',
-    [name, providerType, encryptedConfig, dailyCap, campaignCap, priority, enabled ? 1 : 0, req.params.id]
+    [name, providerType, encryptedConfig, dailyCap, campaignCap, priority, enabled, req.params.id]
   )
   
   const row = await queryOne<AccountRow>('SELECT * FROM sender_accounts WHERE id = ?', [req.params.id])

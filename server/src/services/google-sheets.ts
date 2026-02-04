@@ -72,15 +72,15 @@ export async function getGoogleSheetsCredentials(): Promise<GoogleSheetsCredenti
 // Save Google Sheets OAuth credentials
 export async function saveGoogleSheetsCredentials(credentials: GoogleSheetsCredentials): Promise<void> {
   await execute(
-    'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
+    'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value',
     ['google_sheets_client_id', credentials.clientId]
   )
   await execute(
-    'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
+    'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value',
     ['google_sheets_client_secret', encrypt(credentials.clientSecret)]
   )
   await execute(
-    'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
+    'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value',
     ['google_sheets_redirect_uri', credentials.redirectUri]
   )
 
@@ -109,7 +109,7 @@ export async function getGoogleSheetsTokens(): Promise<GoogleSheetsTokens | null
 // Save OAuth tokens
 export async function saveGoogleSheetsTokens(tokens: GoogleSheetsTokens): Promise<void> {
   await execute(
-    'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
+    'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value',
     ['google_sheets_tokens', encrypt(JSON.stringify(tokens))]
   )
 

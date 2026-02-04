@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { queryAll, queryOne, execute } from '../db'
+import { queryAll, queryOne, execute, safeJsonParse } from '../db'
 import { createMailSchema, updateMailSchema, saveAsTemplateSchema, validate } from '../lib/validation'
 import { logger } from '../lib/logger'
 
@@ -31,7 +31,7 @@ function formatMail(row: MailRow) {
     id: row.id,
     name: row.name,
     description: row.description,
-    blocks: JSON.parse(row.blocks || '[]'),
+    blocks: safeJsonParse(row.blocks, []),
     templateId: row.template_id,
     campaignId: row.campaign_id,
     status: row.status,
@@ -70,7 +70,7 @@ mailsRouter.post('/', async (req, res) => {
   logger.info('Creating mail', { service: 'mails', name })
 
   const result = await execute(
-    'INSERT INTO mails (name, description, blocks, template_id, status) VALUES (?, ?, ?, ?, ?)',
+    'INSERT INTO mails (name, description, blocks, template_id, status) VALUES (?, ?, ?, ?, ?) RETURNING id',
     [name, description || null, JSON.stringify(blocks), templateId || null, status || 'draft']
   )
 
@@ -164,7 +164,7 @@ mailsRouter.post('/:id/save-as-template', async (req, res) => {
   logger.info('Saving mail as template', { service: 'mails', mailId: req.params.id, templateName })
 
   const result = await execute(
-    'INSERT INTO templates (name, description, blocks) VALUES (?, ?, ?)',
+    'INSERT INTO templates (name, description, blocks) VALUES (?, ?, ?) RETURNING id',
     [templateName, templateDescription, mail.blocks]
   )
 
@@ -175,7 +175,7 @@ mailsRouter.post('/:id/save-as-template', async (req, res) => {
     id: template!.id,
     name: template!.name,
     description: template!.description,
-    blocks: JSON.parse(template!.blocks || '[]'),
+    blocks: safeJsonParse(template!.blocks, []),
     createdAt: template!.created_at,
     updatedAt: template!.updated_at,
   })

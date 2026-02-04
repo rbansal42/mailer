@@ -4,14 +4,13 @@
   "type": "module",
   "scripts": {
     "dev": "mkdir -p dist/assets && cp -r assets/fonts dist/assets/ && bun run --watch src/index.ts",
-    "build": "bun build src/index.ts --target=bun --outdir=dist --external @libsql/client --external sharp && bun build src/services/pdf/pdf-worker.ts --target=bun --outdir=dist && mkdir -p dist/assets && cp -r assets/fonts dist/assets/",
+    "build": "bun build src/index.ts --target=bun --outdir=dist --external sharp && bun build src/services/pdf/pdf-worker.ts --target=bun --outdir=dist && mkdir -p dist/assets && cp -r assets/fonts dist/assets/",
     "start": "bun run dist/index.js",
     "db:migrate": "bun run src/db/migrate.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.72.1",
     "@google/genai": "^1.39.0",
-    "@libsql/client": "^0.17.0",
     "@react-pdf/font": "^4.0.4",
     "@react-pdf/renderer": "^4.3.2",
     "@types/multer": "^2.0.0",

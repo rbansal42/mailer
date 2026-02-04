@@ -196,7 +196,8 @@ export async function storeAttachments(
     // Create DB record
     const result = await execute(
       `INSERT INTO attachments (campaign_id, draft_id, filename, original_filename, filepath, size_bytes, mime_type)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       RETURNING id`,
       [
         campaignId ?? null,
         draftId ?? null,
@@ -301,9 +302,11 @@ export async function matchAttachments(
     if (matchedAttachment) {
       try {
         await execute(
-          `INSERT OR REPLACE INTO recipient_attachments 
+          `INSERT INTO recipient_attachments 
            (campaign_id, draft_id, recipient_email, attachment_id, matched_by)
-           VALUES (?, ?, ?, ?, ?)`,
+           VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT (campaign_id, recipient_email, attachment_id) DO UPDATE SET
+             matched_by = EXCLUDED.matched_by`,
           [
             campaignId ?? null,
             draftId ?? null,

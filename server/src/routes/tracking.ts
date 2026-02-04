@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { recordOpen, recordClick, recordAction, getActionConfig, getTokenDetails } from '../services/tracking'
-import { db } from '../db'
+import { queryOne } from '../db'
 import { logger } from '../lib/logger'
 
 export const trackingRouter = Router()
@@ -117,17 +117,17 @@ trackingRouter.get('/:token/action', async (req, res) => {
     
     // Find current step from enrollment
     const enrollment = result.enrollment
-    const stepResult = await db.execute({
-      sql: `SELECT id FROM sequence_steps WHERE sequence_id = ? AND step_order = ?`,
-      args: [sequenceId, enrollment.current_step]
-    })
+    const stepRow = await queryOne<{ id: number }>(
+      `SELECT id FROM sequence_steps WHERE sequence_id = ? AND step_order = ?`,
+      [sequenceId, enrollment.current_step]
+    )
 
-    if (!stepResult.rows.length) {
+    if (!stepRow) {
       // Fallback: show default thank you
       return res.send(getHostedThankYouPage({ message: 'Thank you for your response!' }))
     }
 
-    const stepId = stepResult.rows[0].id as number
+    const stepId = stepRow.id
     const config = await getActionConfig(sequenceId, stepId)
 
     if (!config) {

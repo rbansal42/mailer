@@ -1,6 +1,6 @@
 import cron from 'node-cron'
 import { logger } from '../lib/logger'
-import { queryAll, queryOne, execute } from '../db'
+import { queryAll, queryOne, execute, safeJsonParse } from '../db'
 import { getNextAvailableAccount, incrementSendCount } from './account-manager'
 import { compileTemplate } from './template-compiler'
 import { createProvider } from '../providers'
@@ -41,7 +41,7 @@ interface SenderAccount {
   daily_cap: number
   campaign_cap: number
   priority: number
-  enabled: number
+  enabled: boolean
 }
 
 interface BlockInput {
@@ -108,7 +108,7 @@ export async function processQueue(): Promise<ProcessResult> {
         const template = await queryOne<Template>(`SELECT id, name, blocks FROM templates WHERE id = ?`, [campaign.template_id])
 
         if (template) {
-          templateBlocks = JSON.parse(template.blocks) as BlockInput[]
+          templateBlocks = safeJsonParse(template.blocks, []) as BlockInput[]
         }
       }
 
@@ -126,7 +126,7 @@ export async function processQueue(): Promise<ProcessResult> {
       const trackingSettings = await getTrackingSettings()
 
       // Compile template with recipient data
-      const recipientData = JSON.parse(queueItem.recipient_data)
+      const recipientData = safeJsonParse(queueItem.recipient_data, {})
       const html = compileTemplate(templateBlocks, recipientData, trackingSettings.baseUrl)
 
       // Compile subject with variables

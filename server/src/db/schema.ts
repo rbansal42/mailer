@@ -11,21 +11,21 @@ export async function createTables() {
 
   await execute(`
     CREATE TABLE IF NOT EXISTS sender_accounts (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       name TEXT NOT NULL,
       provider_type TEXT NOT NULL,
       config TEXT NOT NULL,
       daily_cap INTEGER DEFAULT 500,
       campaign_cap INTEGER DEFAULT 100,
       priority INTEGER DEFAULT 0,
-      enabled INTEGER DEFAULT 1,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      enabled BOOLEAN DEFAULT true,
+      created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `)
 
   await execute(`
     CREATE TABLE IF NOT EXISTS send_counts (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       account_id INTEGER REFERENCES sender_accounts(id) ON DELETE CASCADE,
       date TEXT NOT NULL,
       count INTEGER DEFAULT 0,
@@ -35,55 +35,32 @@ export async function createTables() {
 
   await execute(`
     CREATE TABLE IF NOT EXISTS templates (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       name TEXT NOT NULL,
       description TEXT,
-      blocks TEXT NOT NULL DEFAULT '[]',
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `)
-
-  // Add is_default column to templates (for built-in templates)
-  try {
-    await execute(`ALTER TABLE templates ADD COLUMN is_default INTEGER DEFAULT 0`)
-  } catch (e) {
-    // Column may already exist, ignore error
-  }
-
-  // Create mails table for saved mail designs
-  await execute(`
-    CREATE TABLE IF NOT EXISTS mails (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      description TEXT,
-      blocks TEXT NOT NULL DEFAULT '[]',
-      template_id INTEGER,
-      campaign_id INTEGER,
-      status TEXT DEFAULT 'draft',
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (template_id) REFERENCES templates(id) ON DELETE SET NULL,
-      FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE SET NULL
+      blocks JSONB NOT NULL DEFAULT '[]'::jsonb,
+      is_default BOOLEAN DEFAULT false,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
     )
   `)
 
   await execute(`
     CREATE TABLE IF NOT EXISTS drafts (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       name TEXT NOT NULL,
       template_id INTEGER REFERENCES templates(id) ON DELETE SET NULL,
       subject TEXT,
-      recipients TEXT DEFAULT '[]',
-      variables TEXT DEFAULT '{}',
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      recipients JSONB DEFAULT '[]'::jsonb,
+      variables JSONB DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
     )
   `)
 
   await execute(`
     CREATE TABLE IF NOT EXISTS campaigns (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       name TEXT,
       template_id INTEGER REFERENCES templates(id) ON DELETE SET NULL,
       subject TEXT NOT NULL,
@@ -91,41 +68,58 @@ export async function createTables() {
       successful INTEGER DEFAULT 0,
       failed INTEGER DEFAULT 0,
       queued INTEGER DEFAULT 0,
-      started_at DATETIME,
-      completed_at DATETIME,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      started_at TIMESTAMPTZ,
+      completed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `)
+
+  // Create mails table for saved mail designs (after campaigns, which it references)
+  await execute(`
+    CREATE TABLE IF NOT EXISTS mails (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      blocks JSONB NOT NULL DEFAULT '[]'::jsonb,
+      template_id INTEGER,
+      campaign_id INTEGER,
+      status TEXT DEFAULT 'draft',
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW(),
+      FOREIGN KEY (template_id) REFERENCES templates(id) ON DELETE SET NULL,
+      FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE SET NULL
     )
   `)
 
   await execute(`
     CREATE TABLE IF NOT EXISTS send_logs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       campaign_id INTEGER REFERENCES campaigns(id) ON DELETE CASCADE,
       account_id INTEGER REFERENCES sender_accounts(id) ON DELETE SET NULL,
       recipient_email TEXT NOT NULL,
       status TEXT NOT NULL,
       error_message TEXT,
       retry_count INTEGER DEFAULT 1,
-      sent_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      sent_at TIMESTAMPTZ DEFAULT NOW()
     )
   `)
 
   await execute(`
     CREATE TABLE IF NOT EXISTS email_queue (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       campaign_id INTEGER REFERENCES campaigns(id) ON DELETE CASCADE,
       recipient_email TEXT NOT NULL,
-      recipient_data TEXT NOT NULL,
+      recipient_data JSONB NOT NULL,
       scheduled_for TEXT NOT NULL,
       status TEXT DEFAULT 'pending',
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `)
 
   // Attachments table
   await execute(`
     CREATE TABLE IF NOT EXISTS attachments (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       campaign_id INTEGER REFERENCES campaigns(id),
       draft_id INTEGER REFERENCES drafts(id),
       filename TEXT NOT NULL,
@@ -133,20 +127,20 @@ export async function createTables() {
       filepath TEXT NOT NULL,
       size_bytes INTEGER NOT NULL,
       mime_type TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `)
 
   // Recipient-attachment mapping
   await execute(`
     CREATE TABLE IF NOT EXISTS recipient_attachments (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       campaign_id INTEGER REFERENCES campaigns(id),
       draft_id INTEGER REFERENCES drafts(id),
       recipient_email TEXT NOT NULL,
       attachment_id INTEGER REFERENCES attachments(id),
       matched_by TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
       UNIQUE(campaign_id, recipient_email, attachment_id)
     )
   `)
@@ -154,11 +148,11 @@ export async function createTables() {
   // Tracking tokens for email analytics
   await execute(`
     CREATE TABLE IF NOT EXISTS tracking_tokens (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       campaign_id INTEGER REFERENCES campaigns(id),
       recipient_email TEXT NOT NULL,
       token TEXT UNIQUE NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
       UNIQUE(campaign_id, recipient_email)
     )
   `)
@@ -166,97 +160,97 @@ export async function createTables() {
   // Tracking events for opens, clicks, etc.
   await execute(`
     CREATE TABLE IF NOT EXISTS tracking_events (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       token_id INTEGER REFERENCES tracking_tokens(id),
       event_type TEXT NOT NULL,
       link_url TEXT,
       link_index INTEGER,
       ip_address TEXT,
       user_agent TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `)
 
   // Scheduled batches for timezone-aware delivery
   await execute(`
     CREATE TABLE IF NOT EXISTS scheduled_batches (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       campaign_id INTEGER REFERENCES campaigns(id),
-      scheduled_for DATETIME NOT NULL,
-      recipient_emails TEXT NOT NULL,
+      scheduled_for TIMESTAMPTZ NOT NULL,
+      recipient_emails JSONB NOT NULL,
       status TEXT DEFAULT 'pending',
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `)
 
   // Recurring campaigns for scheduled sends
   await execute(`
     CREATE TABLE IF NOT EXISTS recurring_campaigns (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       name TEXT NOT NULL,
       template_id INTEGER REFERENCES templates(id),
       subject TEXT NOT NULL,
       recipient_source TEXT NOT NULL,
-      recipient_data TEXT,
+      recipient_data JSONB,
       schedule_cron TEXT NOT NULL,
       timezone TEXT DEFAULT 'UTC',
-      cc TEXT DEFAULT '[]',
-      bcc TEXT DEFAULT '[]',
-      enabled INTEGER DEFAULT 1,
-      last_run_at DATETIME,
-      next_run_at DATETIME,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      cc JSONB DEFAULT '[]'::jsonb,
+      bcc JSONB DEFAULT '[]'::jsonb,
+      enabled BOOLEAN DEFAULT true,
+      last_run_at TIMESTAMPTZ,
+      next_run_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `)
 
   // Certificate configuration (user-customized templates)
   await execute(`
     CREATE TABLE IF NOT EXISTS certificate_configs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       name TEXT NOT NULL,
       template_id TEXT NOT NULL,
-      colors TEXT NOT NULL,
-      logos TEXT DEFAULT '[]',
-      signatories TEXT DEFAULT '[]',
+      colors JSONB NOT NULL,
+      logos JSONB DEFAULT '[]'::jsonb,
+      signatories JSONB DEFAULT '[]'::jsonb,
       title_text TEXT DEFAULT 'CERTIFICATE',
       subtitle_text TEXT DEFAULT 'of Participation',
       description_template TEXT DEFAULT 'For participating in {{title}} on {{date}}.',
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
     )
   `)
 
   // Generated certificates (tracking)
   await execute(`
     CREATE TABLE IF NOT EXISTS generated_certificates (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       certificate_id TEXT NOT NULL UNIQUE,
       config_id INTEGER REFERENCES certificate_configs(id),
       recipient_name TEXT NOT NULL,
       recipient_email TEXT,
-      data TEXT DEFAULT '{}',
+      data JSONB DEFAULT '{}'::jsonb,
       pdf_path TEXT,
       campaign_id INTEGER REFERENCES campaigns(id),
-      generated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      generated_at TIMESTAMPTZ DEFAULT NOW()
     )
   `)
 
   // Drip sequences
   await execute(`
     CREATE TABLE IF NOT EXISTS sequences (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       name TEXT NOT NULL,
       description TEXT,
-      enabled INTEGER DEFAULT 1,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      enabled BOOLEAN DEFAULT true,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
     )
   `)
 
   // Sequence steps
   await execute(`
     CREATE TABLE IF NOT EXISTS sequence_steps (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       sequence_id INTEGER REFERENCES sequences(id) ON DELETE CASCADE,
       step_order INTEGER NOT NULL,
       template_id INTEGER REFERENCES templates(id),
@@ -264,22 +258,22 @@ export async function createTables() {
       delay_days INTEGER NOT NULL,
       delay_hours INTEGER DEFAULT 0,
       send_time TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `)
 
   // Sequence enrollments
   await execute(`
     CREATE TABLE IF NOT EXISTS sequence_enrollments (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       sequence_id INTEGER REFERENCES sequences(id) ON DELETE CASCADE,
       recipient_email TEXT NOT NULL,
-      recipient_data TEXT,
+      recipient_data JSONB,
       current_step INTEGER DEFAULT 0,
       status TEXT DEFAULT 'active',
-      enrolled_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      next_send_at DATETIME,
-      completed_at DATETIME,
+      enrolled_at TIMESTAMPTZ DEFAULT NOW(),
+      next_send_at TIMESTAMPTZ,
+      completed_at TIMESTAMPTZ,
       UNIQUE(sequence_id, recipient_email)
     )
   `)
@@ -287,16 +281,16 @@ export async function createTables() {
   // Sequence actions - tracks button clicks for branching
   await execute(`
     CREATE TABLE IF NOT EXISTS sequence_actions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       sequence_id INTEGER NOT NULL,
       step_id INTEGER NOT NULL,
       enrollment_id INTEGER NOT NULL,
-      clicked_at TEXT NOT NULL,
+      clicked_at TIMESTAMPTZ NOT NULL,
       destination_type TEXT NOT NULL,
       destination_url TEXT,
       hosted_message TEXT,
       button_text TEXT,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
       FOREIGN KEY (sequence_id) REFERENCES sequences(id) ON DELETE CASCADE,
       FOREIGN KEY (step_id) REFERENCES sequence_steps(id) ON DELETE CASCADE,
       FOREIGN KEY (enrollment_id) REFERENCES sequence_enrollments(id) ON DELETE CASCADE
@@ -312,15 +306,15 @@ export async function createTables() {
       original_filename TEXT NOT NULL,
       alt_text TEXT DEFAULT '',
       size_bytes INTEGER,
-      uploaded_at TEXT DEFAULT CURRENT_TIMESTAMP,
-      deleted_at TEXT DEFAULT NULL
+      uploaded_at TIMESTAMPTZ DEFAULT NOW(),
+      deleted_at TIMESTAMPTZ DEFAULT NULL
     )
   `)
 
   // Contacts - global contact storage
   await execute(`
     CREATE TABLE IF NOT EXISTS contacts (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       email TEXT UNIQUE NOT NULL,
       name TEXT,
       first_name TEXT,
@@ -328,20 +322,20 @@ export async function createTables() {
       company TEXT,
       phone TEXT,
       country TEXT,
-      custom_fields TEXT DEFAULT '{}',
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      custom_fields JSONB DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
     )
   `)
 
   // Lists - named collections
   await execute(`
     CREATE TABLE IF NOT EXISTS lists (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       name TEXT NOT NULL,
       description TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
     )
   `)
 
@@ -350,7 +344,7 @@ export async function createTables() {
     CREATE TABLE IF NOT EXISTS list_contacts (
       list_id INTEGER REFERENCES lists(id) ON DELETE CASCADE,
       contact_id INTEGER REFERENCES contacts(id) ON DELETE CASCADE,
-      added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      added_at TIMESTAMPTZ DEFAULT NOW(),
       PRIMARY KEY (list_id, contact_id)
     )
   `)
@@ -358,42 +352,42 @@ export async function createTables() {
   // Suppression list - emails that should not receive mail
   await execute(`
     CREATE TABLE IF NOT EXISTS suppression_list (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       email TEXT NOT NULL UNIQUE,
       reason TEXT NOT NULL,
       source TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `)
 
   // Bounces log
   await execute(`
     CREATE TABLE IF NOT EXISTS bounces (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       campaign_id INTEGER REFERENCES campaigns(id) ON DELETE SET NULL,
       email TEXT NOT NULL,
       bounce_type TEXT NOT NULL,
       bounce_reason TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `)
 
   // Google Sheets sync configurations
   await execute(`
     CREATE TABLE IF NOT EXISTS google_sheets_syncs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       list_id INTEGER REFERENCES lists(id) ON DELETE CASCADE,
       spreadsheet_id TEXT NOT NULL,
       spreadsheet_name TEXT,
       sheet_range TEXT,
-      column_mapping TEXT NOT NULL DEFAULT '{}',
-      auto_sync INTEGER DEFAULT 0,
+      column_mapping JSONB NOT NULL DEFAULT '{}'::jsonb,
+      auto_sync BOOLEAN DEFAULT false,
       sync_frequency TEXT DEFAULT 'manual',
-      last_synced_at DATETIME,
+      last_synced_at TIMESTAMPTZ,
       last_sync_count INTEGER DEFAULT 0,
       last_sync_error TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW(),
       UNIQUE(list_id, spreadsheet_id)
     )
   `)
@@ -438,6 +432,6 @@ export async function initializeSettings() {
   ]
 
   for (const [key, value] of trackingDefaults) {
-    await execute('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', [key, value])
+    await execute('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO NOTHING', [key, value])
   }
 }

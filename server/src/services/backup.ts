@@ -1,11 +1,10 @@
-import { copyFileSync, readdirSync, unlinkSync, statSync, existsSync, mkdirSync } from 'fs'
+import { readdirSync, unlinkSync, statSync, existsSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { queryOne, execute } from '../db'
 import { logger } from '../lib/logger'
 
 const DATA_DIR = join(process.cwd(), 'data')
 const BACKUP_DIR = join(DATA_DIR, 'backups')
-const DB_PATH = join(DATA_DIR, 'mailer.db')
 
 export interface BackupInfo {
   filename: string
@@ -19,21 +18,18 @@ export interface BackupSettings {
 }
 
 /**
- * Create a backup of the database.
- * Copies mailer.db to data/backups/mailer_YYYY-MM-DD_HH-mm.db
- * 
- * Note: With Turso, backups are managed by the Turso service.
- * This function creates a local copy of the database file for emergency recovery.
+ * Create a backup of the PostgreSQL database using pg_dump.
+ * Saves to data/backups/mailer_YYYY-MM-DD_HH-mm.dump (custom format).
  */
-export function createBackup(): string {
+export async function createBackup(): Promise<string> {
+  const databaseUrl = process.env.DATABASE_URL
+  if (!databaseUrl) {
+    throw new Error('DATABASE_URL is not set')
+  }
+
   // Ensure backup directory exists
   if (!existsSync(BACKUP_DIR)) {
     mkdirSync(BACKUP_DIR, { recursive: true })
-  }
-
-  // Check if database exists
-  if (!existsSync(DB_PATH)) {
-    throw new Error('Database file not found')
   }
 
   // Generate timestamp-based filename
@@ -42,21 +38,29 @@ export function createBackup(): string {
     .replace('T', '_')
     .replace(/:/g, '-')
     .slice(0, 16) // YYYY-MM-DD_HH-mm
-  const filename = `mailer_${timestamp}.db`
+  const filename = `mailer_${timestamp}.dump`
   const backupPath = join(BACKUP_DIR, filename)
 
   try {
-    // Note: Turso handles WAL checkpointing automatically
-    // For local embedded replicas, the file can be copied directly
-    
-    copyFileSync(DB_PATH, backupPath)
-    
-    logger.info('Backup created', { 
+    const proc = Bun.spawn(['pg_dump', '--format=custom', `--file=${backupPath}`, databaseUrl], {
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+
+    const stderrPromise = new Response(proc.stderr).text()
+    const exitCode = await proc.exited
+
+    if (exitCode !== 0) {
+      const stderr = await stderrPromise
+      throw new Error(`pg_dump failed with exit code ${exitCode}: ${stderr}`)
+    }
+
+    logger.info('Backup created', {
       service: 'backup',
       filename,
       path: backupPath
     })
-    
+
     return filename
   } catch (error) {
     logger.error('Failed to create backup', { service: 'backup' }, error as Error)
@@ -79,8 +83,8 @@ export function listBackups(): BackupInfo[] {
     const backups: BackupInfo[] = []
 
     for (const file of files) {
-      // Only include .db files that match our naming pattern
-      if (!file.startsWith('mailer_') || !file.endsWith('.db')) {
+      // Only include .dump files that match our naming pattern
+      if (!file.startsWith('mailer_') || !file.endsWith('.dump')) {
         continue
       }
 
@@ -147,13 +151,15 @@ export function pruneBackups(keepCount: number): number {
 }
 
 /**
- * Restore database from a backup file.
- * Copies the backup over the current database.
- * 
- * Note: With Turso, restoring requires restarting the application
- * after the file is replaced to reinitialize the connection.
+ * Restore database from a backup file using pg_restore.
+ * Applies the backup to the current database, dropping and recreating objects.
  */
-export function restoreBackup(filename: string): void {
+export async function restoreBackup(filename: string): Promise<void> {
+  const databaseUrl = process.env.DATABASE_URL
+  if (!databaseUrl) {
+    throw new Error('DATABASE_URL is not set')
+  }
+
   const backupPath = join(BACKUP_DIR, filename)
 
   // Validate filename to prevent directory traversal
@@ -167,15 +173,25 @@ export function restoreBackup(filename: string): void {
   }
 
   // Verify it's a valid backup file
-  if (!filename.startsWith('mailer_') || !filename.endsWith('.db')) {
+  if (!filename.startsWith('mailer_') || !filename.endsWith('.dump')) {
     throw new Error('Invalid backup file format')
   }
 
   try {
-    // Note: Turso handles WAL checkpointing automatically
-    // Copy backup over current database
-    copyFileSync(backupPath, DB_PATH)
-    
+    const proc = Bun.spawn(['pg_restore', '--clean', '--if-exists', '-d', databaseUrl, backupPath], {
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+
+    const stderrPromise = new Response(proc.stderr).text()
+    const exitCode = await proc.exited
+
+    if (exitCode !== 0 && exitCode !== 1) {
+      // exit code 1 = warnings (normal with --clean --if-exists when tables don't exist yet)
+      const stderr = await stderrPromise
+      throw new Error(`pg_restore failed with exit code ${exitCode}: ${stderr}`)
+    }
+
     logger.info('Backup restored', { 
       service: 'backup',
       filename 
@@ -219,13 +235,13 @@ export async function saveBackupSettings(schedule: string, retention: number): P
   try {
     await execute(
       `INSERT INTO settings (key, value) VALUES (?, ?)
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+       ON CONFLICT(key) DO UPDATE SET value = EXCLUDED.value`,
       ['backup_schedule', schedule]
     )
 
     await execute(
       `INSERT INTO settings (key, value) VALUES (?, ?)
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+       ON CONFLICT(key) DO UPDATE SET value = EXCLUDED.value`,
       ['backup_retention', retention.toString()]
     )
 

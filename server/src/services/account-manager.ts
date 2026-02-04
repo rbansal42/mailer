@@ -21,7 +21,7 @@ interface AccountRow {
   daily_cap: number
   campaign_cap: number
   priority: number
-  enabled: number
+  enabled: boolean
   created_at: string
 }
 
@@ -46,7 +46,7 @@ function formatAccount(row: AccountRow): Account {
     dailyCap: row.daily_cap,
     campaignCap: row.campaign_cap,
     priority: row.priority,
-    enabled: Boolean(row.enabled),
+    enabled: row.enabled,
     createdAt: row.created_at,
   }
 }
@@ -59,7 +59,7 @@ function formatAccount(row: AccountRow): Account {
  */
 export async function getNextAvailableAccount(campaignId?: number, excludeAccountIds?: number[]): Promise<Account | null> {
   const accounts = await queryAll<AccountRow>(
-    'SELECT * FROM sender_accounts WHERE enabled = 1 ORDER BY priority ASC'
+    'SELECT * FROM sender_accounts WHERE enabled = true ORDER BY priority ASC'
   )
 
   const today = getToday()
@@ -86,7 +86,7 @@ export async function getNextAvailableAccount(campaignId?: number, excludeAccoun
     // If campaignId provided, also check campaign cap
     if (campaignId !== undefined) {
       const campaignResult = await queryOne<CampaignCountRow>(
-        'SELECT COUNT(*) as count FROM send_logs WHERE campaign_id = ? AND account_id = ?',
+        'SELECT COUNT(*)::integer as count FROM send_logs WHERE campaign_id = ? AND account_id = ?',
         [campaignId, account.id]
       )
       const campaignCount = campaignResult?.count || 0

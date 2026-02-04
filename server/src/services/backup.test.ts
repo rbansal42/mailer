@@ -2,7 +2,6 @@
 import { describe, test, expect, mock, beforeEach } from 'bun:test'
 
 // Mock fs module
-const mockCopyFileSync = mock((_src: string, _dest: string) => {})
 const mockReaddirSync = mock((_path: string) => [] as string[])
 const mockUnlinkSync = mock((_path: string) => {})
 const mockStatSync = mock((_path: string) => ({ size: 1024, mtime: new Date() }))
@@ -10,7 +9,6 @@ const mockExistsSync = mock((_path: string) => true)
 const mockMkdirSync = mock((_path: string, _options?: object) => {})
 
 mock.module('fs', () => ({
-  copyFileSync: mockCopyFileSync,
   readdirSync: mockReaddirSync,
   unlinkSync: mockUnlinkSync,
   statSync: mockStatSync,
@@ -18,14 +16,21 @@ mock.module('fs', () => ({
   mkdirSync: mockMkdirSync
 }))
 
-// Mock db module
-const mockDbRun = mock((_sql: string, _params?: unknown[]) => {})
-const mockDbQueryGet = mock((_key: string) => null as { value: string } | null)
+// Mock db module (queryOne, execute for settings)
+const mockQueryOne = mock(async (_sql: string, _params?: unknown[]) => null as { value: string } | null)
+const mockExecute = mock(async (_sql: string, _params?: unknown[]) => ({ rowsAffected: 1, lastInsertRowid: undefined }))
 
 mock.module('../db', () => ({
-  db: {
-    run: mockDbRun,
-    query: () => ({ get: mockDbQueryGet })
+  queryOne: mockQueryOne,
+  execute: mockExecute,
+  safeJsonParse: (value: unknown, fallback: unknown) => {
+    if (value == null) return fallback
+    if (typeof value === 'object') return value
+    if (typeof value === 'string') {
+      if (value === '') return fallback
+      try { return JSON.parse(value) } catch { return fallback }
+    }
+    return fallback
   }
 }))
 
@@ -40,10 +45,8 @@ mock.module('../lib/logger', () => ({
 
 // Import after mocking
 import {
-  createBackup,
   listBackups,
   pruneBackups,
-  restoreBackup,
   getBackupSettings,
   saveBackupSettings
 } from './backup'
@@ -51,61 +54,21 @@ import {
 describe('backup service', () => {
   beforeEach(() => {
     // Reset all mocks before each test
-    mockCopyFileSync.mockClear()
     mockReaddirSync.mockClear()
     mockUnlinkSync.mockClear()
     mockStatSync.mockClear()
     mockExistsSync.mockClear()
     mockMkdirSync.mockClear()
-    mockDbRun.mockClear()
-    mockDbQueryGet.mockClear()
+    mockQueryOne.mockClear()
+    mockExecute.mockClear()
 
     // Default: files exist
     mockExistsSync.mockImplementation(() => true)
   })
 
-  describe('createBackup', () => {
-    test('generates filename with correct format', () => {
-      const filename = createBackup()
-
-      // Filename should match pattern mailer_YYYY-MM-DD_HH-mm.db
-      expect(filename).toMatch(/^mailer_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}\.db$/)
-    })
-
-    test('calls copyFileSync to create backup', () => {
-      createBackup()
-
-      expect(mockCopyFileSync).toHaveBeenCalledTimes(1)
-    })
-
-    test('runs WAL checkpoint before copying', () => {
-      createBackup()
-
-      expect(mockDbRun).toHaveBeenCalledWith('PRAGMA wal_checkpoint(TRUNCATE)')
-    })
-
-    test('creates backup directory if it does not exist', () => {
-      mockExistsSync.mockImplementation((path: string) => {
-        // Backup dir doesn't exist, but DB does
-        if (path.includes('backups')) return false
-        return true
-      })
-
-      createBackup()
-
-      expect(mockMkdirSync).toHaveBeenCalledTimes(1)
-    })
-
-    test('throws error if database file not found', () => {
-      mockExistsSync.mockImplementation((path: string) => {
-        // DB doesn't exist
-        if (path.includes('mailer.db')) return false
-        return true
-      })
-
-      expect(() => createBackup()).toThrow('Database file not found')
-    })
-  })
+  // Note: createBackup and restoreBackup are async and use Bun.spawn with pg_dump/pg_restore.
+  // They require a real PostgreSQL connection and pg_dump/pg_restore binaries, so they
+  // are not unit-testable with mocks alone — they should be covered by integration tests.
 
   describe('listBackups', () => {
     test('returns empty array when backup directory does not exist', () => {
@@ -116,14 +79,14 @@ describe('backup service', () => {
       expect(backups).toEqual([])
     })
 
-    test('filters for mailer_*.db files only', () => {
+    test('filters for mailer_*.dump files only', () => {
       const now = new Date()
       mockReaddirSync.mockImplementation(() => [
-        'mailer_2024-01-15_10-30.db',
-        'other_file.db',
-        'mailer_2024-01-14_08-00.db',
+        'mailer_2024-01-15_10-30.dump',
+        'other_file.dump',
+        'mailer_2024-01-14_08-00.dump',
         'readme.txt',
-        'notmailer_2024-01-13.db'
+        'mailer_2024-01-13.db' // old .db format should be excluded
       ])
       mockStatSync.mockImplementation(() => ({ size: 1024, mtime: now }))
 
@@ -131,8 +94,8 @@ describe('backup service', () => {
 
       expect(backups).toHaveLength(2)
       expect(backups.map(b => b.filename)).toEqual([
-        'mailer_2024-01-15_10-30.db',
-        'mailer_2024-01-14_08-00.db'
+        'mailer_2024-01-15_10-30.dump',
+        'mailer_2024-01-14_08-00.dump'
       ])
     })
 
@@ -141,8 +104,8 @@ describe('backup service', () => {
       const newDate = new Date('2024-01-15')
 
       mockReaddirSync.mockImplementation(() => [
-        'mailer_2024-01-01_10-00.db',
-        'mailer_2024-01-15_10-00.db'
+        'mailer_2024-01-01_10-00.dump',
+        'mailer_2024-01-15_10-00.dump'
       ])
       mockStatSync.mockImplementation((path: string) => {
         if (path.includes('2024-01-01')) {
@@ -153,19 +116,19 @@ describe('backup service', () => {
 
       const backups = listBackups()
 
-      expect(backups[0].filename).toBe('mailer_2024-01-15_10-00.db')
-      expect(backups[1].filename).toBe('mailer_2024-01-01_10-00.db')
+      expect(backups[0].filename).toBe('mailer_2024-01-15_10-00.dump')
+      expect(backups[1].filename).toBe('mailer_2024-01-01_10-00.dump')
     })
 
     test('includes file size and date in backup info', () => {
       const testDate = new Date('2024-06-15T12:00:00Z')
-      mockReaddirSync.mockImplementation(() => ['mailer_2024-06-15_12-00.db'])
+      mockReaddirSync.mockImplementation(() => ['mailer_2024-06-15_12-00.dump'])
       mockStatSync.mockImplementation(() => ({ size: 5120, mtime: testDate }))
 
       const backups = listBackups()
 
       expect(backups[0]).toEqual({
-        filename: 'mailer_2024-06-15_12-00.db',
+        filename: 'mailer_2024-06-15_12-00.dump',
         size: 5120,
         date: testDate
       })
@@ -187,11 +150,11 @@ describe('backup service', () => {
       ]
 
       mockReaddirSync.mockImplementation(() => [
-        'mailer_2024-01-15_10-00.db',
-        'mailer_2024-01-14_10-00.db',
-        'mailer_2024-01-13_10-00.db',
-        'mailer_2024-01-12_10-00.db',
-        'mailer_2024-01-11_10-00.db'
+        'mailer_2024-01-15_10-00.dump',
+        'mailer_2024-01-14_10-00.dump',
+        'mailer_2024-01-13_10-00.dump',
+        'mailer_2024-01-12_10-00.dump',
+        'mailer_2024-01-11_10-00.dump'
       ])
       mockStatSync.mockImplementation((path: string) => {
         const idx = dates.findIndex((_, i) => path.includes(`2024-01-${15 - i}`))
@@ -207,8 +170,8 @@ describe('backup service', () => {
 
     test('deletes nothing when keepCount >= backup count', () => {
       mockReaddirSync.mockImplementation(() => [
-        'mailer_2024-01-15_10-00.db',
-        'mailer_2024-01-14_10-00.db'
+        'mailer_2024-01-15_10-00.dump',
+        'mailer_2024-01-14_10-00.dump'
       ])
       mockStatSync.mockImplementation(() => ({ size: 1024, mtime: new Date() }))
 
@@ -220,8 +183,8 @@ describe('backup service', () => {
 
     test('handles keepCount of 0', () => {
       mockReaddirSync.mockImplementation(() => [
-        'mailer_2024-01-15_10-00.db',
-        'mailer_2024-01-14_10-00.db'
+        'mailer_2024-01-15_10-00.dump',
+        'mailer_2024-01-14_10-00.dump'
       ])
       mockStatSync.mockImplementation(() => ({ size: 1024, mtime: new Date() }))
 
@@ -232,54 +195,11 @@ describe('backup service', () => {
     })
   })
 
-  describe('restoreBackup', () => {
-    test('validates filename - rejects path with forward slash', () => {
-      expect(() => restoreBackup('../etc/passwd')).toThrow('Invalid backup filename')
-    })
-
-    test('validates filename - rejects path with backslash', () => {
-      expect(() => restoreBackup('..\\windows\\system32')).toThrow('Invalid backup filename')
-    })
-
-    test('validates filename - rejects double dots', () => {
-      expect(() => restoreBackup('mailer_..db')).toThrow('Invalid backup filename')
-    })
-
-    test('throws error when backup file not found', () => {
-      mockExistsSync.mockImplementation((path: string) => {
-        if (path.includes('backups')) return false
-        return true
-      })
-
-      expect(() => restoreBackup('mailer_2024-01-15_10-00.db')).toThrow('Backup file not found')
-    })
-
-    test('validates backup file format - must start with mailer_', () => {
-      expect(() => restoreBackup('notmailer_2024-01-15.db')).toThrow('Invalid backup file format')
-    })
-
-    test('validates backup file format - must end with .db', () => {
-      expect(() => restoreBackup('mailer_2024-01-15.txt')).toThrow('Invalid backup file format')
-    })
-
-    test('runs WAL checkpoint before restoring', () => {
-      restoreBackup('mailer_2024-01-15_10-00.db')
-
-      expect(mockDbRun).toHaveBeenCalledWith('PRAGMA wal_checkpoint(TRUNCATE)')
-    })
-
-    test('copies backup file to database path', () => {
-      restoreBackup('mailer_2024-01-15_10-00.db')
-
-      expect(mockCopyFileSync).toHaveBeenCalledTimes(1)
-    })
-  })
-
   describe('getBackupSettings', () => {
-    test('returns defaults when no settings exist', () => {
-      mockDbQueryGet.mockImplementation(() => null)
+    test('returns defaults when no settings exist', async () => {
+      mockQueryOne.mockImplementation(async () => null)
 
-      const settings = getBackupSettings()
+      const settings = await getBackupSettings()
 
       expect(settings).toEqual({
         schedule: 'manual',
@@ -287,35 +207,24 @@ describe('backup service', () => {
       })
     })
 
-    test('returns stored schedule value', () => {
-      mockDbQueryGet.mockImplementation((key: string) => {
+    test('returns stored values', async () => {
+      mockQueryOne.mockImplementation(async (_sql: string, params?: unknown[]) => {
+        const key = params?.[0]
         if (key === 'backup_schedule') return { value: '0 0 * * *' }
+        if (key === 'backup_retention') return { value: '14' }
         return null
       })
 
-      // Re-mock to handle the specific query pattern
-      mock.module('../db', () => ({
-        db: {
-          run: mockDbRun,
-          query: (sql: string) => ({
-            get: (key: string) => {
-              if (key === 'backup_schedule') return { value: '0 0 * * *' }
-              if (key === 'backup_retention') return { value: '14' }
-              return null
-            }
-          })
-        }
-      }))
+      const settings = await getBackupSettings()
 
-      // Need to re-import after re-mocking
-      // For this test, we verify the default behavior works
-      const settings = getBackupSettings()
-      expect(settings.schedule).toBeDefined()
-      expect(settings.retention).toBeDefined()
+      expect(settings.schedule).toBe('0 0 * * *')
+      expect(settings.retention).toBe(14)
     })
 
-    test('parses retention as integer', () => {
-      const settings = getBackupSettings()
+    test('parses retention as integer', async () => {
+      mockQueryOne.mockImplementation(async () => null)
+
+      const settings = await getBackupSettings()
 
       expect(typeof settings.retention).toBe('number')
       expect(Number.isInteger(settings.retention)).toBe(true)
@@ -323,37 +232,27 @@ describe('backup service', () => {
   })
 
   describe('saveBackupSettings', () => {
-    test('throws error when retention is less than 1', () => {
-      expect(() => saveBackupSettings('manual', 0)).toThrow('Retention must be at least 1')
+    test('throws error when retention is less than 1', async () => {
+      expect(saveBackupSettings('manual', 0)).rejects.toThrow('Retention must be at least 1')
     })
 
-    test('throws error when retention is negative', () => {
-      expect(() => saveBackupSettings('daily', -5)).toThrow('Retention must be at least 1')
+    test('throws error when retention is negative', async () => {
+      expect(saveBackupSettings('daily', -5)).rejects.toThrow('Retention must be at least 1')
     })
 
-    test('calls db.run to save schedule setting', () => {
-      saveBackupSettings('0 0 * * *', 7)
-
-      expect(mockDbRun).toHaveBeenCalled()
-    })
-
-    test('calls db.run to save retention setting', () => {
-      saveBackupSettings('manual', 14)
+    test('calls execute to save schedule and retention', async () => {
+      await saveBackupSettings('0 0 * * *', 7)
 
       // Should be called twice - once for schedule, once for retention
-      expect(mockDbRun).toHaveBeenCalledTimes(2)
+      expect(mockExecute).toHaveBeenCalledTimes(2)
     })
 
-    test('accepts valid cron expression for schedule', () => {
-      expect(() => saveBackupSettings('0 0 * * *', 7)).not.toThrow()
+    test('accepts manual as schedule value', async () => {
+      await expect(saveBackupSettings('manual', 7)).resolves.toBeUndefined()
     })
 
-    test('accepts manual as schedule value', () => {
-      expect(() => saveBackupSettings('manual', 7)).not.toThrow()
-    })
-
-    test('accepts retention of 1 (minimum valid value)', () => {
-      expect(() => saveBackupSettings('manual', 1)).not.toThrow()
+    test('accepts retention of 1 (minimum valid value)', async () => {
+      await expect(saveBackupSettings('manual', 1)).resolves.toBeUndefined()
     })
   })
 })

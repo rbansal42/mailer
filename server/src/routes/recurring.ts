@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express'
 import * as cron from 'node-cron'
-import { queryAll, queryOne, execute } from '../db'
+import { queryAll, queryOne, execute, safeJsonParse } from '../db'
 import { logger } from '../lib/logger'
 import { processRecurringCampaigns, calculateNextRun } from '../services/recurring-processor'
 
@@ -17,7 +17,7 @@ interface RecurringCampaignRow {
   timezone: string
   cc: string
   bcc: string
-  enabled: number
+  enabled: boolean
   last_run_at: string | null
   next_run_at: string | null
   created_at: string
@@ -30,9 +30,9 @@ recurringRouter.get('/', async (_req: Request, res: Response) => {
 
     res.json(campaigns.map(c => ({
       ...c,
-      cc: JSON.parse(c.cc || '[]'),
-      bcc: JSON.parse(c.bcc || '[]'),
-      enabled: Boolean(c.enabled)
+      cc: safeJsonParse(c.cc, []),
+      bcc: safeJsonParse(c.bcc, []),
+      enabled: c.enabled
     })))
   } catch (error) {
     logger.error('Failed to list recurring campaigns', { service: 'recurring' }, error as Error)
@@ -53,9 +53,9 @@ recurringRouter.get('/:id', async (req: Request<{ id: string }>, res: Response) 
 
     res.json({
       ...campaign,
-      cc: JSON.parse(campaign.cc || '[]'),
-      bcc: JSON.parse(campaign.bcc || '[]'),
-      enabled: Boolean(campaign.enabled)
+      cc: safeJsonParse(campaign.cc, []),
+      bcc: safeJsonParse(campaign.bcc, []),
+      enabled: campaign.enabled
     })
   } catch (error) {
     logger.error('Failed to get recurring campaign', { service: 'recurring' }, error as Error)
@@ -98,7 +98,7 @@ recurringRouter.post('/', async (req: Request, res: Response) => {
     const result = await execute(
       `INSERT INTO recurring_campaigns 
        (name, template_id, subject, recipient_source, recipient_data, schedule_cron, timezone, cc, bcc, enabled, next_run_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
       [
         name,
         templateId || null,
@@ -109,7 +109,7 @@ recurringRouter.post('/', async (req: Request, res: Response) => {
         timezone || 'UTC',
         JSON.stringify(cc || []),
         JSON.stringify(bcc || []),
-        enabled !== false ? 1 : 0,
+        enabled !== false,
         nextRunAt.toISOString()
       ]
     )
@@ -156,7 +156,7 @@ recurringRouter.put('/:id', async (req: Request<{ id: string }>, res: Response) 
     if (timezone !== undefined) { updates.push('timezone = ?'); params.push(timezone) }
     if (cc !== undefined) { updates.push('cc = ?'); params.push(JSON.stringify(cc)) }
     if (bcc !== undefined) { updates.push('bcc = ?'); params.push(JSON.stringify(bcc)) }
-    if (enabled !== undefined) { updates.push('enabled = ?'); params.push(enabled ? 1 : 0) }
+    if (enabled !== undefined) { updates.push('enabled = ?'); params.push(enabled) }
 
     if (updates.length === 0) {
       res.status(400).json({ error: 'No fields to update' })

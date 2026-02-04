@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express'
-import { queryAll } from '../db'
+import { queryAll, safeJsonParse } from '../db'
 import { processQueue } from '../services/queue-processor'
 import { logger } from '../lib/logger'
 
@@ -24,7 +24,7 @@ queueRouter.get('/', async (_req: Request, res: Response) => {
       id: item.id,
       campaignId: item.campaign_id,
       recipientEmail: item.recipient_email,
-      recipientData: JSON.parse(item.recipient_data || '{}'),
+      recipientData: safeJsonParse(item.recipient_data, {}),
       scheduledFor: item.scheduled_for,
       status: item.status,
       createdAt: item.created_at,

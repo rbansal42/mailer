@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express'
-import { queryOne, queryAll, execute } from '../db'
+import { queryOne, queryAll, execute, safeJsonParse } from '../db'
 import { getNextAvailableAccount, incrementSendCount } from '../services/account-manager'
 import { compileTemplate, replaceVariables, injectTracking } from '../services/template-compiler'
 import { createProvider } from '../providers'
@@ -53,8 +53,9 @@ async function recordBounce(
         'INSERT INTO suppression_list (email, reason, source) VALUES (?, ?, ?)',
         [email.toLowerCase(), 'hard_bounce', campaignId ? `campaign_${campaignId}` : 'send']
       )
-    } catch {
-      // Already suppressed, ignore
+    } catch (e: any) {
+      // Ignore duplicate key (already suppressed), re-throw other errors
+      if (e?.code !== '23505') throw e
     }
   }
 }
@@ -179,11 +180,11 @@ sendRouter.get('/', async (req: Request, res: Response) => {
     if (validatedMailId) {
       const mail = await queryOne<MailRow>('SELECT * FROM mails WHERE id = ?', [validatedMailId])
       if (!mail) return null
-      return { blocks: JSON.parse(mail.blocks || '[]') as BlockInput[], sourceId: validatedMailId, sourceType: 'mail' }
+      return { blocks: safeJsonParse(mail.blocks, []) as BlockInput[], sourceId: validatedMailId, sourceType: 'mail' }
     } else if (validatedTemplateId) {
       const template = await queryOne<TemplateRow>('SELECT * FROM templates WHERE id = ?', [validatedTemplateId])
       if (!template) return null
-      return { blocks: JSON.parse(template.blocks || '[]') as BlockInput[], sourceId: validatedTemplateId, sourceType: 'template' }
+      return { blocks: safeJsonParse(template.blocks, []) as BlockInput[], sourceId: validatedTemplateId, sourceType: 'template' }
     }
     return null
   }
@@ -201,7 +202,7 @@ sendRouter.get('/', async (req: Request, res: Response) => {
     // Create scheduled campaign (store template_id for backwards compatibility, or mail reference)
     const result = await execute(`
       INSERT INTO campaigns (name, template_id, subject, total_recipients, cc, bcc, status, scheduled_for)
-      VALUES (?, ?, ?, ?, ?, ?, 'scheduled', ?)
+      VALUES (?, ?, ?, ?, ?, ?, 'scheduled', ?) RETURNING id
     `, [campaignName || 'Scheduled Campaign', validatedTemplateId ?? validatedMailId ?? null, validatedSubject, recipients.length, JSON.stringify(cc || []), JSON.stringify(bcc || []), scheduledFor])
 
     const campaignId = Number(result.lastInsertRowid)
@@ -263,7 +264,7 @@ sendRouter.get('/', async (req: Request, res: Response) => {
     // Create campaign record with cc/bcc
     const result = await execute(
       `INSERT INTO campaigns (name, template_id, subject, total_recipients, cc, bcc, status, started_at)
-       VALUES (?, ?, ?, ?, ?, ?, 'sending', CURRENT_TIMESTAMP)`,
+       VALUES (?, ?, ?, ?, ?, ?, 'sending', CURRENT_TIMESTAMP) RETURNING id`,
       [campaignName || 'Unnamed', validatedTemplateId ?? null, validatedSubject, recipients.length, JSON.stringify(cc || []), JSON.stringify(bcc || [])]
     )
     const campaignId = Number(result.lastInsertRowid)

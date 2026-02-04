@@ -1,4 +1,4 @@
-import { queryAll, queryOne, execute, db } from '../db'
+import { queryAll, queryOne, execute, safeJsonParse } from '../db'
 import { randomUUID } from 'crypto'
 import { createHash } from 'crypto'
 
@@ -188,17 +188,15 @@ export async function recordAction(
   }
 
   // Find enrollment
-  const enrollment = await db.execute({
-    sql: `SELECT * FROM sequence_enrollments 
-          WHERE sequence_id = ? AND recipient_email = ? AND status = 'active'`,
-    args: [sequenceId, tokenDetails.recipientEmail]
-  })
+  const enrollmentRow = await queryOne<any>(
+    `SELECT * FROM sequence_enrollments 
+     WHERE sequence_id = ? AND recipient_email = ? AND status = 'active'`,
+    [sequenceId, tokenDetails.recipientEmail]
+  )
 
-  if (!enrollment.rows.length) {
+  if (!enrollmentRow) {
     return { success: false }
   }
-
-  const enrollmentRow = enrollment.rows[0]
 
   // Check if already clicked (idempotent)
   if (enrollmentRow.action_clicked_at) {
@@ -212,20 +210,20 @@ export async function recordAction(
     : ipAddress
 
   // Record tracking event
-  await db.execute({
-    sql: `INSERT INTO tracking_events (token_id, event_type, ip_address, user_agent)
-          VALUES (?, 'action', ?, ?)`,
-    args: [tokenDetails.id, finalIp ?? null, userAgent ?? null]
-  })
+  await execute(
+    `INSERT INTO tracking_events (token_id, event_type, ip_address, user_agent)
+     VALUES (?, 'action', ?, ?)`,
+    [tokenDetails.id, finalIp ?? null, userAgent ?? null]
+  )
 
   // Atomically update enrollment only if not already clicked
   const now = new Date().toISOString()
-  const updateResult = await db.execute({
-    sql: `UPDATE sequence_enrollments 
-          SET action_clicked_at = ? 
-          WHERE id = ? AND action_clicked_at IS NULL`,
-    args: [now, enrollmentRow.id]
-  })
+  const updateResult = await execute(
+    `UPDATE sequence_enrollments 
+     SET action_clicked_at = ? 
+     WHERE id = ? AND action_clicked_at IS NULL`,
+    [now, enrollmentRow.id]
+  )
 
   // Check if update actually happened (another request may have won the race)
   if (updateResult.rowsAffected === 0) {
@@ -250,18 +248,18 @@ export async function getActionConfig(sequenceId: number, stepId: number): Promi
   redirectDelay: number | null
 } | null> {
   // Action config is stored in the step's template blocks
-  const step = await db.execute({
-    sql: `SELECT t.blocks FROM sequence_steps ss
-          JOIN templates t ON ss.template_id = t.id
-          WHERE ss.id = ?`,
-    args: [stepId]
-  })
+  const stepRow = await queryOne<{ blocks: string }>(
+    `SELECT t.blocks FROM sequence_steps ss
+     JOIN templates t ON ss.template_id = t.id
+     WHERE ss.id = ?`,
+    [stepId]
+  )
 
-  if (!step.rows.length) return null
+  if (!stepRow) return null
 
   let blocks = []
   try {
-    blocks = JSON.parse(step.rows[0].blocks as string || '[]')
+    blocks = safeJsonParse(stepRow.blocks, [])
   } catch {
     return null
   }
@@ -286,7 +284,7 @@ export async function getActionConfig(sequenceId: number, stepId: number): Promi
 export async function getCampaignAnalytics(campaignId: number): Promise<CampaignAnalytics> {
   // Get delivery stats from send_logs
   const deliveryStats = await queryAll<{ status: string; count: number }>(
-    `SELECT status, COUNT(*) as count FROM send_logs WHERE campaign_id = ? GROUP BY status`,
+    `SELECT status, COUNT(*)::integer as count FROM send_logs WHERE campaign_id = ? GROUP BY status`,
     [campaignId]
   )
 
@@ -297,9 +295,9 @@ export async function getCampaignAnalytics(campaignId: number): Promise<Campaign
   // Get bounce stats
   const bounceStats = await queryOne<{ total: number; hard: number; soft: number }>(`
     SELECT 
-      COUNT(*) as total,
-      SUM(CASE WHEN bounce_type = 'hard' THEN 1 ELSE 0 END) as hard,
-      SUM(CASE WHEN bounce_type = 'soft' THEN 1 ELSE 0 END) as soft
+      COUNT(*)::integer as total,
+      SUM(CASE WHEN bounce_type = 'hard' THEN 1 ELSE 0 END)::integer as hard,
+      SUM(CASE WHEN bounce_type = 'soft' THEN 1 ELSE 0 END)::integer as soft
     FROM bounces
     WHERE campaign_id = ?
   `, [campaignId])
@@ -307,8 +305,8 @@ export async function getCampaignAnalytics(campaignId: number): Promise<Campaign
   // Get open stats
   const openStats = await queryOne<{ total: number; unique_count: number }>(`
     SELECT 
-      COUNT(*) as total,
-      COUNT(DISTINCT te.token_id) as unique_count
+      COUNT(*)::integer as total,
+      COUNT(DISTINCT te.token_id)::integer as unique_count
     FROM tracking_events te
     JOIN tracking_tokens tt ON te.token_id = tt.id
     WHERE tt.campaign_id = ? AND te.event_type = 'open'
@@ -317,8 +315,8 @@ export async function getCampaignAnalytics(campaignId: number): Promise<Campaign
   // Get click stats
   const clickStats = await queryOne<{ total: number; unique_count: number }>(`
     SELECT 
-      COUNT(*) as total,
-      COUNT(DISTINCT te.token_id) as unique_count
+      COUNT(*)::integer as total,
+      COUNT(DISTINCT te.token_id)::integer as unique_count
     FROM tracking_events te
     JOIN tracking_tokens tt ON te.token_id = tt.id
     WHERE tt.campaign_id = ? AND te.event_type = 'click'
@@ -326,7 +324,7 @@ export async function getCampaignAnalytics(campaignId: number): Promise<Campaign
 
   // Get top links
   const topLinks = await queryAll<{ link_url: string; clicks: number }>(`
-    SELECT te.link_url, COUNT(*) as clicks
+    SELECT te.link_url, COUNT(*)::integer as clicks
     FROM tracking_events te
     JOIN tracking_tokens tt ON te.token_id = tt.id
     WHERE tt.campaign_id = ? AND te.event_type = 'click' AND te.link_url IS NOT NULL
@@ -338,13 +336,13 @@ export async function getCampaignAnalytics(campaignId: number): Promise<Campaign
   // Get opens over time (hourly for last 48 hours)
   const opensOverTime = await queryAll<{ hour: string; count: number }>(`
     SELECT 
-      strftime('%Y-%m-%d %H:00', te.created_at) as hour,
-      COUNT(*) as count
+      to_char(te.created_at, 'YYYY-MM-DD HH24:00') as hour,
+      COUNT(*)::integer as count
     FROM tracking_events te
     JOIN tracking_tokens tt ON te.token_id = tt.id
     WHERE tt.campaign_id = ? 
       AND te.event_type = 'open'
-      AND te.created_at >= datetime('now', '-48 hours')
+      AND te.created_at >= NOW() - INTERVAL '48 hours'
     GROUP BY hour
     ORDER BY hour
   `, [campaignId])
@@ -360,14 +358,14 @@ export async function getCampaignAnalytics(campaignId: number): Promise<Campaign
       sl.recipient_email as email,
       sl.status,
       COALESCE((
-        SELECT COUNT(*) FROM tracking_events te
+        SELECT COUNT(*)::integer FROM tracking_events te
         JOIN tracking_tokens tt ON te.token_id = tt.id
         WHERE tt.campaign_id = sl.campaign_id 
           AND tt.recipient_email = sl.recipient_email 
           AND te.event_type = 'open'
       ), 0) as opens,
       (
-        SELECT GROUP_CONCAT(DISTINCT te.link_url)
+        SELECT STRING_AGG(DISTINCT te.link_url, ',')
         FROM tracking_events te
         JOIN tracking_tokens tt ON te.token_id = tt.id
         WHERE tt.campaign_id = sl.campaign_id 
@@ -377,8 +375,8 @@ export async function getCampaignAnalytics(campaignId: number): Promise<Campaign
       ) as click_urls
     FROM send_logs sl
     WHERE sl.campaign_id = ?
-    GROUP BY sl.recipient_email
-    ORDER BY sl.sent_at DESC
+    GROUP BY sl.recipient_email, sl.status
+    ORDER BY MAX(sl.sent_at) DESC
   `, [campaignId])
 
   const totalSent = sent // Rate calculation based on successfully sent emails only
