@@ -760,3 +760,59 @@ export const googleSheetsApi = {
       method: 'POST',
     }),
 }
+
+// Sequence types
+export interface SequenceStep {
+  id: number
+  sequence_id: number
+  step_order: number
+  template_id: number
+  subject: string
+  delay_days: number
+  delay_hours: number
+  send_time: string | null
+  branch_id: string | null
+  branch_order: number | null
+  is_branch_point: boolean
+}
+
+export interface Sequence {
+  id: number
+  name: string
+  description: string | null
+  enabled: boolean
+  branch_delay_hours: number
+  steps: SequenceStep[]
+}
+
+// Sequence API functions
+export async function getSequence(id: number): Promise<Sequence> {
+  const res = await fetch(`${API_BASE}/api/sequences/${id}`)
+  if (!res.ok) throw new Error('Failed to fetch sequence')
+  return res.json()
+}
+
+export async function addSequenceStep(sequenceId: number, step: Partial<SequenceStep>): Promise<SequenceStep> {
+  const res = await fetch(`${API_BASE}/api/sequences/${sequenceId}/steps`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(step)
+  })
+  if (!res.ok) throw new Error('Failed to add step')
+  return res.json()
+}
+
+export async function createBranchPoint(sequenceId: number, afterStep: number, delayHours: number = 0): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/sequences/${sequenceId}/branch-point`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ afterStep, delayBeforeSwitch: delayHours })
+  })
+  if (!res.ok) throw new Error('Failed to create branch point')
+}
+
+export async function getSequenceActions(sequenceId: number): Promise<any[]> {
+  const res = await fetch(`${API_BASE}/api/sequences/${sequenceId}/actions`)
+  if (!res.ok) throw new Error('Failed to fetch actions')
+  return res.json()
+}
