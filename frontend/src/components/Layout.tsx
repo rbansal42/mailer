@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from './ui/dropdown-menu'
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar'
+import { Button } from './ui/button'
 
 const navItems = [
   { to: '/campaigns', label: 'Campaigns', icon: Mail },
@@ -26,7 +27,7 @@ const navItems = [
 
 export default function Layout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const { user, logout } = useAuthStore()
+  const { user, logout, impersonating, stopImpersonation } = useAuthStore()
   const navigate = useNavigate()
   const mode = useThemeStore((state) => state.mode)
   const toggleMode = useThemeStore((state) => state.toggleMode)
@@ -107,6 +108,23 @@ export default function Layout() {
 
       {/* Main content area with header */}
       <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Impersonation banner */}
+        {impersonating && (
+          <div className="bg-yellow-500 text-yellow-900 px-4 py-2 flex items-center justify-between shrink-0">
+            <span>
+              <strong>Impersonating:</strong> {user?.name} ({user?.email})
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="bg-white hover:bg-yellow-100 border-yellow-600"
+              onClick={stopImpersonation}
+            >
+              Exit Impersonation
+            </Button>
+          </div>
+        )}
+
         {/* Header with user menu */}
         <header className="h-14 border-b bg-card flex items-center justify-end px-4 shrink-0">
           <div className="flex items-center gap-2">

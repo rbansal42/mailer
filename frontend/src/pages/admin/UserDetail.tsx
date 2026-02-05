@@ -17,8 +17,10 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '../../components/ui/alert-dialog'
-import { ArrowLeft, Mail, FileText, Users, Trash2 } from 'lucide-react'
+import { ArrowLeft, Mail, FileText, Users, Trash2, UserCog, Loader2 } from 'lucide-react'
 import { auth } from '../../lib/firebase'
+import { useAuthStore } from '../../hooks/useAuthStore'
+import { toast } from 'sonner'
 
 interface UserDetail {
   id: string
@@ -37,9 +39,11 @@ interface UserDetail {
 export default function AdminUserDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const { user: currentUser, startImpersonation } = useAuthStore()
   const [user, setUser] = useState<UserDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [impersonating, setImpersonating] = useState(false)
   const [name, setName] = useState('')
   const [isAdmin, setIsAdmin] = useState(false)
 
@@ -107,6 +111,23 @@ export default function AdminUserDetail() {
     }
   }
 
+  const handleImpersonate = async () => {
+    if (!id) return
+    
+    setImpersonating(true)
+    try {
+      await startImpersonation(id)
+      toast.success(`Now viewing as ${user?.name}`)
+      navigate('/campaigns')
+    } catch (error) {
+      console.error('Failed to impersonate:', error)
+      toast.error('Failed to start impersonation')
+      setImpersonating(false)
+    }
+  }
+
+  const isSelf = currentUser?.id === user?.id
+
   if (loading) {
     return (
       <div className="p-6">
@@ -133,17 +154,34 @@ export default function AdminUserDetail() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center gap-4">
-        <Link to="/admin/users">
-          <Button variant="ghost" size="icon">
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-        </Link>
-        <div>
-          <h1 className="text-2xl font-bold">{user.name}</h1>
-          <p className="text-muted-foreground">{user.email}</p>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Link to="/admin/users">
+            <Button variant="ghost" size="icon">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          </Link>
+          <div>
+            <h1 className="text-2xl font-bold">{user.name}</h1>
+            <p className="text-muted-foreground">{user.email}</p>
+          </div>
+          {user.isAdmin && <Badge>Admin</Badge>}
         </div>
-        {user.isAdmin && <Badge>Admin</Badge>}
+        
+        {!isSelf && (
+          <Button
+            variant="outline"
+            onClick={handleImpersonate}
+            disabled={impersonating}
+          >
+            {impersonating ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <UserCog className="h-4 w-4 mr-2" />
+            )}
+            Impersonate User
+          </Button>
+        )}
       </div>
 
       {/* Stats */}

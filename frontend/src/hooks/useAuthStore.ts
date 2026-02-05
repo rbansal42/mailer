@@ -5,6 +5,7 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signInWithPopup,
+  signInWithCustomToken,
   signOut,
   sendEmailVerification,
   sendPasswordResetEmail,
@@ -36,6 +37,8 @@ interface AuthState {
   resetPassword: (email: string) => Promise<void>
   resendVerification: () => Promise<void>
   fetchUser: () => Promise<void>
+  startImpersonation: (userId: string) => Promise<void>
+  stopImpersonation: () => Promise<void>
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -142,6 +145,38 @@ export const useAuthStore = create<AuthState>()(
           console.error('Failed to fetch user:', error)
           await logout()
         }
+      },
+
+      startImpersonation: async (userId: string) => {
+        const { firebaseUser, user } = get()
+        if (!firebaseUser || !user) throw new Error('Not authenticated')
+
+        const token = await firebaseUser.getIdToken()
+        const response = await fetch(`/api/admin/users/${userId}/impersonate`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` }
+        })
+
+        if (!response.ok) {
+          const error = await response.json()
+          throw new Error(error.error || 'Failed to impersonate')
+        }
+
+        const { token: customToken } = await response.json()
+
+        // Store original user before switching
+        const originalUser = user
+        set({ impersonating: originalUser })
+
+        // Sign in with custom token
+        await signInWithCustomToken(auth, customToken)
+        await get().fetchUser()
+      },
+
+      stopImpersonation: async () => {
+        // Sign out and clear impersonation state
+        // User will need to log back in as themselves
+        await get().logout()
       }
     }),
     {
