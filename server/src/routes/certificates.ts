@@ -358,8 +358,8 @@ certificatesRouter.post('/preview', async (req, res) => {
   
   try {
     const configRow = await queryOne<CertificateConfigRow>(
-      'SELECT * FROM certificate_configs WHERE id = ?',
-      [configId]
+      'SELECT * FROM certificate_configs WHERE id = ? AND user_id = ?',
+      [configId, req.userId]
     )
     
     if (!configRow) {
@@ -470,8 +470,8 @@ certificatesRouter.post('/generate', async (req, res) => {
   
   try {
     const configRow = await queryOne<CertificateConfigRow>(
-      'SELECT * FROM certificate_configs WHERE id = ?',
-      [configId]
+      'SELECT * FROM certificate_configs WHERE id = ? AND user_id = ?',
+      [configId, req.userId]
     )
     
     if (!configRow) {
@@ -508,14 +508,15 @@ certificatesRouter.post('/generate', async (req, res) => {
         const dataWithId = { ...recipientData, certificate_id: certificateId }
         await tx.unsafe(
           `INSERT INTO generated_certificates 
-           (certificate_id, config_id, recipient_name, recipient_email, data)
-           VALUES ($1, $2, $3, $4, $5)`,
+           (certificate_id, config_id, recipient_name, recipient_email, data, user_id)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
           [
             certificateId,
             configId,
             recipientData.name,
             recipientData.email || null,
             JSON.stringify(dataWithId),
+            req.userId,
           ]
         )
         
@@ -564,8 +565,8 @@ certificatesRouter.post('/generate/zip', async (req, res) => {
   
   try {
     const configRow = await queryOne<CertificateConfigRow>(
-      'SELECT * FROM certificate_configs WHERE id = ?',
-      [configId]
+      'SELECT * FROM certificate_configs WHERE id = ? AND user_id = ?',
+      [configId, req.userId]
     )
     
     if (!configRow) {

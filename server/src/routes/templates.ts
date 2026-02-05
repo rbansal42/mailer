@@ -128,15 +128,15 @@ templatesRouter.put('/:id', async (req, res) => {
   res.json(formatTemplate(row))
 })
 
-// Delete template
+// Delete template - only allow on user's own templates (not system templates)
 templatesRouter.delete('/:id', async (req, res) => {
   const { id } = req.params
-  logger.info('Deleting template', { service: 'templates', templateId: id })
+  logger.info('Deleting template', { service: 'templates', templateId: id, userId: req.userId })
 
-  // Check if template exists and if it's a default template
-  const template = await queryOne<{ is_default: boolean }>(
-    'SELECT is_default FROM templates WHERE id = ?',
-    [id]
+  // Check if template exists and belongs to user
+  const template = await queryOne<{ is_default: boolean; is_system: boolean; user_id: string | null }>(
+    'SELECT is_default, is_system, user_id FROM templates WHERE id = ? AND (user_id = ? OR is_system = true)',
+    [id, req.userId]
   )
 
   if (!template) {
@@ -145,13 +145,14 @@ templatesRouter.delete('/:id', async (req, res) => {
     return
   }
 
-  if (template.is_default) {
-    logger.warn('Attempted to delete default template', { service: 'templates', templateId: id })
-    res.status(403).json({ error: 'Cannot delete built-in templates' })
+  if (template.is_default || template.is_system) {
+    logger.warn('Attempted to delete system/default template', { service: 'templates', templateId: id })
+    res.status(403).json({ error: 'Cannot delete system templates' })
     return
   }
 
-  await execute('DELETE FROM templates WHERE id = ?', [id])
+  // Only delete if user owns the template
+  await execute('DELETE FROM templates WHERE id = ? AND user_id = ?', [id, req.userId])
   logger.info('Template deleted', { service: 'templates', templateId: id })
   res.status(204).send()
 })

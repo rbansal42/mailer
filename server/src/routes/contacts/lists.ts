@@ -23,9 +23,10 @@ router.get('/', async (req, res) => {
         COUNT(lc.contact_id)::integer as contact_count
       FROM lists l
       LEFT JOIN list_contacts lc ON l.id = lc.list_id
+      WHERE l.user_id = ?
       GROUP BY l.id
       ORDER BY l.created_at DESC
-    `)
+    `, [req.userId])
     
     res.json(lists)
   } catch (error) {
@@ -40,11 +41,11 @@ router.post('/', async (req, res) => {
     const data = createListSchema.parse(req.body)
     
     const result = await execute(
-      'INSERT INTO lists (name, description) VALUES (?, ?) RETURNING id',
-      [data.name, data.description ?? null]
+      'INSERT INTO lists (name, description, user_id) VALUES (?, ?, ?) RETURNING id',
+      [data.name, data.description ?? null, req.userId]
     )
     
-    const list = await queryOne<ListRow>('SELECT * FROM lists WHERE id = ?', [result.lastInsertRowid])
+    const list = await queryOne<ListRow>('SELECT * FROM lists WHERE id = ? AND user_id = ?', [result.lastInsertRowid, req.userId])
     logger.info('List created', { service: 'contacts', listId: String(result.lastInsertRowid) })
     res.status(201).json(list)
   } catch (error: any) {
@@ -65,9 +66,9 @@ router.get('/:id', async (req, res) => {
         COUNT(lc.contact_id)::integer as contact_count
       FROM lists l
       LEFT JOIN list_contacts lc ON l.id = lc.list_id
-      WHERE l.id = ?
+      WHERE l.id = ? AND l.user_id = ?
       GROUP BY l.id
-    `, [req.params.id])
+    `, [req.params.id, req.userId])
     
     if (!list) {
       return res.status(404).json({ error: 'List not found' })
@@ -85,7 +86,7 @@ router.put('/:id', async (req, res) => {
   try {
     const data = updateListSchema.parse(req.body)
     
-    const existing = await queryOne<ListRow>('SELECT * FROM lists WHERE id = ?', [req.params.id])
+    const existing = await queryOne<ListRow>('SELECT * FROM lists WHERE id = ? AND user_id = ?', [req.params.id, req.userId])
     if (!existing) {
       return res.status(404).json({ error: 'List not found' })
     }
@@ -102,11 +103,11 @@ router.put('/:id', async (req, res) => {
       values.push(data.description)
     }
     updates.push('updated_at = CURRENT_TIMESTAMP')
-    values.push(req.params.id)
+    values.push(req.params.id, req.userId)
     
-    await execute(`UPDATE lists SET ${updates.join(', ')} WHERE id = ?`, values)
+    await execute(`UPDATE lists SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`, values)
     
-    const list = await queryOne<ListRow>('SELECT * FROM lists WHERE id = ?', [req.params.id])
+    const list = await queryOne<ListRow>('SELECT * FROM lists WHERE id = ? AND user_id = ?', [req.params.id, req.userId])
     logger.info('List updated', { service: 'contacts', listId: req.params.id })
     res.json(list)
   } catch (error: any) {
@@ -121,12 +122,12 @@ router.put('/:id', async (req, res) => {
 // DELETE /api/contacts/lists/:id - Delete list
 router.delete('/:id', async (req, res) => {
   try {
-    const existing = await queryOne<ListRow>('SELECT * FROM lists WHERE id = ?', [req.params.id])
+    const existing = await queryOne<ListRow>('SELECT * FROM lists WHERE id = ? AND user_id = ?', [req.params.id, req.userId])
     if (!existing) {
       return res.status(404).json({ error: 'List not found' })
     }
     
-    await execute('DELETE FROM lists WHERE id = ?', [req.params.id])
+    await execute('DELETE FROM lists WHERE id = ? AND user_id = ?', [req.params.id, req.userId])
     logger.info('List deleted', { service: 'contacts', listId: req.params.id })
     res.status(204).send()
   } catch (error) {
@@ -144,8 +145,8 @@ router.post('/:id/import', async (req, res) => {
       return res.status(400).json({ error: 'CSV data is required' })
     }
     
-    // Verify list exists
-    const list = await queryOne<ListRow>('SELECT id FROM lists WHERE id = ?', [req.params.id])
+    // Verify list exists and belongs to user
+    const list = await queryOne<ListRow>('SELECT id FROM lists WHERE id = ? AND user_id = ?', [req.params.id, req.userId])
     if (!list) {
       return res.status(404).json({ error: 'List not found' })
     }
@@ -221,8 +222,8 @@ router.post('/:id/import', async (req, res) => {
         contactData.custom_fields = customFields
       }
       
-      // Upsert contact
-      const existing = await queryOne<{ id: number }>('SELECT id FROM contacts WHERE email = ?', [email])
+      // Upsert contact (scoped to user)
+      const existing = await queryOne<{ id: number }>('SELECT id FROM contacts WHERE email = ? AND user_id = ?', [email, req.userId])
       
       let contactId: number
       
@@ -237,7 +238,7 @@ router.post('/:id/import', async (req, res) => {
             country = COALESCE(?, country),
             custom_fields = COALESCE(?, custom_fields),
             updated_at = CURRENT_TIMESTAMP
-          WHERE id = ?
+          WHERE id = ? AND user_id = ?
         `, [
           contactData.name || null,
           contactData.first_name || null,
@@ -246,14 +247,15 @@ router.post('/:id/import', async (req, res) => {
           contactData.phone || null,
           contactData.country || null,
           contactData.custom_fields ? JSON.stringify(contactData.custom_fields) : null,
-          existing.id
+          existing.id,
+          req.userId
         ])
         contactId = existing.id
         updated++
       } else {
         const result = await execute(`
-          INSERT INTO contacts (email, name, first_name, last_name, company, phone, country, custom_fields)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO contacts (email, name, first_name, last_name, company, phone, country, custom_fields, user_id)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
           RETURNING id
         `, [
           email,
@@ -263,7 +265,8 @@ router.post('/:id/import', async (req, res) => {
           contactData.company || null,
           contactData.phone || null,
           contactData.country || null,
-          JSON.stringify(contactData.custom_fields || {})
+          JSON.stringify(contactData.custom_fields || {}),
+          req.userId
         ])
         contactId = Number(result.lastInsertRowid)
         created++
@@ -307,7 +310,7 @@ interface ContactRow {
 // GET /api/contacts/lists/:id/export - Export list as CSV
 router.get('/:id/export', async (req, res) => {
   try {
-    const list = await queryOne<ListRow>('SELECT * FROM lists WHERE id = ?', [req.params.id])
+    const list = await queryOne<ListRow>('SELECT * FROM lists WHERE id = ? AND user_id = ?', [req.params.id, req.userId])
     if (!list) {
       return res.status(404).json({ error: 'List not found' })
     }
@@ -316,9 +319,9 @@ router.get('/:id/export', async (req, res) => {
       SELECT c.*
       FROM contacts c
       JOIN list_contacts lc ON c.id = lc.contact_id
-      WHERE lc.list_id = ?
+      WHERE lc.list_id = ? AND c.user_id = ?
       ORDER BY c.email
-    `, [req.params.id])
+    `, [req.params.id, req.userId])
     
     // Collect all custom field keys
     const customFieldKeys = new Set<string>()

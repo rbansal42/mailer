@@ -88,6 +88,8 @@ export async function runColumnMigrations() {
   await addColumnIfNotExists('generated_certificates', 'user_id', 'UUID REFERENCES users(id) ON DELETE CASCADE')
   await addColumnIfNotExists('media', 'user_id', 'UUID REFERENCES users(id) ON DELETE CASCADE')
   await addColumnIfNotExists('campaigns', 'user_id', 'UUID REFERENCES users(id) ON DELETE CASCADE')
+  await addColumnIfNotExists('recurring_campaigns', 'user_id', 'UUID REFERENCES users(id) ON DELETE CASCADE')
+  await addColumnIfNotExists('sequences', 'user_id', 'UUID REFERENCES users(id) ON DELETE CASCADE')
 }
 
 // Run SQL migrations from the migrations directory (with tracking)
