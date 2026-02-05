@@ -8,6 +8,8 @@ import Layout from './components/Layout'
 
 // Eagerly loaded - needed immediately
 import Login from './pages/Login'
+import VerifyEmail from './pages/VerifyEmail'
+import ForgotPassword from './pages/ForgotPassword'
 
 // Lazy loaded pages - code split into separate chunks
 const Campaigns = lazy(() => import('./pages/Campaigns'))
@@ -99,6 +101,7 @@ export default function App() {
     <ThemeProvider>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/verify-email" element={<VerifyEmail />} />
         <Route
           path="/"
           element={
