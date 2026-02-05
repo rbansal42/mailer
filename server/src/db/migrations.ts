@@ -92,6 +92,7 @@ export async function runColumnMigrations() {
   await addColumnIfNotExists('sequences', 'user_id', 'UUID REFERENCES users(id) ON DELETE CASCADE')
   await addColumnIfNotExists('contacts', 'user_id', 'UUID REFERENCES users(id) ON DELETE CASCADE')
   await addColumnIfNotExists('lists', 'user_id', 'UUID REFERENCES users(id) ON DELETE CASCADE')
+  await addColumnIfNotExists('drafts', 'user_id', 'UUID REFERENCES users(id) ON DELETE CASCADE')
 }
 
 // Run SQL migrations from the migrations directory (with tracking)

@@ -219,7 +219,7 @@ sequencesRouter.put('/:id', async (req, res) => {
 sequencesRouter.delete('/:id', async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10)
-    await execute('DELETE FROM sequences WHERE id = ?', [id])
+    await execute('DELETE FROM sequences WHERE id = ? AND user_id = ?', [id, req.userId])
     
     logger.info('Deleted sequence', { service: 'sequences', sequenceId: id })
     res.json({ message: 'Sequence deleted' })
@@ -234,6 +234,13 @@ sequencesRouter.post('/:id/steps', async (req, res) => {
   try {
     const sequenceId = parseInt(req.params.id, 10)
     const { templateId, subject, delayDays, delayHours, sendTime, branchId } = req.body
+
+    // Verify ownership
+    const sequence = await queryOne('SELECT id FROM sequences WHERE id = ? AND user_id = ?', [sequenceId, req.userId])
+    if (!sequence) {
+      res.status(404).json({ error: 'Sequence not found' })
+      return
+    }
 
     // Validate required fields
     if (!subject || typeof subject !== 'string' || subject.trim().length === 0) {

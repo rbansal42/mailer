@@ -123,7 +123,7 @@ router.post('/', async (req, res) => {
             country = COALESCE(?, country),
             custom_fields = COALESCE(?, custom_fields),
             updated_at = CURRENT_TIMESTAMP
-          WHERE id = ?
+          WHERE id = ? AND user_id = ?
         `, [
           contact.name ?? null,
           contact.first_name ?? null,
@@ -132,15 +132,16 @@ router.post('/', async (req, res) => {
           contact.phone ?? null,
           contact.country ?? null,
           contact.custom_fields ? JSON.stringify(contact.custom_fields) : null,
-          existing.id
+          existing.id,
+          req.userId
         ])
         contactId = existing.id
         updated++
       } else {
         // Create new contact
         const result = await execute(`
-          INSERT INTO contacts (email, name, first_name, last_name, company, phone, country, custom_fields)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO contacts (email, name, first_name, last_name, company, phone, country, custom_fields, user_id)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
           RETURNING id
         `, [
           contact.email,
@@ -150,7 +151,8 @@ router.post('/', async (req, res) => {
           contact.company ?? null,
           contact.phone ?? null,
           contact.country ?? null,
-          JSON.stringify(contact.custom_fields || {})
+          JSON.stringify(contact.custom_fields || {}),
+          req.userId
         ])
         contactId = Number(result.lastInsertRowid)
         created++
@@ -191,6 +193,12 @@ router.post('/', async (req, res) => {
 router.delete('/:contactId', async (req, res) => {
   try {
     const { listId, contactId } = req.params
+    
+    // Verify list belongs to user
+    const list = await queryOne<ListRow>('SELECT id FROM lists WHERE id = ? AND user_id = ?', [listId, req.userId])
+    if (!list) {
+      return res.status(404).json({ error: 'List not found' })
+    }
     
     const result = await execute(
       'DELETE FROM list_contacts WHERE list_id = ? AND contact_id = ?',

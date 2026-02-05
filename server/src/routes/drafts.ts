@@ -75,7 +75,7 @@ export async function getUniqueDraftName(baseName: string, userId: string): Prom
 // List drafts
 draftsRouter.get('/', async (req, res) => {
   try {
-    const rows = await queryAll<DraftRow>('SELECT * FROM drafts ORDER BY updated_at DESC')
+    const rows = await queryAll<DraftRow>('SELECT * FROM drafts WHERE user_id = ? ORDER BY updated_at DESC', [req.userId])
     logger.debug('Drafts listed', { requestId: (req as any).requestId, count: rows.length })
     res.json(rows.map(formatDraft))
   } catch (error) {
@@ -87,7 +87,7 @@ draftsRouter.get('/', async (req, res) => {
 // Get draft
 draftsRouter.get('/:id', async (req, res) => {
   try {
-    const row = await queryOne<DraftRow>('SELECT * FROM drafts WHERE id = ?', [req.params.id])
+    const row = await queryOne<DraftRow>('SELECT * FROM drafts WHERE id = ? AND user_id = ?', [req.params.id, req.userId])
     if (!row) {
       logger.warn('Draft not found', { requestId: (req as any).requestId, draftId: req.params.id })
       return res.status(404).json({ error: 'Draft not found' })
