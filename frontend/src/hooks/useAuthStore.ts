@@ -8,7 +8,8 @@ import {
   signOut,
   sendEmailVerification,
   sendPasswordResetEmail,
-  onAuthStateChanged
+  onAuthStateChanged,
+  updateProfile
 } from 'firebase/auth'
 import { auth, googleProvider } from '../lib/firebase'
 
@@ -77,14 +78,22 @@ export const useAuthStore = create<AuthState>()(
         set({ isAuthenticated: true })
       },
 
-      register: async (email, password, _name) => {
+      register: async (email, password, name) => {
         const result = await createUserWithEmailAndPassword(auth, email, password)
+        
+        // Set the display name in Firebase
+        await updateProfile(result.user, { displayName: name })
+        
         await sendEmailVerification(result.user)
         set({ firebaseUser: result.user, isAuthenticated: false })
       },
 
       loginWithGoogle: async () => {
         const result = await signInWithPopup(auth, googleProvider)
+        // Google accounts should always be verified, but check anyway
+        if (!result.user.emailVerified) {
+          throw new Error('EMAIL_NOT_VERIFIED')
+        }
         set({ firebaseUser: result.user })
         await get().fetchUser()
         set({ isAuthenticated: true })
@@ -112,7 +121,7 @@ export const useAuthStore = create<AuthState>()(
       },
 
       fetchUser: async () => {
-        const { firebaseUser } = get()
+        const { firebaseUser, logout } = get()
         if (!firebaseUser) return
 
         try {
@@ -121,12 +130,17 @@ export const useAuthStore = create<AuthState>()(
             headers: { Authorization: `Bearer ${token}` }
           })
           
-          if (response.ok) {
-            const user = await response.json()
-            set({ user })
+          if (!response.ok) {
+            console.error('Failed to fetch user, logging out')
+            await logout()
+            return
           }
+          
+          const user = await response.json()
+          set({ user })
         } catch (error) {
           console.error('Failed to fetch user:', error)
+          await logout()
         }
       }
     }),

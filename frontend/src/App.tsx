@@ -99,6 +99,21 @@ function LazyRoute({ component: LazyComponent }: { component: React.LazyExoticCo
 }
 
 export default function App() {
+  const { isLoading, initialize } = useAuthStore()
+
+  useEffect(() => {
+    initialize()
+  }, [initialize])
+
+  // Show a loading state while checking auth
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 dark:border-gray-100" />
+      </div>
+    )
+  }
+
   return (
     <ThemeProvider>
       <Routes>
