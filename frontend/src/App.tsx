@@ -75,6 +75,28 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+function AdminRoute({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, isLoading, user } = useAuthStore()
+  
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 dark:border-gray-100" />
+      </div>
+    )
+  }
+  
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />
+  }
+  
+  if (!user?.isAdmin) {
+    return <Navigate to="/" replace />
+  }
+  
+  return <>{children}</>
+}
+
 function ThemeProvider({ children }: { children: React.ReactNode }) {
   const mode = useThemeStore((state) => state.mode)
   const primaryColor = useThemeStore((state) => state.primaryColor)
@@ -151,9 +173,9 @@ export default function App() {
         <Route
           path="/admin"
           element={
-            <ProtectedRoute>
+            <AdminRoute>
               <AdminLayout />
-            </ProtectedRoute>
+            </AdminRoute>
           }
         >
           <Route index element={<LazyRoute component={AdminDashboard} />} />
