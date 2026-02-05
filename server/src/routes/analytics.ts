@@ -20,10 +20,10 @@ analyticsRouter.get('/campaigns/:id/analytics', async (req: Request<{ id: string
       return
     }
 
-    // Verify campaign exists
+    // Verify campaign exists and belongs to user
     const campaign = await queryOne<CampaignRow>(
-      'SELECT id, name FROM campaigns WHERE id = ?',
-      [campaignId]
+      'SELECT id, name FROM campaigns WHERE id = ? AND user_id = ?',
+      [campaignId, req.userId]
     )
 
     if (!campaign) {
