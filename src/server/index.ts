@@ -159,7 +159,7 @@ const mediaPath = join(DATA_DIR, 'media')
 app.use('/media', express.static(mediaPath))
 
 // Serve static frontend in production
-const publicPath = join(process.cwd(), 'public')
+const publicPath = join(process.cwd(), 'dist', 'public')
 if (existsSync(publicPath)) {
   app.use(express.static(publicPath))
   app.get('*', (_, res) => {

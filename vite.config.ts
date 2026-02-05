@@ -6,28 +6,17 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
-    },
-  },
-  server: {
-    port: 5173,
-    proxy: {
-      '/api': {
-        target: 'http://localhost:3342',
-        changeOrigin: true,
-      },
+      '@': path.resolve(__dirname, './src/client'),
     },
   },
   build: {
-    outDir: 'dist',
+    outDir: 'dist/public',
     emptyOutDir: true,
     chunkSizeWarningLimit: 500,
     rollupOptions: {
       output: {
         manualChunks: {
-          // Core React dependencies
           'react-vendor': ['react', 'react-dom', 'react-router-dom'],
-          // UI components library (Radix primitives)
           'ui-vendor': [
             '@radix-ui/react-alert-dialog',
             '@radix-ui/react-checkbox',
@@ -43,7 +32,6 @@ export default defineConfig({
             '@radix-ui/react-toast',
             '@radix-ui/react-tooltip',
           ],
-          // Data fetching and state
           'query-vendor': ['@tanstack/react-query'],
         },
       },
