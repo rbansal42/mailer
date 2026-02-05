@@ -5,6 +5,7 @@ import { useAuthStore } from './hooks/useAuthStore'
 import { useThemeStore } from './hooks/useThemeStore'
 import { applyTheme } from './lib/theme'
 import Layout from './components/Layout'
+import AdminLayout from './components/AdminLayout'
 
 // Eagerly loaded - needed immediately
 import Login from './pages/Login'
@@ -23,6 +24,12 @@ const Certificates = lazy(() => import('./pages/Certificates'))
 const SuppressionList = lazy(() => import('./pages/SuppressionList'))
 const Sequences = lazy(() => import('./pages/Sequences'))
 const AccountSettings = lazy(() => import('./pages/AccountSettings'))
+
+// Admin pages
+const AdminDashboard = lazy(() => import('./pages/admin/Dashboard'))
+const AdminUsers = lazy(() => import('./pages/admin/Users'))
+const AdminUserDetail = lazy(() => import('./pages/admin/UserDetail'))
+const AdminSettings = lazy(() => import('./pages/admin/Settings'))
 
 // Error Boundary for catching lazy loading failures
 interface ErrorBoundaryState {
@@ -140,6 +147,19 @@ export default function App() {
           <Route path="suppression" element={<LazyRoute component={SuppressionList} />} />
           <Route path="sequences" element={<LazyRoute component={Sequences} />} />
           <Route path="settings/account" element={<LazyRoute component={AccountSettings} />} />
+        </Route>
+        <Route
+          path="/admin"
+          element={
+            <ProtectedRoute>
+              <AdminLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<LazyRoute component={AdminDashboard} />} />
+          <Route path="users" element={<LazyRoute component={AdminUsers} />} />
+          <Route path="users/:id" element={<LazyRoute component={AdminUserDetail} />} />
+          <Route path="settings" element={<LazyRoute component={AdminSettings} />} />
         </Route>
       </Routes>
       <Toaster position="top-right" richColors />
