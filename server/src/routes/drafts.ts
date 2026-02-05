@@ -113,8 +113,10 @@ draftsRouter.post('/', async (req, res) => {
   try {
 
     const result = await execute(
-      'INSERT INTO drafts (name, template_id, mail_id, list_id, subject, test_email, recipients, recipients_text, variables, cc, bcc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id',
+      'INSERT INTO drafts (id, user_id, name, template_id, mail_id, list_id, subject, test_email, recipients, recipients_text, variables, cc, bcc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id',
       [
+        null,
+        req.userId,
         name,
         templateId ?? null,
         mailId ?? null,
@@ -130,7 +132,7 @@ draftsRouter.post('/', async (req, res) => {
     )
 
     const draftId = Number(result.lastInsertRowid)
-    const row = await queryOne<DraftRow>('SELECT * FROM drafts WHERE id = ?', [draftId])
+    const row = await queryOne<DraftRow>('SELECT * FROM drafts WHERE id = ? AND user_id = ?', [draftId, req.userId])
     logger.info('Draft created', { requestId: (req as any).requestId, draftId })
     res.status(201).json(formatDraft(row!))
   } catch (error) {
@@ -150,8 +152,8 @@ draftsRouter.put('/:id', async (req, res) => {
   const { name, templateId, mailId, listId, subject, testEmail, recipients, recipientsText, variables, cc, bcc } = validation.data
 
   try {
-    // Check if draft exists
-    const existing = await queryOne<DraftRow>('SELECT * FROM drafts WHERE id = ?', [req.params.id])
+    // Check if draft exists and belongs to user
+    const existing = await queryOne<DraftRow>('SELECT * FROM drafts WHERE id = ? AND user_id = ?', [req.params.id, req.userId])
     if (!existing) {
       logger.warn('Draft not found for update', { requestId: (req as any).requestId, draftId: req.params.id })
       return res.status(404).json({ error: 'Draft not found' })
@@ -208,11 +210,11 @@ draftsRouter.put('/:id', async (req, res) => {
 
     if (updates.length > 0) {
       updates.push('updated_at = CURRENT_TIMESTAMP')
-      values.push(req.params.id)
-      await execute(`UPDATE drafts SET ${updates.join(', ')} WHERE id = ?`, values)
+      values.push(req.params.id, req.userId)
+      await execute(`UPDATE drafts SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`, values)
     }
 
-    const row = await queryOne<DraftRow>('SELECT * FROM drafts WHERE id = ?', [req.params.id])
+    const row = await queryOne<DraftRow>('SELECT * FROM drafts WHERE id = ? AND user_id = ?', [req.params.id, req.userId])
     logger.info('Draft updated', { requestId: (req as any).requestId, draftId: row!.id })
     res.json(formatDraft(row!))
   } catch (error) {
@@ -231,8 +233,8 @@ draftsRouter.post('/:id/duplicate', async (req, res) => {
     }
 
     const original = await queryOne<DraftRow>(
-      'SELECT * FROM drafts WHERE id = ?',
-      [id]
+      'SELECT * FROM drafts WHERE id = ? AND user_id = ?',
+      [id, req.userId]
     )
 
     if (!original) {
@@ -240,12 +242,13 @@ draftsRouter.post('/:id/duplicate', async (req, res) => {
       return
     }
 
-    const newName = await getUniqueDraftName(`Copy of ${original.name || 'Untitled'}`)
+    const newName = await getUniqueDraftName(`Copy of ${original.name || 'Untitled'}`, req.userId)
 
     const result = await execute(
-      `INSERT INTO drafts (name, template_id, mail_id, list_id, subject, test_email, recipients, recipients_text, variables, cc, bcc)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+      `INSERT INTO drafts (user_id, name, template_id, mail_id, list_id, subject, test_email, recipients, recipients_text, variables, cc, bcc)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
       [
+        req.userId,
         newName,
         original.template_id ?? null,
         original.mail_id ?? null,

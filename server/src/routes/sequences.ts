@@ -305,8 +305,16 @@ sequencesRouter.post('/:id/steps', async (req, res) => {
 // PUT /:id/steps/:stepId - Update step
 sequencesRouter.put('/:id/steps/:stepId', async (req, res) => {
   try {
+    const sequenceId = parseInt(req.params.id, 10)
     const stepId = parseInt(req.params.stepId, 10)
     const { templateId, subject, delayDays, delayHours, sendTime, stepOrder } = req.body
+
+    // Verify ownership
+    const sequence = await queryOne('SELECT id FROM sequences WHERE id = ? AND user_id = ?', [sequenceId, req.userId])
+    if (!sequence) {
+      res.status(404).json({ error: 'Sequence not found' })
+      return
+    }
 
     const updates: string[] = []
     const params: (string | number | null)[] = []
@@ -337,8 +345,17 @@ sequencesRouter.put('/:id/steps/:stepId', async (req, res) => {
 // DELETE /:id/steps/:stepId - Delete step
 sequencesRouter.delete('/:id/steps/:stepId', async (req, res) => {
   try {
+    const sequenceId = parseInt(req.params.id, 10)
     const stepId = parseInt(req.params.stepId, 10)
-    await execute('DELETE FROM sequence_steps WHERE id = ?', [stepId])
+
+    // Verify ownership
+    const sequence = await queryOne('SELECT id FROM sequences WHERE id = ? AND user_id = ?', [sequenceId, req.userId])
+    if (!sequence) {
+      res.status(404).json({ error: 'Sequence not found' })
+      return
+    }
+
+    await execute('DELETE FROM sequence_steps WHERE id = ? AND sequence_id = ?', [stepId, sequenceId])
     
     logger.info('Deleted step', { service: 'sequences', stepId })
     res.json({ message: 'Step deleted' })
@@ -353,6 +370,13 @@ sequencesRouter.get('/:id/enrollments', async (req, res) => {
   try {
     const sequenceId = parseInt(req.params.id, 10)
     const status = req.query.status as string | undefined
+
+    // Verify ownership
+    const sequence = await queryOne('SELECT id FROM sequences WHERE id = ? AND user_id = ?', [sequenceId, req.userId])
+    if (!sequence) {
+      res.status(404).json({ error: 'Sequence not found' })
+      return
+    }
 
     let enrollments: EnrollmentRow[]
     
@@ -377,6 +401,13 @@ sequencesRouter.post('/:id/enroll', async (req, res) => {
   try {
     const sequenceId = parseInt(req.params.id, 10)
     const { recipients } = req.body // Array of { email, data }
+
+    // Verify ownership
+    const sequence = await queryOne('SELECT id FROM sequences WHERE id = ? AND user_id = ?', [sequenceId, req.userId])
+    if (!sequence) {
+      res.status(404).json({ error: 'Sequence not found' })
+      return
+    }
 
     if (!Array.isArray(recipients) || recipients.length === 0) {
       res.status(400).json({ error: 'Recipients array required' })
@@ -408,8 +439,16 @@ sequencesRouter.post('/:id/enroll', async (req, res) => {
 // PUT /:id/enrollments/:enrollmentId - Update enrollment (pause/cancel/resume)
 sequencesRouter.put('/:id/enrollments/:enrollmentId', async (req, res) => {
   try {
+    const sequenceId = parseInt(req.params.id, 10)
     const enrollmentId = parseInt(req.params.enrollmentId, 10)
     const { action } = req.body // 'pause' | 'cancel' | 'resume'
+
+    // Verify ownership
+    const sequence = await queryOne('SELECT id FROM sequences WHERE id = ? AND user_id = ?', [sequenceId, req.userId])
+    if (!sequence) {
+      res.status(404).json({ error: 'Sequence not found' })
+      return
+    }
 
     switch (action) {
       case 'pause':
