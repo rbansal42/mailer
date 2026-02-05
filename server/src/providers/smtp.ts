@@ -1,5 +1,6 @@
 import nodemailer, { Transporter } from 'nodemailer'
-import { EmailProvider, SendOptions } from './base'
+import { EmailProvider } from './base'
+import type { SendOptions } from './base'
 
 interface SmtpConfig {
   host: string

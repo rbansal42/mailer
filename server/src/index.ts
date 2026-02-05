@@ -1,9 +1,6 @@
-import { config } from 'dotenv';
-import { join } from 'path';
+import './env' // Must be first — loads .env before other modules evaluate
+import { join } from 'path'
 import { existsSync } from 'fs'
-
-// Load .env from project root
-config({ path: join(__dirname, '../../.env') });
 
 import express from 'express'
 import cors from 'cors'
