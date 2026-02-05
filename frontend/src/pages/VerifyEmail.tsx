@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../hooks/useAuthStore'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '../components/ui/card'
@@ -12,6 +12,13 @@ export default function VerifyEmail() {
   const [loading, setLoading] = useState(false)
   
   const { resendVerification, firebaseUser } = useAuthStore()
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    if (firebaseUser?.emailVerified) {
+      navigate('/')
+    }
+  }, [firebaseUser, navigate])
 
   const handleResend = async () => {
     setError('')

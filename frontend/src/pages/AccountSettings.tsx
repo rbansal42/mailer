@@ -110,7 +110,7 @@ export default function AccountSettings() {
                 type="email"
                 value={user?.email || ''}
                 disabled
-                className="bg-gray-50"
+                className="bg-muted"
               />
               <p className="text-xs text-gray-500">
                 Email changes are managed through Firebase. Contact support if you need to change your email.
