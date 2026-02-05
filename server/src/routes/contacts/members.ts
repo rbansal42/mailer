@@ -38,14 +38,14 @@ router.get('/', async (req, res) => {
     const limitNum = Math.min(100, Math.max(1, parseInt(limit as string) || 50))
     const offset = (pageNum - 1) * limitNum
     
-    // Verify list exists
-    const list = await queryOne<ListRow>('SELECT id FROM lists WHERE id = ?', [listId])
+    // Verify list exists and belongs to user
+    const list = await queryOne<ListRow>('SELECT id FROM lists WHERE id = ? AND user_id = ?', [listId, req.userId])
     if (!list) {
       return res.status(404).json({ error: 'List not found' })
     }
     
-    let whereClause = 'WHERE lc.list_id = ?'
-    const params: any[] = [listId]
+    let whereClause = 'WHERE lc.list_id = ? AND c.user_id = ?'
+    const params: any[] = [listId, req.userId]
     
     if (search) {
       whereClause += ' AND (c.email ILIKE ? OR c.name ILIKE ? OR c.company ILIKE ?)'
@@ -95,8 +95,8 @@ router.post('/', async (req, res) => {
     const { listId } = req.params
     const data = addContactsToListSchema.parse(req.body)
     
-    // Verify list exists
-    const list = await queryOne<ListRow>('SELECT id FROM lists WHERE id = ?', [listId])
+    // Verify list exists and belongs to user
+    const list = await queryOne<ListRow>('SELECT id FROM lists WHERE id = ? AND user_id = ?', [listId, req.userId])
     if (!list) {
       return res.status(404).json({ error: 'List not found' })
     }
@@ -106,8 +106,8 @@ router.post('/', async (req, res) => {
     let added = 0
     
     for (const contact of data.contacts) {
-      // Upsert contact
-      const existing = await queryOne<{ id: number }>('SELECT id FROM contacts WHERE email = ?', [contact.email])
+      // Upsert contact (scoped to user)
+      const existing = await queryOne<{ id: number }>('SELECT id FROM contacts WHERE email = ? AND user_id = ?', [contact.email, req.userId])
       
       let contactId: number
       

@@ -57,15 +57,16 @@ interface EnrollmentRow {
 }
 
 // GET / - List all sequences
-sequencesRouter.get('/', async (_req, res) => {
+sequencesRouter.get('/', async (req, res) => {
   try {
     const sequences = await queryAll<SequenceRow & { step_count: number; active_enrollments: number }>(`
       SELECT s.*, 
         (SELECT COUNT(*)::integer FROM sequence_steps WHERE sequence_id = s.id) as step_count,
         (SELECT COUNT(*)::integer FROM sequence_enrollments WHERE sequence_id = s.id AND status = 'active') as active_enrollments
       FROM sequences s
+      WHERE s.user_id = ?
       ORDER BY s.created_at DESC
-    `)
+    `, [req.userId])
 
     res.json(sequences.map(s => ({
       ...s,
@@ -134,7 +135,7 @@ sequencesRouter.get('/:id', async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10)
     
-    const sequence = await queryOne<SequenceRow>('SELECT * FROM sequences WHERE id = ?', [id])
+    const sequence = await queryOne<SequenceRow>('SELECT * FROM sequences WHERE id = ? AND user_id = ?', [id, req.userId])
 
     if (!sequence) {
       res.status(404).json({ error: 'Sequence not found' })
@@ -170,8 +171,8 @@ sequencesRouter.post('/', async (req, res) => {
     }
 
     const result = await execute(
-      `INSERT INTO sequences (name, description, enabled) VALUES (?, ?, ?) RETURNING id`,
-      [name.trim(), description || null, enabled !== false]
+      `INSERT INTO sequences (name, description, enabled, user_id) VALUES (?, ?, ?, ?) RETURNING id`,
+      [name.trim(), description || null, enabled !== false, req.userId]
     )
 
     const id = Number(result.lastInsertRowid)
@@ -203,8 +204,8 @@ sequencesRouter.put('/:id', async (req, res) => {
       return
     }
 
-    params.push(id)
-    await execute(`UPDATE sequences SET ${updates.join(', ')} WHERE id = ?`, params)
+    params.push(id, req.userId)
+    await execute(`UPDATE sequences SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`, params)
 
     logger.info('Updated sequence', { service: 'sequences', sequenceId: id })
     res.json({ message: 'Sequence updated' })
