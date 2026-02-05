@@ -36,6 +36,8 @@ import { startScheduler } from './services/scheduler'
 import { requestIdMiddleware, requestLogMiddleware, logger } from './lib/logger'
 import { getPdfWorkerPool } from './services/pdf'
 
+const isDev = process.env.NODE_ENV !== 'production'
+
 const app = express()
 const PORT = process.env.PORT || 3342
 
@@ -157,19 +159,36 @@ app.use('/api/admin', firebaseAuthMiddleware, adminRouter)
 const mediaPath = join(DATA_DIR, 'media')
 app.use('/media', express.static(mediaPath))
 
-// Serve static frontend in production
-const publicPath = join(process.cwd(), 'dist', 'public')
-if (existsSync(publicPath)) {
-  app.use(express.static(publicPath))
-  app.get('*', (_, res) => {
-    res.sendFile(join(publicPath, 'index.html'))
-  })
+async function setupFrontend() {
+  if (isDev) {
+    const { createServer: createViteServer } = await import('vite')
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: 'spa',
+    })
+    app.use(vite.middlewares)
+    logger.info('Vite dev middleware mounted')
+  } else {
+    const publicPath = join(process.cwd(), 'dist', 'public')
+    if (existsSync(publicPath)) {
+      app.use(express.static(publicPath))
+      app.get('*', (req, res) => {
+        if (req.path.startsWith('/api/')) {
+          return res.status(404).json({ error: 'Not found' })
+        }
+        res.sendFile(join(publicPath, 'index.html'))
+      })
+    }
+  }
 }
 
 // Main async entry point
 async function main() {
   // Initialize database
   await initializeDatabase()
+  
+  // Setup frontend (Vite dev middleware or static files)
+  await setupFrontend()
   
   // Start queue processor
   startQueueProcessor()
@@ -178,7 +197,7 @@ async function main() {
   await startScheduler()
   
   app.listen(PORT, () => {
-    logger.info('Server started', { port: PORT, env: process.env.NODE_ENV || 'development' })
+    logger.info('Server started', { port: PORT, env: process.env.NODE_ENV || 'development', mode: isDev ? 'development (Vite HMR)' : 'production' })
   })
 }
 

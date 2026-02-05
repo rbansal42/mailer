@@ -71,9 +71,8 @@ bun install
 cp .env.example .env
 # Edit .env with your secrets
 
-# Start development servers
-bun run dev:server   # Backend on http://localhost:3342
-bun run dev:frontend # Frontend on http://localhost:5173
+# Start development server (frontend + backend on http://localhost:3342)
+bun run dev
 ```
 
 ### Production (Docker)
@@ -99,7 +98,7 @@ docker compose up -d
 | `ENCRYPTION_KEY` | Secret for encrypting SMTP credentials (exactly 32 chars) | Yes |
 | `PORT` | Server port (default: 3342) | No |
 | `TZ` | Timezone for scheduling (e.g., `America/Los_Angeles`) | No |
-| `DATA_DIR` | Directory for SQLite database and uploads | No |
+| `DATA_DIR` | Directory for uploads and runtime data | No |
 | `PDF_WORKER_COUNT` | Number of PDF worker threads (default: 5) | No |
 | `PDF_TIMEOUT_MS` | PDF generation timeout in ms (default: 30000) | No |
 
@@ -178,40 +177,13 @@ Authorization: Bearer <token>
 
 ```
 mailer/
-├── server/                 # Express.js backend
-│   └── src/
-│       ├── routes/         # API endpoints
-│       │   ├── send.ts     # Campaign sending
-│       │   ├── tracking.ts # Open/click tracking
-│       │   ├── analytics.ts
-│       │   ├── recurring.ts
-│       │   └── sequences.ts
-│       ├── services/       # Business logic
-│       │   ├── template-compiler.ts
-│       │   ├── tracking.ts
-│       │   ├── scheduler.ts
-│       │   ├── recurring-processor.ts
-│       │   ├── sequence-processor.ts
-│       │   ├── retry.ts
-│       │   ├── circuit-breaker.ts
-│       │   └── backup.ts
-│       ├── providers/      # Email providers
-│       │   ├── gmail.ts
-│       │   └── smtp.ts
-│       └── db/             # SQLite schema
-├── frontend/               # React frontend
-│   └── src/
-│       ├── pages/          # Main views
-│       │   ├── Dashboard.tsx
-│       │   ├── Templates.tsx
-│       │   ├── Composer.tsx
-│       │   └── Settings.tsx
-│       └── components/     # UI components
-├── data/                   # Database & uploads (gitignored)
-│   ├── mailer.db
-│   ├── attachments/
-│   └── backups/
-└── docs/plans/             # Implementation plans
+├── src/
+│   ├── client/           # React frontend
+│   ├── server/           # Express backend
+│   └── shared/           # Shared types & validation
+├── assets/               # Fonts for PDF generation
+├── data/                 # Runtime data (attachments, media)
+└── package.json          # Single package
 ```
 
 ## Tech Stack
@@ -220,7 +192,7 @@ mailer/
 |-------|------------|
 | Runtime | [Bun](https://bun.sh) |
 | Backend | Express.js, TypeScript |
-| Database | SQLite (Bun native) |
+| Database | PostgreSQL (Bun native) |
 | Email | Nodemailer |
 | Frontend | React 19, Vite, TypeScript |
 | Styling | Tailwind CSS, Radix UI |
@@ -257,23 +229,15 @@ bun install          # Install all dependencies
 bun run dev          # Start both frontend and backend
 bun run build        # Build for production
 
-# Server only
-cd server
-bun run dev          # Watch mode
-bun run build        # Build to dist/
+# All commands run from project root
 bun test             # Run tests
-
-# Frontend only  
-cd frontend
-bun run dev          # Vite dev server
-bun run build        # Build to dist/
 ```
 
 ### Adding a New Email Provider
 
-1. Create provider in `server/src/providers/`
+1. Create provider in `src/server/providers/`
 2. Implement the `EmailProvider` interface
-3. Register in `server/src/providers/index.ts`
+3. Register in `src/server/providers/index.ts`
 
 ### Database Migrations
 
