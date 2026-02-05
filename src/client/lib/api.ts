@@ -1,5 +1,33 @@
 import { auth } from './firebase'
 
+import type {
+  Template, Mail, Block, Draft, Recipient,
+  Campaign, CampaignDetail, SendLog, CampaignAnalytics,
+  SenderAccount, GmailConfig, SmtpConfig,
+  QueueItem, AppSettings,
+  CertificateTemplate, LogoConfig, SignatoryConfig, CertificateConfig, CertificateData, GeneratedCertificate, GenerateResponse,
+  Media, MediaUsage, SuppressionItem,
+  Contact, ContactList, PaginatedResponse,
+  GoogleSheetsStatus, GoogleSheetsCredentials, SpreadsheetMetadata, SpreadsheetPreview, ColumnMapping, SyncConfig, SyncResult, SheetSync,
+  SequenceStep, Sequence, SequenceAction, SequenceEnrollment, SequenceListItem, GenerateSequenceRequest, GeneratedSequenceEmail, GenerateSequenceResponse,
+  LLMProviderId, LLMModelInfo, LLMProviderInfo, StoredLLMProvider, LLMSettings,
+  User, AdminUser, UsersListResponse, AnalyticsOverview, UserAnalytics, EmailAnalytics, StorageAnalytics,
+} from '../../shared/types'
+
+export type {
+  Template, Mail, Block, Draft, Recipient,
+  Campaign, CampaignDetail, SendLog, CampaignAnalytics,
+  SenderAccount, GmailConfig, SmtpConfig,
+  QueueItem, AppSettings,
+  CertificateTemplate, LogoConfig, SignatoryConfig, CertificateConfig, CertificateData, GeneratedCertificate, GenerateResponse,
+  Media, MediaUsage, SuppressionItem,
+  Contact, ContactList, PaginatedResponse,
+  GoogleSheetsStatus, GoogleSheetsCredentials, SpreadsheetMetadata, SpreadsheetPreview, ColumnMapping, SyncConfig, SyncResult, SheetSync,
+  SequenceStep, Sequence, SequenceAction, SequenceEnrollment, SequenceListItem, GenerateSequenceRequest, GeneratedSequenceEmail, GenerateSequenceResponse,
+  LLMProviderId, LLMModelInfo, LLMProviderInfo, StoredLLMProvider, LLMSettings,
+  User, AdminUser, UsersListResponse, AnalyticsOverview, UserAnalytics, EmailAnalytics, StorageAnalytics,
+} from '../../shared/types'
+
 const API_BASE = '/api'
 
 class ApiError extends Error {
@@ -283,256 +311,6 @@ export const api = {
     }),
 }
 
-// Types
-export interface Template {
-  id: number
-  name: string
-  description?: string
-  blocks: Block[]
-  isDefault?: boolean
-  createdAt: string
-  updatedAt: string
-}
-
-export interface Mail {
-  id: number
-  name: string
-  description: string | null
-  blocks: Block[]
-  templateId: number | null
-  campaignId: number | null
-  status: 'draft' | 'sent'
-  createdAt: string
-  updatedAt: string
-}
-
-export interface Block {
-  id: string
-  type: 'header' | 'text' | 'image' | 'button' | 'divider' | 'spacer' | 'columns' | 'footer' | 'action-button'
-  props: Record<string, unknown>
-}
-
-export interface Draft {
-  id: number
-  name: string
-  templateId: number | null
-  mailId: number | null
-  listId: number | null
-  subject: string
-  testEmail: string | null
-  recipients: Recipient[]
-  recipientsText: string
-  variables?: Record<string, string>
-  createdAt: string
-  updatedAt: string
-}
-
-export interface Recipient {
-  email: string
-  [key: string]: string
-}
-
-export interface Campaign {
-  id: number
-  name: string
-  templateId: number
-  subject: string
-  totalRecipients: number
-  successful: number
-  failed: number
-  queued: number
-  status?: 'sending' | 'completed' | 'scheduled' | 'failed'
-  scheduledFor?: string
-  startedAt: string
-  completedAt?: string
-  createdAt: string
-}
-
-export interface CampaignDetail extends Campaign {
-  logs: SendLog[]
-}
-
-export interface SendLog {
-  id: number
-  campaignId: number
-  accountId: number
-  recipientEmail: string
-  status: 'success' | 'failed' | 'queued'
-  errorMessage?: string
-  sentAt: string
-}
-
-export interface CampaignAnalytics {
-  campaignId: number
-  campaignName: string
-  delivery: {
-    sent: number
-    failed: number
-    queued: number
-    bounced: number
-    hardBounces: number
-    softBounces: number
-  }
-  engagement: {
-    opens: number
-    uniqueOpens: number
-    openRate: number
-    clicks: number
-    uniqueClicks: number
-    clickRate: number
-    actionClicks?: number
-    actionRate?: number
-  }
-  topLinks: Array<{ url: string; clicks: number }>
-  opensOverTime: Array<{ hour: string; count: number }>
-  recipients: Array<{
-    email: string
-    status: string
-    opens: number
-    clicks: string[]
-  }>
-}
-
-export interface SenderAccount {
-  id: number
-  name: string
-  providerType: 'gmail' | 'smtp'
-  config: GmailConfig | SmtpConfig
-  dailyCap: number
-  campaignCap: number
-  priority: number
-  enabled: boolean
-  createdAt: string
-  todayCount?: number
-}
-
-export interface GmailConfig {
-  email: string
-  appPassword: string
-}
-
-export interface SmtpConfig {
-  host: string
-  port: number
-  secure: boolean
-  user: string
-  pass: string
-  fromEmail: string
-  fromName: string
-}
-
-export interface QueueItem {
-  id: number
-  campaignId: number
-  recipientEmail: string
-  recipientData: Record<string, string>
-  scheduledFor: string
-  status: 'pending' | 'sent' | 'failed'
-  createdAt: string
-}
-
-export interface AppSettings {
-  testEmail?: string
-  timezone?: string
-}
-
-// Certificate types
-export interface CertificateTemplate {
-  id: string
-  name: string
-  category: 'modern' | 'dark' | 'elegant' | 'minimal'
-  thumbnail: string
-  description: string
-  defaultColors: {
-    primary: string
-    secondary: string
-    accent: string
-  }
-}
-
-export interface LogoConfig {
-  id: string
-  url: string
-  height: number
-  order: number
-}
-
-export interface SignatoryConfig {
-  id: string
-  name: string
-  designation: string
-  organization: string
-  signatureUrl: string
-  order: number
-}
-
-export interface CertificateConfig {
-  id: number
-  name: string
-  templateId: string
-  colors: {
-    primary: string
-    secondary: string
-    accent: string
-  }
-  logos: LogoConfig[]
-  signatories: SignatoryConfig[]
-  titleText: string
-  subtitleText: string
-  descriptionTemplate: string
-  createdAt: string
-  updatedAt: string
-}
-
-export interface CertificateData {
-  name: string
-  email?: string
-  date?: string
-  title?: string
-  certificate_id?: string
-  custom1?: string
-  custom2?: string
-  custom3?: string
-  [key: string]: string | undefined
-}
-
-export interface GeneratedCertificate {
-  certificateId: string
-  recipientName: string
-  pdf: string // base64 encoded PDF
-}
-
-export interface GenerateResponse {
-  success: boolean
-  generated: number
-  certificates: GeneratedCertificate[]
-}
-
-// Media types
-export interface Media {
-  id: string
-  url: string
-  filename: string
-  original_filename: string
-  alt_text: string
-  size_bytes: number | null
-  uploaded_at: string
-  deleted_at: string | null
-}
-
-export interface MediaUsage {
-  id: string
-  name: string
-}
-
-export interface SuppressionItem {
-  id: number
-  email: string
-  reason: string
-  source: string | null
-  createdAt: string
-}
-
 export const mails = {
   list: () => request<Mail[]>('/mails'),
   get: (id: number) => request<Mail>(`/mails/${id}`),
@@ -543,41 +321,6 @@ export const mails = {
   delete: (id: number) => request<void>(`/mails/${id}`, { method: 'DELETE' }),
   saveAsTemplate: (id: number, data: { name?: string; description?: string }) =>
     request<{ id: number }>(`/mails/${id}/save-as-template`, { method: 'POST', body: JSON.stringify(data) }),
-}
-
-// Contact types
-export interface Contact {
-  id: number
-  email: string
-  name?: string
-  first_name?: string
-  last_name?: string
-  company?: string
-  phone?: string
-  country?: string
-  custom_fields: Record<string, string>
-  created_at: string
-  updated_at: string
-  list_count?: number
-}
-
-export interface ContactList {
-  id: number
-  name: string
-  description?: string
-  contact_count: number
-  created_at: string
-  updated_at: string
-}
-
-export interface PaginatedResponse<T> {
-  contacts: T[]
-  pagination: {
-    page: number
-    limit: number
-    total: number
-    totalPages: number
-  }
 }
 
 // Lists API - uses request() helper for auth headers
@@ -638,77 +381,6 @@ export const listsApi = {
   }
 }
 
-// Google Sheets Integration types
-export interface GoogleSheetsStatus {
-  configured: boolean
-  connected: boolean
-  clientId: string | null
-  redirectUri: string | null
-}
-
-export interface GoogleSheetsCredentials {
-  clientId: string
-  clientSecret: string
-  redirectUri?: string
-}
-
-export interface SpreadsheetMetadata {
-  title: string
-  sheets: { sheetId: number; title: string }[]
-}
-
-export interface SpreadsheetPreview {
-  headers: string[]
-  sampleRows: Record<string, string>[]
-  totalRows: number
-  sheetName: string
-  spreadsheetTitle: string
-  suggestedMapping: ColumnMapping
-}
-
-export interface ColumnMapping {
-  email: string
-  name?: string
-  first_name?: string
-  last_name?: string
-  company?: string
-  phone?: string
-  country?: string
-}
-
-export interface SyncConfig {
-  spreadsheetId: string
-  sheetRange?: string
-  columnMapping: ColumnMapping
-  autoSync?: boolean
-  syncFrequency?: 'manual' | 'hourly' | 'daily'
-}
-
-export interface SyncResult {
-  message: string
-  created: number
-  updated: number
-  added: number
-  total: number
-  spreadsheetTitle?: string
-}
-
-export interface SheetSync {
-  id: number
-  list_id: number
-  spreadsheet_id: string
-  spreadsheet_name: string | null
-  sheet_range: string | null
-  column_mapping: ColumnMapping
-  auto_sync: boolean
-  sync_frequency: string
-  last_synced_at: string | null
-  last_sync_count: number
-  last_sync_error: string | null
-  created_at: string
-  updated_at: string
-}
-
 // Google Sheets API
 export const googleSheetsApi = {
   getStatus: () => request<GoogleSheetsStatus>('/integrations/google-sheets/status'),
@@ -754,30 +426,6 @@ export const googleSheetsApi = {
     }),
 }
 
-// Sequence types
-export interface SequenceStep {
-  id: number
-  sequence_id: number
-  step_order: number
-  template_id: number | null
-  subject: string
-  delay_days: number
-  delay_hours: number
-  send_time: string | null
-  branch_id: string | null
-  branch_order: number | null
-  is_branch_point: boolean
-}
-
-export interface Sequence {
-  id: number
-  name: string
-  description: string | null
-  enabled: boolean
-  branch_delay_hours: number
-  steps: SequenceStep[]
-}
-
 // Sequence API functions
 export function getSequence(id: number): Promise<Sequence> {
   return request<Sequence>(`/sequences/${id}`)
@@ -797,73 +445,12 @@ export function createBranchPoint(sequenceId: number, afterStep: number, delayHo
   })
 }
 
-export interface SequenceAction {
-  id: number
-  sequence_id: number
-  step_id: number
-  enrollment_id: number
-  clicked_at: string
-  destination_type: string
-  destination_url: string | null
-  hosted_message: string | null
-  button_text: string | null
-  recipient_email: string
-  recipient_data: string | null
-}
-
 export function getSequenceActions(sequenceId: number): Promise<SequenceAction[]> {
   return request<SequenceAction[]>(`/sequences/${sequenceId}/actions`)
 }
 
-export interface SequenceEnrollment {
-  id: number
-  sequence_id: number
-  recipient_email: string
-  recipientData: Record<string, string> | null
-  current_step: number
-  status: 'active' | 'paused' | 'completed' | 'cancelled'
-  branch_id: string | null
-  action_clicked_at: string | null
-  enrolled_at: string
-  next_send_at: string | null
-  completed_at: string | null
-}
-
 export function getSequenceEnrollments(sequenceId: number): Promise<SequenceEnrollment[]> {
   return request<SequenceEnrollment[]>(`/sequences/${sequenceId}/enrollments`)
-}
-
-// Sequence list item (from list endpoint)
-export interface SequenceListItem {
-  id: number
-  name: string
-  description: string | null
-  enabled: boolean
-  branch_delay_hours: number
-  step_count: number
-  active_enrollments: number
-  created_at: string
-  updated_at: string
-}
-
-// Sequence generation types
-export interface GenerateSequenceRequest {
-  goal: string
-  emailCount: number
-  timing: 'daily' | 'every-few-days' | 'weekly'
-  tone: 'professional' | 'friendly' | 'casual'
-  additionalContext?: string
-}
-
-export interface GeneratedSequenceEmail {
-  subject: string
-  delayDays: number
-  blocks: Block[]
-}
-
-export interface GenerateSequenceResponse {
-  name: string
-  emails: GeneratedSequenceEmail[]
 }
 
 // Full sequences API
@@ -920,89 +507,6 @@ export const sequences = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-}
-
-// LLM Provider types
-export type LLMProviderId = 'gemini' | 'openai' | 'anthropic'
-
-export interface LLMModelInfo {
-  id: string
-  name: string
-  description?: string
-}
-
-export interface LLMProviderInfo {
-  id: LLMProviderId
-  name: string
-  models: LLMModelInfo[]
-  envVar: string
-}
-
-export interface StoredLLMProvider {
-  id: LLMProviderId
-  apiKey: string
-  apiKeyMasked: string
-  model: string
-  enabled: boolean
-}
-
-export interface LLMSettings {
-  providers: StoredLLMProvider[]
-  activeProvider: LLMProviderId | null
-}
-
-// User Management Types
-export interface User {
-  id: string
-  email: string
-  name: string
-  isAdmin: boolean
-  avatarUrl: string | null
-}
-
-export interface AdminUser extends User {
-  createdAt: string
-  stats?: {
-    campaigns: number
-    contacts: number
-    emailsSent: number
-  }
-}
-
-export interface UsersListResponse {
-  users: AdminUser[]
-  total: number
-  page: number
-  limit: number
-}
-
-export interface AnalyticsOverview {
-  totalUsers: number
-  totalCampaigns: number
-  totalEmailsSent: number
-  totalContacts: number
-  recentSignups: Array<{ date: string; count: number }>
-}
-
-export interface UserAnalytics {
-  signups: Array<{ date: string; count: number }>
-  activeUsers: number
-}
-
-export interface EmailAnalytics {
-  emailsByDay: Array<{ date: string; count: number }>
-  statusBreakdown: Record<string, number>
-  bounces: number
-}
-
-export interface StorageAnalytics {
-  topUsersByStorage: Array<{
-    userId: string
-    name: string
-    bytes: number
-  }>
-  totalMediaBytes: number
-  totalAttachmentsBytes: number
 }
 
 // Admin API functions
