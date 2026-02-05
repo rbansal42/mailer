@@ -479,6 +479,13 @@ sequencesRouter.post('/:id/branch-point', async (req, res) => {
     const id = parseInt(req.params.id, 10)
     const { afterStep, delayBeforeSwitch } = req.body
 
+    // Verify ownership
+    const sequence = await queryOne('SELECT id FROM sequences WHERE id = ? AND user_id = ?', [id, req.userId])
+    if (!sequence) {
+      res.status(404).json({ error: 'Sequence not found' })
+      return
+    }
+
     if (afterStep === undefined || typeof afterStep !== 'number') {
       res.status(400).json({ error: 'afterStep is required and must be a number' })
       return
@@ -517,7 +524,8 @@ sequencesRouter.get('/:id/actions', async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10)
 
-    const sequence = await queryOne(`SELECT id FROM sequences WHERE id = ?`, [id])
+    // Verify ownership
+    const sequence = await queryOne(`SELECT id FROM sequences WHERE id = ? AND user_id = ?`, [id, req.userId])
     if (!sequence) {
       res.status(404).json({ error: 'Sequence not found' })
       return
@@ -556,7 +564,8 @@ sequencesRouter.get('/:id/actions/export', async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10)
 
-    const sequence = await queryOne(`SELECT id FROM sequences WHERE id = ?`, [id])
+    // Verify ownership
+    const sequence = await queryOne(`SELECT id FROM sequences WHERE id = ? AND user_id = ?`, [id, req.userId])
     if (!sequence) {
       res.status(404).json({ error: 'Sequence not found' })
       return
