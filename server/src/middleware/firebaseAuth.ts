@@ -109,8 +109,29 @@ export async function firebaseAuthMiddleware(
 }
 
 async function migrateExistingData(userId: string) {
-  // Will be fully implemented after user_id columns are added to all tables
-  console.log('First user registered, data migration will run after schema updates:', userId)
+  console.log('Migrating existing data to first user:', userId)
+  
+  // Migrate all user-scoped tables
+  await sql`UPDATE sender_accounts SET user_id = ${userId} WHERE user_id IS NULL`
+  await sql`UPDATE campaigns SET user_id = ${userId} WHERE user_id IS NULL`
+  await sql`UPDATE mails SET user_id = ${userId} WHERE user_id IS NULL`
+  await sql`UPDATE drafts SET user_id = ${userId} WHERE user_id IS NULL`
+  await sql`UPDATE sequences SET user_id = ${userId} WHERE user_id IS NULL`
+  await sql`UPDATE recurring_campaigns SET user_id = ${userId} WHERE user_id IS NULL`
+  await sql`UPDATE certificate_configs SET user_id = ${userId} WHERE user_id IS NULL`
+  await sql`UPDATE generated_certificates SET user_id = ${userId} WHERE user_id IS NULL`
+  await sql`UPDATE contacts SET user_id = ${userId} WHERE user_id IS NULL`
+  await sql`UPDATE lists SET user_id = ${userId} WHERE user_id IS NULL`
+  await sql`UPDATE media SET user_id = ${userId} WHERE user_id IS NULL`
+  await sql`UPDATE attachments SET user_id = ${userId} WHERE user_id IS NULL`
+  
+  // Keep non-system templates for admin
+  await sql`UPDATE templates SET user_id = ${userId} WHERE is_system = false AND user_id IS NULL`
+  
+  // Settings with user_id=NULL are system defaults, leave them
+  // User-specific settings will be created as users configure their preferences
+  
+  console.log('Data migration complete')
 }
 
 // Admin-only middleware
