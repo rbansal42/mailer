@@ -950,3 +950,113 @@ export interface LLMSettings {
   providers: StoredLLMProvider[]
   activeProvider: LLMProviderId | null
 }
+
+// User Management Types
+export interface User {
+  id: string
+  email: string
+  name: string
+  isAdmin: boolean
+  avatarUrl: string | null
+}
+
+export interface AdminUser extends User {
+  createdAt: string
+  stats?: {
+    campaigns: number
+    contacts: number
+    emailsSent: number
+  }
+}
+
+export interface UsersListResponse {
+  users: AdminUser[]
+  total: number
+  page: number
+  limit: number
+}
+
+export interface AnalyticsOverview {
+  totalUsers: number
+  totalCampaigns: number
+  totalEmailsSent: number
+  totalContacts: number
+  recentSignups: Array<{ date: string; count: number }>
+}
+
+export interface UserAnalytics {
+  signups: Array<{ date: string; count: number }>
+  activeUsers: number
+}
+
+export interface EmailAnalytics {
+  emailsByDay: Array<{ date: string; count: number }>
+  statusBreakdown: Record<string, number>
+  bounces: number
+}
+
+export interface StorageAnalytics {
+  topUsersByStorage: Array<{
+    userId: string
+    name: string
+    bytes: number
+  }>
+  totalMediaBytes: number
+  totalAttachmentsBytes: number
+}
+
+// Admin API functions
+export const adminApi = {
+  // Users
+  listUsers: async (params: { page?: number; limit?: number; search?: string }) => {
+    const searchParams = new URLSearchParams()
+    if (params.page) searchParams.set('page', String(params.page))
+    if (params.limit) searchParams.set('limit', String(params.limit))
+    if (params.search) searchParams.set('search', params.search)
+    return request<UsersListResponse>(`/admin/users?${searchParams}`)
+  },
+
+  getUser: async (id: string) => {
+    return request<AdminUser>(`/admin/users/${id}`)
+  },
+
+  updateUser: async (id: string, data: { name?: string; isAdmin?: boolean }) => {
+    return request<User>(`/admin/users/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data)
+    })
+  },
+
+  deleteUser: async (id: string) => {
+    return request<{ success: boolean }>(`/admin/users/${id}`, { method: 'DELETE' })
+  },
+
+  suspendUser: async (id: string) => {
+    return request<{ success: boolean }>(`/admin/users/${id}/suspend`, { method: 'POST' })
+  },
+
+  unsuspendUser: async (id: string) => {
+    return request<{ success: boolean }>(`/admin/users/${id}/unsuspend`, { method: 'POST' })
+  },
+
+  impersonateUser: async (id: string) => {
+    return request<{ token: string }>(`/admin/users/${id}/impersonate`, { method: 'POST' })
+  },
+
+  // Analytics
+  getOverview: async () => {
+    return request<AnalyticsOverview>('/admin/analytics/overview')
+  },
+
+  // Settings
+  getSettings: async () => {
+    return request<Record<string, string>>('/admin/settings')
+  },
+
+  updateSettings: async (settings: Record<string, string>) => {
+    return request<Record<string, string>>('/admin/settings', {
+      method: 'PATCH',
+      body: JSON.stringify(settings)
+    })
+  }
+}
