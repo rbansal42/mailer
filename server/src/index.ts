@@ -32,9 +32,8 @@ import contactsRouter from './routes/contacts/index'
 import { suppressionRouter } from './routes/suppression'
 import integrationsRouter from './routes/integrations'
 import usersRouter from './routes/users'
-import adminUsersRouter from './routes/admin/users'
-import adminSettingsRouter from './routes/admin/settings'
-import { firebaseAuthMiddleware, requireAdmin } from './middleware/firebaseAuth'
+import adminRouter from './routes/admin'
+import { firebaseAuthMiddleware } from './middleware/firebaseAuth'
 import { startQueueProcessor } from './services/queue-processor'
 import { startScheduler } from './services/scheduler'
 import { requestIdMiddleware, requestLogMiddleware, logger } from './lib/logger'
@@ -155,7 +154,7 @@ app.use('/api/contacts', firebaseAuthMiddleware, contactsRouter)
 app.use('/api/suppression', firebaseAuthMiddleware, suppressionRouter)
 app.use('/api/integrations', firebaseAuthMiddleware, integrationsRouter)
 app.use('/api/users', firebaseAuthMiddleware, usersRouter)
-app.use('/api/admin/users', firebaseAuthMiddleware, requireAdmin, adminUsersRouter)
+app.use('/api/admin', firebaseAuthMiddleware, adminRouter)
 
 // Serve media files publicly (no auth - these are for emails)
 const DATA_DIR = process.env.DATA_DIR || join(process.cwd(), 'data')
