@@ -1,4 +1,4 @@
-import { useAuthStore } from '../hooks/useAuthStore'
+import { auth } from './firebase'
 
 const API_BASE = '/api'
 
@@ -9,38 +9,29 @@ class ApiError extends Error {
   }
 }
 
-// Get token from Zustand store, with fallback to localStorage for SSR/hydration race
-function getToken(): string | null {
-  // Try Zustand store first
-  const storeToken = useAuthStore.getState().token
-  if (storeToken) return storeToken
-  
-  // Fallback: read directly from localStorage (handles hydration race)
-  try {
-    const stored = localStorage.getItem('mailer-auth')
-    if (stored) {
-      const parsed = JSON.parse(stored)
-      return parsed?.state?.token || null
-    }
-  } catch {
-    // Ignore parse errors
+// Get auth headers using Firebase token
+async function getAuthHeaders(): Promise<HeadersInit> {
+  const user = auth.currentUser
+  if (!user) {
+    return { 'Content-Type': 'application/json' }
   }
-  return null
+  
+  const token = await user.getIdToken()
+  return { 
+    Authorization: `Bearer ${token}`,
+    'Content-Type': 'application/json'
+  }
 }
 
 async function request<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const token = getToken()
+  const authHeaders = await getAuthHeaders()
 
   const headers: HeadersInit = {
-    'Content-Type': 'application/json',
+    ...authHeaders,
     ...options.headers,
-  }
-
-  if (token) {
-    (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`
   }
 
   const response = await fetch(`${API_BASE}${endpoint}`, {
@@ -49,7 +40,7 @@ async function request<T>(
   })
 
   if (response.status === 401) {
-    useAuthStore.getState().logout()
+    // Firebase auth handles session - just throw the error
     throw new ApiError(401, 'Unauthorized')
   }
 
@@ -205,13 +196,10 @@ export const api = {
   
   // Download certificates as ZIP (for large batches - server-side ZIP creation)
   downloadCertificatesZip: async (configId: number, recipients: CertificateData[]): Promise<Blob> => {
-    const token = getToken()
+    const headers = await getAuthHeaders()
     const response = await fetch(`${API_BASE}/certificates/generate/zip`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-      },
+      headers,
       body: JSON.stringify({ configId, recipients }),
     })
     
@@ -650,11 +638,7 @@ export const listsApi = {
     }),
   
   export: async (listId: number, listName: string): Promise<void> => {
-    const token = getToken()
-    const headers: HeadersInit = {}
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`
-    }
+    const headers = await getAuthHeaders()
 
     const res = await fetch(`${API_BASE}/contacts/lists/${listId}/export`, { headers })
     if (!res.ok) throw new Error('Failed to export list')
