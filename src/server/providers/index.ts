@@ -1,8 +1,10 @@
-import { EmailProvider, SendOptions } from './base'
+import { EmailProvider } from './base'
+import type { SendOptions } from './base'
 import { GmailProvider } from './gmail'
 import { SmtpProvider } from './smtp'
 
-export { EmailProvider, SendOptions } from './base'
+export { EmailProvider } from './base'
+export type { SendOptions } from './base'
 export { GmailProvider } from './gmail'
 export { SmtpProvider } from './smtp'
 

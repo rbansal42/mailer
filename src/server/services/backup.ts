@@ -1,9 +1,7 @@
 import { readdirSync, unlinkSync, statSync, existsSync, mkdirSync } from 'fs'
 import { join } from 'path'
-import { queryOne, execute } from '../db'
+import { queryOne, execute, DATA_DIR } from '../db'
 import { logger } from '../lib/logger'
-
-const DATA_DIR = join(process.cwd(), 'data')
 const BACKUP_DIR = join(DATA_DIR, 'backups')
 
 export interface BackupInfo {

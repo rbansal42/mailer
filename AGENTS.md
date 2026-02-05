@@ -31,20 +31,20 @@ bun add <package>    # Add a package (NOT npm install <package>)
 
 ```
 mailer/
-├── frontend/           # React frontend
-│   ├── src/
-│   │   ├── components/ # UI components
-│   │   ├── pages/      # Page components
-│   │   └── lib/        # Utilities, API client
-│   └── package.json
-├── server/             # Express backend
-│   ├── src/
-│   │   ├── routes/     # API routes
-│   │   ├── services/   # Business logic
-│   │   └── lib/        # Utilities
-│   └── package.json
-├── data/               # Attachments, certificates
-└── package.json        # Root workspace config
+├── src/
+│   ├── client/           # React frontend
+│   │   ├── components/   # UI components
+│   │   ├── pages/        # Page components
+│   │   └── lib/          # Utilities, API client
+│   ├── server/           # Express backend
+│   │   ├── routes/       # API routes
+│   │   ├── services/     # Business logic
+│   │   ├── db/           # Database schema & migrations
+│   │   └── lib/          # Utilities
+│   └── shared/           # Shared types & validation
+├── assets/               # Fonts for PDF generation
+├── data/                 # Attachments, certificates
+└── package.json          # Single package config
 ```
 
 ## Key Features
@@ -76,7 +76,7 @@ The first user to register becomes an admin automatically. All existing data fro
 
 ## Certificate Templates
 
-Located in `server/src/services/pdf/templates/`:
+Located in `src/server/services/pdf/templates/`:
 - **modern-clean**: Double border design with accent bar
 - **dark-elegant**: Dark background with gold accents
 - **clean-minimal**: White minimal design
@@ -84,7 +84,7 @@ Located in `server/src/services/pdf/templates/`:
 
 ## Database Schema
 
-Key tables defined in `server/src/db/` (PostgreSQL schema managed via migrations):
+Key tables defined in `src/server/db/` (PostgreSQL schema managed via migrations):
 
 - **templates** - Reusable email templates (starter designs)
   - `is_default` - Built-in templates flag
@@ -137,7 +137,7 @@ VITE_FIREBASE_PROJECT_ID=your-project
 
 2. **Worktrees**: Use `.worktrees/` directory for feature branches. It's gitignored.
 
-3. **React PDF fonts**: Fonts are registered in `server/src/services/pdf/fonts.ts`. Font files are in `server/assets/fonts/`.
+3. **React PDF fonts**: Fonts are registered in `src/server/services/pdf/fonts.ts`. Font files are in `assets/fonts/`.
 
 4. **Rich text in blocks**: Text blocks use HTML content (TipTap editor). Preview must use `dangerouslySetInnerHTML` with DOMPurify sanitization.
 
@@ -151,10 +151,10 @@ VITE_FIREBASE_PROJECT_ID=your-project
    ```
 
 6. **Database migrations for new columns**: When adding new fields to a feature, remember to:
-   - Add a migration in `server/src/db/migrations/`
+   - Add a migration in `src/server/db/migrations/`
    - Update the row interface and `formatX()` function in the route
-   - Update validation schema in `server/src/lib/validation.ts`
-   - Update frontend TypeScript interface in `frontend/src/lib/api.ts`
+   - Update validation schema in `src/server/lib/validation.ts`
+   - Update frontend TypeScript interface in `src/client/lib/api.ts`
    - Update both CREATE and UPDATE handlers
 
 ## Workflow
