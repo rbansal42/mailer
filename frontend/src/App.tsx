@@ -8,6 +8,7 @@ import Layout from './components/Layout'
 
 // Eagerly loaded - needed immediately
 import Login from './pages/Login'
+import Register from './pages/Register'
 import VerifyEmail from './pages/VerifyEmail'
 import ForgotPassword from './pages/ForgotPassword'
 
@@ -101,7 +102,9 @@ export default function App() {
     <ThemeProvider>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
         <Route path="/verify-email" element={<VerifyEmail />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route
           path="/"
           element={
