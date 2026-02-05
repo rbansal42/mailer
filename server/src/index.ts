@@ -31,6 +31,7 @@ import contactsMembersRouter from './routes/contacts/members'
 import contactsRouter from './routes/contacts/index'
 import { suppressionRouter } from './routes/suppression'
 import integrationsRouter from './routes/integrations'
+import usersRouter from './routes/users'
 import { authMiddleware } from './middleware/auth'
 import { startQueueProcessor } from './services/queue-processor'
 import { startScheduler } from './services/scheduler'
@@ -151,6 +152,7 @@ app.use('/api/contacts/lists', authMiddleware, contactsListsRouter)
 app.use('/api/contacts', authMiddleware, contactsRouter)
 app.use('/api/suppression', authMiddleware, suppressionRouter)
 app.use('/api/integrations', authMiddleware, integrationsRouter)
+app.use('/api/users', authMiddleware, usersRouter)
 
 // Serve media files publicly (no auth - these are for emails)
 const DATA_DIR = process.env.DATA_DIR || join(process.cwd(), 'data')
