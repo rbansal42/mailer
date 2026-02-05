@@ -57,15 +57,16 @@ interface EnrollmentRow {
 }
 
 // GET / - List all sequences
-sequencesRouter.get('/', async (_req, res) => {
+sequencesRouter.get('/', async (req, res) => {
   try {
     const sequences = await queryAll<SequenceRow & { step_count: number; active_enrollments: number }>(`
       SELECT s.*, 
         (SELECT COUNT(*)::integer FROM sequence_steps WHERE sequence_id = s.id) as step_count,
         (SELECT COUNT(*)::integer FROM sequence_enrollments WHERE sequence_id = s.id AND status = 'active') as active_enrollments
       FROM sequences s
+      WHERE s.user_id = ?
       ORDER BY s.created_at DESC
-    `)
+    `, [req.userId])
 
     res.json(sequences.map(s => ({
       ...s,
@@ -134,7 +135,7 @@ sequencesRouter.get('/:id', async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10)
     
-    const sequence = await queryOne<SequenceRow>('SELECT * FROM sequences WHERE id = ?', [id])
+    const sequence = await queryOne<SequenceRow>('SELECT * FROM sequences WHERE id = ? AND user_id = ?', [id, req.userId])
 
     if (!sequence) {
       res.status(404).json({ error: 'Sequence not found' })
@@ -170,8 +171,8 @@ sequencesRouter.post('/', async (req, res) => {
     }
 
     const result = await execute(
-      `INSERT INTO sequences (name, description, enabled) VALUES (?, ?, ?) RETURNING id`,
-      [name.trim(), description || null, enabled !== false]
+      `INSERT INTO sequences (name, description, enabled, user_id) VALUES (?, ?, ?, ?) RETURNING id`,
+      [name.trim(), description || null, enabled !== false, req.userId]
     )
 
     const id = Number(result.lastInsertRowid)
@@ -203,8 +204,8 @@ sequencesRouter.put('/:id', async (req, res) => {
       return
     }
 
-    params.push(id)
-    await execute(`UPDATE sequences SET ${updates.join(', ')} WHERE id = ?`, params)
+    params.push(id, req.userId)
+    await execute(`UPDATE sequences SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`, params)
 
     logger.info('Updated sequence', { service: 'sequences', sequenceId: id })
     res.json({ message: 'Sequence updated' })
@@ -218,7 +219,7 @@ sequencesRouter.put('/:id', async (req, res) => {
 sequencesRouter.delete('/:id', async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10)
-    await execute('DELETE FROM sequences WHERE id = ?', [id])
+    await execute('DELETE FROM sequences WHERE id = ? AND user_id = ?', [id, req.userId])
     
     logger.info('Deleted sequence', { service: 'sequences', sequenceId: id })
     res.json({ message: 'Sequence deleted' })
@@ -233,6 +234,13 @@ sequencesRouter.post('/:id/steps', async (req, res) => {
   try {
     const sequenceId = parseInt(req.params.id, 10)
     const { templateId, subject, delayDays, delayHours, sendTime, branchId } = req.body
+
+    // Verify ownership
+    const sequence = await queryOne('SELECT id FROM sequences WHERE id = ? AND user_id = ?', [sequenceId, req.userId])
+    if (!sequence) {
+      res.status(404).json({ error: 'Sequence not found' })
+      return
+    }
 
     // Validate required fields
     if (!subject || typeof subject !== 'string' || subject.trim().length === 0) {
@@ -297,8 +305,16 @@ sequencesRouter.post('/:id/steps', async (req, res) => {
 // PUT /:id/steps/:stepId - Update step
 sequencesRouter.put('/:id/steps/:stepId', async (req, res) => {
   try {
+    const sequenceId = parseInt(req.params.id, 10)
     const stepId = parseInt(req.params.stepId, 10)
     const { templateId, subject, delayDays, delayHours, sendTime, stepOrder } = req.body
+
+    // Verify ownership
+    const sequence = await queryOne('SELECT id FROM sequences WHERE id = ? AND user_id = ?', [sequenceId, req.userId])
+    if (!sequence) {
+      res.status(404).json({ error: 'Sequence not found' })
+      return
+    }
 
     const updates: string[] = []
     const params: (string | number | null)[] = []
@@ -329,8 +345,17 @@ sequencesRouter.put('/:id/steps/:stepId', async (req, res) => {
 // DELETE /:id/steps/:stepId - Delete step
 sequencesRouter.delete('/:id/steps/:stepId', async (req, res) => {
   try {
+    const sequenceId = parseInt(req.params.id, 10)
     const stepId = parseInt(req.params.stepId, 10)
-    await execute('DELETE FROM sequence_steps WHERE id = ?', [stepId])
+
+    // Verify ownership
+    const sequence = await queryOne('SELECT id FROM sequences WHERE id = ? AND user_id = ?', [sequenceId, req.userId])
+    if (!sequence) {
+      res.status(404).json({ error: 'Sequence not found' })
+      return
+    }
+
+    await execute('DELETE FROM sequence_steps WHERE id = ? AND sequence_id = ?', [stepId, sequenceId])
     
     logger.info('Deleted step', { service: 'sequences', stepId })
     res.json({ message: 'Step deleted' })
@@ -345,6 +370,13 @@ sequencesRouter.get('/:id/enrollments', async (req, res) => {
   try {
     const sequenceId = parseInt(req.params.id, 10)
     const status = req.query.status as string | undefined
+
+    // Verify ownership
+    const sequence = await queryOne('SELECT id FROM sequences WHERE id = ? AND user_id = ?', [sequenceId, req.userId])
+    if (!sequence) {
+      res.status(404).json({ error: 'Sequence not found' })
+      return
+    }
 
     let enrollments: EnrollmentRow[]
     
@@ -369,6 +401,13 @@ sequencesRouter.post('/:id/enroll', async (req, res) => {
   try {
     const sequenceId = parseInt(req.params.id, 10)
     const { recipients } = req.body // Array of { email, data }
+
+    // Verify ownership
+    const sequence = await queryOne('SELECT id FROM sequences WHERE id = ? AND user_id = ?', [sequenceId, req.userId])
+    if (!sequence) {
+      res.status(404).json({ error: 'Sequence not found' })
+      return
+    }
 
     if (!Array.isArray(recipients) || recipients.length === 0) {
       res.status(400).json({ error: 'Recipients array required' })
@@ -400,8 +439,16 @@ sequencesRouter.post('/:id/enroll', async (req, res) => {
 // PUT /:id/enrollments/:enrollmentId - Update enrollment (pause/cancel/resume)
 sequencesRouter.put('/:id/enrollments/:enrollmentId', async (req, res) => {
   try {
+    const sequenceId = parseInt(req.params.id, 10)
     const enrollmentId = parseInt(req.params.enrollmentId, 10)
     const { action } = req.body // 'pause' | 'cancel' | 'resume'
+
+    // Verify ownership
+    const sequence = await queryOne('SELECT id FROM sequences WHERE id = ? AND user_id = ?', [sequenceId, req.userId])
+    if (!sequence) {
+      res.status(404).json({ error: 'Sequence not found' })
+      return
+    }
 
     switch (action) {
       case 'pause':
@@ -431,6 +478,13 @@ sequencesRouter.post('/:id/branch-point', async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10)
     const { afterStep, delayBeforeSwitch } = req.body
+
+    // Verify ownership
+    const sequence = await queryOne('SELECT id FROM sequences WHERE id = ? AND user_id = ?', [id, req.userId])
+    if (!sequence) {
+      res.status(404).json({ error: 'Sequence not found' })
+      return
+    }
 
     if (afterStep === undefined || typeof afterStep !== 'number') {
       res.status(400).json({ error: 'afterStep is required and must be a number' })
@@ -470,7 +524,8 @@ sequencesRouter.get('/:id/actions', async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10)
 
-    const sequence = await queryOne(`SELECT id FROM sequences WHERE id = ?`, [id])
+    // Verify ownership
+    const sequence = await queryOne(`SELECT id FROM sequences WHERE id = ? AND user_id = ?`, [id, req.userId])
     if (!sequence) {
       res.status(404).json({ error: 'Sequence not found' })
       return
@@ -509,7 +564,8 @@ sequencesRouter.get('/:id/actions/export', async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10)
 
-    const sequence = await queryOne(`SELECT id FROM sequences WHERE id = ?`, [id])
+    // Verify ownership
+    const sequence = await queryOne(`SELECT id FROM sequences WHERE id = ? AND user_id = ?`, [id, req.userId])
     if (!sequence) {
       res.status(404).json({ error: 'Sequence not found' })
       return

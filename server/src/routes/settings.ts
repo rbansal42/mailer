@@ -9,86 +9,111 @@ export const settingsRouter = Router()
 interface SettingRow {
   key: string
   value: string
+  user_id: string | null
 }
 
-// GET / - Get all settings
-settingsRouter.get('/', async (_req: Request, res: Response) => {
-  try {
-    const testEmail = await queryOne<SettingRow>('SELECT value FROM settings WHERE key = ?', ['test_email'])
-    const timezone = await queryOne<SettingRow>('SELECT value FROM settings WHERE key = ?', ['timezone'])
+// Helper: Get setting value with user override or system default
+// Returns user-specific setting first, falls back to system default (user_id IS NULL)
+async function getSetting(key: string, userId: string): Promise<string | null> {
+  const row = await queryOne<SettingRow>(
+    `SELECT value FROM settings 
+     WHERE key = ? AND (user_id = ? OR user_id IS NULL)
+     ORDER BY user_id NULLS LAST
+     LIMIT 1`,
+    [key, userId]
+  )
+  return row?.value ?? null
+}
 
-    logger.info('Fetched settings', { service: 'settings', keys: ['test_email', 'timezone'] })
+// Helper: Set user-specific setting (upsert)
+async function setSetting(key: string, value: string, userId: string): Promise<void> {
+  await execute(
+    `INSERT INTO settings (key, value, user_id)
+     VALUES (?, ?, ?)
+     ON CONFLICT (key, COALESCE(user_id, '00000000-0000-0000-0000-000000000000')) 
+     DO UPDATE SET value = EXCLUDED.value`,
+    [key, value, userId]
+  )
+}
+
+// GET / - Get all settings (user-specific with system defaults fallback)
+settingsRouter.get('/', async (req: Request, res: Response) => {
+  try {
+    const testEmail = await getSetting('test_email', req.userId)
+    const timezone = await getSetting('timezone', req.userId)
+
+    logger.info('Fetched settings', { service: 'settings', keys: ['test_email', 'timezone'], userId: req.userId })
     res.json({
-      testEmail: testEmail?.value || null,
-      timezone: timezone?.value || null,
+      testEmail: testEmail || null,
+      timezone: timezone || null,
     })
   } catch (error) {
-    logger.error('Failed to fetch settings', { service: 'settings' }, error as Error)
+    logger.error('Failed to fetch settings', { service: 'settings', userId: req.userId }, error as Error)
     res.status(500).json({ error: 'Failed to fetch settings' })
   }
 })
 
-// PUT / - Update settings
+// PUT / - Update settings (creates user-specific settings)
 settingsRouter.put('/', async (req: Request, res: Response) => {
   try {
     const { testEmail, timezone } = req.body
 
     if (testEmail !== undefined) {
-      await execute('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value', ['test_email', testEmail])
+      await setSetting('test_email', testEmail, req.userId)
     }
     if (timezone !== undefined) {
-      await execute('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value', ['timezone', timezone])
+      await setSetting('timezone', timezone, req.userId)
     }
 
-    // Return updated settings
-    const testEmailRow = await queryOne<SettingRow>('SELECT value FROM settings WHERE key = ?', ['test_email'])
-    const timezoneRow = await queryOne<SettingRow>('SELECT value FROM settings WHERE key = ?', ['timezone'])
+    // Return updated settings (with fallback to system defaults)
+    const testEmailValue = await getSetting('test_email', req.userId)
+    const timezoneValue = await getSetting('timezone', req.userId)
 
-    logger.info('Updated settings', { service: 'settings', keys: ['test_email', 'timezone'] })
+    logger.info('Updated settings', { service: 'settings', keys: ['test_email', 'timezone'], userId: req.userId })
     res.json({
-      testEmail: testEmailRow?.value || null,
-      timezone: timezoneRow?.value || null,
+      testEmail: testEmailValue || null,
+      timezone: timezoneValue || null,
     })
   } catch (error) {
-    logger.error('Failed to update settings', { service: 'settings' }, error as Error)
+    logger.error('Failed to update settings', { service: 'settings', userId: req.userId }, error as Error)
     res.status(500).json({ error: 'Failed to update settings' })
   }
 })
 
-// GET /tracking - Get tracking settings
-settingsRouter.get('/tracking', async (_req: Request, res: Response) => {
+// GET /tracking - Get tracking settings (user-specific with system defaults fallback)
+settingsRouter.get('/tracking', async (req: Request, res: Response) => {
   try {
     const settings = {
-      enabled: await queryOne<SettingRow>('SELECT value FROM settings WHERE key = ?', ['tracking_enabled']),
-      baseUrl: await queryOne<SettingRow>('SELECT value FROM settings WHERE key = ?', ['tracking_base_url']),
-      openEnabled: await queryOne<SettingRow>('SELECT value FROM settings WHERE key = ?', ['tracking_open_enabled']),
-      clickEnabled: await queryOne<SettingRow>('SELECT value FROM settings WHERE key = ?', ['tracking_click_enabled']),
-      hashIps: await queryOne<SettingRow>('SELECT value FROM settings WHERE key = ?', ['tracking_hash_ips']),
-      retentionDays: await queryOne<SettingRow>('SELECT value FROM settings WHERE key = ?', ['tracking_retention_days']),
+      enabled: await getSetting('tracking_enabled', req.userId),
+      baseUrl: await getSetting('tracking_base_url', req.userId),
+      openEnabled: await getSetting('tracking_open_enabled', req.userId),
+      clickEnabled: await getSetting('tracking_click_enabled', req.userId),
+      hashIps: await getSetting('tracking_hash_ips', req.userId),
+      retentionDays: await getSetting('tracking_retention_days', req.userId),
     }
 
-    logger.info('Fetched tracking settings', { service: 'settings', key: 'tracking' })
+    logger.info('Fetched tracking settings', { service: 'settings', key: 'tracking', userId: req.userId })
     res.json({
-      enabled: settings.enabled?.value === 'true',
-      baseUrl: settings.baseUrl?.value || 'https://mailer.rbansal.xyz',
-      openEnabled: settings.openEnabled?.value === 'true',
-      clickEnabled: settings.clickEnabled?.value === 'true',
-      hashIps: settings.hashIps?.value === 'true',
-      retentionDays: parseInt(settings.retentionDays?.value || '90', 10),
+      enabled: settings.enabled === 'true',
+      baseUrl: settings.baseUrl || 'https://mailer.rbansal.xyz',
+      openEnabled: settings.openEnabled === 'true',
+      clickEnabled: settings.clickEnabled === 'true',
+      hashIps: settings.hashIps === 'true',
+      retentionDays: parseInt(settings.retentionDays || '90', 10),
     })
   } catch (error) {
-    logger.error('Failed to fetch tracking settings', { service: 'settings', key: 'tracking' }, error as Error)
+    logger.error('Failed to fetch tracking settings', { service: 'settings', key: 'tracking', userId: req.userId }, error as Error)
     res.status(500).json({ error: 'Failed to fetch tracking settings' })
   }
 })
 
-// PUT /tracking - Update tracking settings
+// PUT /tracking - Update tracking settings (creates user-specific settings)
 settingsRouter.put('/tracking', async (req: Request, res: Response) => {
   try {
     const { enabled, baseUrl, openEnabled, clickEnabled, hashIps, retentionDays } = req.body
 
     if (enabled !== undefined) {
-      await execute('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value', ['tracking_enabled', String(enabled)])
+      await setSetting('tracking_enabled', String(enabled), req.userId)
     }
     if (baseUrl !== undefined) {
       // Validate baseUrl is a valid URL
@@ -102,42 +127,42 @@ settingsRouter.put('/tracking', async (req: Request, res: Response) => {
         res.status(400).json({ error: 'Invalid base URL format' })
         return
       }
-      await execute('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value', ['tracking_base_url', baseUrl])
+      await setSetting('tracking_base_url', baseUrl, req.userId)
     }
     if (openEnabled !== undefined) {
-      await execute('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value', ['tracking_open_enabled', String(openEnabled)])
+      await setSetting('tracking_open_enabled', String(openEnabled), req.userId)
     }
     if (clickEnabled !== undefined) {
-      await execute('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value', ['tracking_click_enabled', String(clickEnabled)])
+      await setSetting('tracking_click_enabled', String(clickEnabled), req.userId)
     }
     if (hashIps !== undefined) {
-      await execute('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value', ['tracking_hash_ips', String(hashIps)])
+      await setSetting('tracking_hash_ips', String(hashIps), req.userId)
     }
     if (retentionDays !== undefined) {
-      await execute('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value', ['tracking_retention_days', String(retentionDays)])
+      await setSetting('tracking_retention_days', String(retentionDays), req.userId)
     }
 
-    // Return updated settings (reuse GET logic)
+    // Return updated settings (with fallback to system defaults)
     const settings = {
-      enabled: await queryOne<SettingRow>('SELECT value FROM settings WHERE key = ?', ['tracking_enabled']),
-      baseUrl: await queryOne<SettingRow>('SELECT value FROM settings WHERE key = ?', ['tracking_base_url']),
-      openEnabled: await queryOne<SettingRow>('SELECT value FROM settings WHERE key = ?', ['tracking_open_enabled']),
-      clickEnabled: await queryOne<SettingRow>('SELECT value FROM settings WHERE key = ?', ['tracking_click_enabled']),
-      hashIps: await queryOne<SettingRow>('SELECT value FROM settings WHERE key = ?', ['tracking_hash_ips']),
-      retentionDays: await queryOne<SettingRow>('SELECT value FROM settings WHERE key = ?', ['tracking_retention_days']),
+      enabled: await getSetting('tracking_enabled', req.userId),
+      baseUrl: await getSetting('tracking_base_url', req.userId),
+      openEnabled: await getSetting('tracking_open_enabled', req.userId),
+      clickEnabled: await getSetting('tracking_click_enabled', req.userId),
+      hashIps: await getSetting('tracking_hash_ips', req.userId),
+      retentionDays: await getSetting('tracking_retention_days', req.userId),
     }
 
-    logger.info('Updated tracking settings', { service: 'settings', key: 'tracking' })
+    logger.info('Updated tracking settings', { service: 'settings', key: 'tracking', userId: req.userId })
     res.json({
-      enabled: settings.enabled?.value === 'true',
-      baseUrl: settings.baseUrl?.value || 'https://mailer.rbansal.xyz',
-      openEnabled: settings.openEnabled?.value === 'true',
-      clickEnabled: settings.clickEnabled?.value === 'true',
-      hashIps: settings.hashIps?.value === 'true',
-      retentionDays: parseInt(settings.retentionDays?.value || '90', 10),
+      enabled: settings.enabled === 'true',
+      baseUrl: settings.baseUrl || 'https://mailer.rbansal.xyz',
+      openEnabled: settings.openEnabled === 'true',
+      clickEnabled: settings.clickEnabled === 'true',
+      hashIps: settings.hashIps === 'true',
+      retentionDays: parseInt(settings.retentionDays || '90', 10),
     })
   } catch (error) {
-    logger.error('Failed to update tracking settings', { service: 'settings', key: 'tracking' }, error as Error)
+    logger.error('Failed to update tracking settings', { service: 'settings', key: 'tracking', userId: req.userId }, error as Error)
     res.status(500).json({ error: 'Failed to update tracking settings' })
   }
 })
@@ -155,17 +180,17 @@ settingsRouter.get('/llm/providers-info', (_req: Request, res: Response) => {
   res.json(LLM_PROVIDERS)
 })
 
-// GET /llm - Get LLM settings
-settingsRouter.get('/llm', async (_req: Request, res: Response) => {
+// GET /llm - Get LLM settings (user-specific with system defaults fallback)
+settingsRouter.get('/llm', async (req: Request, res: Response) => {
   try {
-    const providersRow = await queryOne<SettingRow>('SELECT value FROM settings WHERE key = ?', ['llm_providers'])
-    const activeRow = await queryOne<SettingRow>('SELECT value FROM settings WHERE key = ?', ['llm_active_provider'])
+    const providersValue = await getSetting('llm_providers', req.userId)
+    const activeValue = await getSetting('llm_active_provider', req.userId)
     
     let providers: Array<StoredLLMProvider & { apiKeyMasked: string }> = []
     
-    if (providersRow?.value) {
+    if (providersValue) {
       try {
-        const parsed = JSON.parse(providersRow.value) as StoredLLMProvider[]
+        const parsed = JSON.parse(providersValue) as StoredLLMProvider[]
         providers = parsed.map(p => ({
           ...p,
           apiKey: '', // Don't send actual key to frontend
@@ -193,18 +218,18 @@ settingsRouter.get('/llm', async (_req: Request, res: Response) => {
       }
     }
     
-    logger.info('Fetched LLM settings', { service: 'settings', key: 'llm' })
+    logger.info('Fetched LLM settings', { service: 'settings', key: 'llm', userId: req.userId })
     res.json({
       providers,
-      activeProvider: activeRow?.value || null
+      activeProvider: activeValue || null
     })
   } catch (error) {
-    logger.error('Failed to fetch LLM settings', { service: 'settings', key: 'llm' }, error as Error)
+    logger.error('Failed to fetch LLM settings', { service: 'settings', key: 'llm', userId: req.userId }, error as Error)
     res.status(500).json({ error: 'Failed to fetch LLM settings' })
   }
 })
 
-// PUT /llm/provider - Update a provider's config
+// PUT /llm/provider - Update a provider's config (creates user-specific settings)
 settingsRouter.put('/llm/provider', async (req: Request, res: Response) => {
   try {
     const { id, apiKey, model, enabled } = req.body as {
@@ -219,13 +244,13 @@ settingsRouter.put('/llm/provider', async (req: Request, res: Response) => {
       return
     }
     
-    // Get existing providers
-    const providersRow = await queryOne<SettingRow>('SELECT value FROM settings WHERE key = ?', ['llm_providers'])
+    // Get existing providers (user-specific or system default)
+    const providersValue = await getSetting('llm_providers', req.userId)
     let providers: StoredLLMProvider[] = []
     
-    if (providersRow?.value) {
+    if (providersValue) {
       try {
-        providers = JSON.parse(providersRow.value)
+        providers = JSON.parse(providersValue)
       } catch {
         providers = []
       }
@@ -256,18 +281,18 @@ settingsRouter.put('/llm/provider', async (req: Request, res: Response) => {
       provider.enabled = enabled
     }
     
-    // Save
-    await execute('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value', ['llm_providers', JSON.stringify(providers)])
+    // Save as user-specific setting
+    await setSetting('llm_providers', JSON.stringify(providers), req.userId)
     
-    logger.info('Updated LLM provider', { service: 'settings', key: 'llm', providerId: id })
+    logger.info('Updated LLM provider', { service: 'settings', key: 'llm', providerId: id, userId: req.userId })
     res.json({ success: true })
   } catch (error) {
-    logger.error('Failed to update LLM provider', { service: 'settings', key: 'llm' }, error as Error)
+    logger.error('Failed to update LLM provider', { service: 'settings', key: 'llm', userId: req.userId }, error as Error)
     res.status(500).json({ error: 'Failed to update LLM provider' })
   }
 })
 
-// PUT /llm/active - Set the active provider
+// PUT /llm/active - Set the active provider (creates user-specific settings)
 settingsRouter.put('/llm/active', async (req: Request, res: Response) => {
   try {
     const { provider } = req.body as { provider: LLMProviderId | null }
@@ -278,15 +303,16 @@ settingsRouter.put('/llm/active', async (req: Request, res: Response) => {
     }
     
     if (provider) {
-      await execute('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value', ['llm_active_provider', provider])
+      await setSetting('llm_active_provider', provider, req.userId)
     } else {
-      await execute('DELETE FROM settings WHERE key = ?', ['llm_active_provider'])
+      // Delete user-specific setting to fall back to system default
+      await execute('DELETE FROM settings WHERE key = ? AND user_id = ?', ['llm_active_provider', req.userId])
     }
     
-    logger.info('Updated active LLM provider', { service: 'settings', key: 'llm', provider })
+    logger.info('Updated active LLM provider', { service: 'settings', key: 'llm', provider, userId: req.userId })
     res.json({ success: true, activeProvider: provider })
   } catch (error) {
-    logger.error('Failed to update active LLM provider', { service: 'settings', key: 'llm' }, error as Error)
+    logger.error('Failed to update active LLM provider', { service: 'settings', key: 'llm', userId: req.userId }, error as Error)
     res.status(500).json({ error: 'Failed to update active LLM provider' })
   }
 })

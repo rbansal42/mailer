@@ -31,7 +31,9 @@ import contactsMembersRouter from './routes/contacts/members'
 import contactsRouter from './routes/contacts/index'
 import { suppressionRouter } from './routes/suppression'
 import integrationsRouter from './routes/integrations'
-import { authMiddleware } from './middleware/auth'
+import usersRouter from './routes/users'
+import adminRouter from './routes/admin'
+import { firebaseAuthMiddleware } from './middleware/firebaseAuth'
 import { startQueueProcessor } from './services/queue-processor'
 import { startScheduler } from './services/scheduler'
 import { requestIdMiddleware, requestLogMiddleware, logger } from './lib/logger'
@@ -130,27 +132,29 @@ app.use('/t', trackingRouter)
 app.use('/api/auth', authRouter)
 
 // Protected API routes
-app.use('/api', authMiddleware, analyticsRouter)
-app.use('/api/templates', authMiddleware, templatesRouter)
-app.use('/api/drafts', authMiddleware, draftsRouter)
-app.use('/api/campaigns', authMiddleware, campaignsRouter)
-app.use('/api/accounts', authMiddleware, accountsRouter)
-app.use('/api/send', authMiddleware, sendRouter)
-app.use('/api/queue', authMiddleware, queueRouter)
-app.use('/api/settings', authMiddleware, settingsRouter)
-app.use('/api/attachments', authMiddleware, attachmentsRouter)
-app.use('/api/backups', authMiddleware, backupsRouter)
-app.use('/api/recurring', authMiddleware, recurringRouter)
-app.use('/api/sequences', authMiddleware, sequencesRouter)
-app.use('/api/certificates', authMiddleware, certificatesRouter)
-app.use('/api/mails', authMiddleware, mailsRouter)
-app.use('/api/media', authMiddleware, mediaRoutes)
-app.use('/api/preview', authMiddleware, previewRouter)
-app.use('/api/contacts/lists/:listId/members', authMiddleware, contactsMembersRouter)
-app.use('/api/contacts/lists', authMiddleware, contactsListsRouter)
-app.use('/api/contacts', authMiddleware, contactsRouter)
-app.use('/api/suppression', authMiddleware, suppressionRouter)
-app.use('/api/integrations', authMiddleware, integrationsRouter)
+app.use('/api', firebaseAuthMiddleware, analyticsRouter)
+app.use('/api/templates', firebaseAuthMiddleware, templatesRouter)
+app.use('/api/drafts', firebaseAuthMiddleware, draftsRouter)
+app.use('/api/campaigns', firebaseAuthMiddleware, campaignsRouter)
+app.use('/api/accounts', firebaseAuthMiddleware, accountsRouter)
+app.use('/api/send', firebaseAuthMiddleware, sendRouter)
+app.use('/api/queue', firebaseAuthMiddleware, queueRouter)
+app.use('/api/settings', firebaseAuthMiddleware, settingsRouter)
+app.use('/api/attachments', firebaseAuthMiddleware, attachmentsRouter)
+app.use('/api/backups', firebaseAuthMiddleware, backupsRouter)
+app.use('/api/recurring', firebaseAuthMiddleware, recurringRouter)
+app.use('/api/sequences', firebaseAuthMiddleware, sequencesRouter)
+app.use('/api/certificates', firebaseAuthMiddleware, certificatesRouter)
+app.use('/api/mails', firebaseAuthMiddleware, mailsRouter)
+app.use('/api/media', firebaseAuthMiddleware, mediaRoutes)
+app.use('/api/preview', firebaseAuthMiddleware, previewRouter)
+app.use('/api/contacts/lists/:listId/members', firebaseAuthMiddleware, contactsMembersRouter)
+app.use('/api/contacts/lists', firebaseAuthMiddleware, contactsListsRouter)
+app.use('/api/contacts', firebaseAuthMiddleware, contactsRouter)
+app.use('/api/suppression', firebaseAuthMiddleware, suppressionRouter)
+app.use('/api/integrations', firebaseAuthMiddleware, integrationsRouter)
+app.use('/api/users', firebaseAuthMiddleware, usersRouter)
+app.use('/api/admin', firebaseAuthMiddleware, adminRouter)
 
 // Serve media files publicly (no auth - these are for emails)
 const DATA_DIR = process.env.DATA_DIR || join(process.cwd(), 'data')

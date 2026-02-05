@@ -64,12 +64,12 @@ router.post("/upload", upload.single("file"), async (req, res) => {
 
     // Save to database
     await execute(
-      `INSERT INTO media (id, url, filename, original_filename, size_bytes) 
-       VALUES (?, ?, ?, ?, ?)`,
-      [id, url, filename, originalName, sizeBytes]
+      `INSERT INTO media (id, user_id, url, filename, original_filename, size_bytes) 
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [id, req.userId, url, filename, originalName, sizeBytes]
     );
 
-    const media = await queryOne("SELECT * FROM media WHERE id = ?", [id]);
+    const media = await queryOne("SELECT * FROM media WHERE id = ? AND user_id = ?", [id, req.userId]);
     logger.info("Media uploaded successfully", { service: "media", mediaId: id, filename: originalName });
     res.status(201).json(media);
   } catch (error) {
@@ -82,17 +82,16 @@ router.post("/upload", upload.single("file"), async (req, res) => {
 router.get("/", async (req, res) => {
   const showDeleted = req.query.deleted === "true";
   
-  const query = showDeleted
-    ? "SELECT * FROM media WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC"
-    : "SELECT * FROM media WHERE deleted_at IS NULL ORDER BY uploaded_at DESC";
+  const media = showDeleted
+    ? await queryAll("SELECT * FROM media WHERE user_id = ? AND deleted_at IS NOT NULL ORDER BY deleted_at DESC", [req.userId])
+    : await queryAll("SELECT * FROM media WHERE user_id = ? AND deleted_at IS NULL ORDER BY uploaded_at DESC", [req.userId]);
   
-  const media = await queryAll(query);
   res.json(media);
 });
 
 // Get single media item
 router.get("/:id", async (req, res) => {
-  const media = await queryOne("SELECT * FROM media WHERE id = ?", [req.params.id]);
+  const media = await queryOne("SELECT * FROM media WHERE id = ? AND user_id = ?", [req.params.id, req.userId]);
   if (!media) {
     return res.status(404).json({ error: "Media not found" });
   }
@@ -102,7 +101,7 @@ router.get("/:id", async (req, res) => {
 // Update media (filename, alt_text)
 router.patch("/:id", async (req, res) => {
   const { filename, alt_text } = req.body;
-  const media = await queryOne("SELECT * FROM media WHERE id = ?", [req.params.id]);
+  const media = await queryOne("SELECT * FROM media WHERE id = ? AND user_id = ?", [req.params.id, req.userId]);
   
   if (!media) {
     return res.status(404).json({ error: "Media not found" });
@@ -122,24 +121,25 @@ router.patch("/:id", async (req, res) => {
   
   if (updates.length > 0) {
     values.push(req.params.id);
-    await execute(`UPDATE media SET ${updates.join(", ")} WHERE id = ?`, values);
+    values.push(req.userId);
+    await execute(`UPDATE media SET ${updates.join(", ")} WHERE id = ? AND user_id = ?`, values);
   }
   
-  const updated = await queryOne("SELECT * FROM media WHERE id = ?", [req.params.id]);
+  const updated = await queryOne("SELECT * FROM media WHERE id = ? AND user_id = ?", [req.params.id, req.userId]);
   res.json(updated);
 });
 
 // Soft delete
 router.delete("/:id", async (req, res) => {
-  const media = await queryOne<{ filename: string }>("SELECT * FROM media WHERE id = ?", [req.params.id]);
+  const media = await queryOne<{ filename: string }>("SELECT * FROM media WHERE id = ? AND user_id = ?", [req.params.id, req.userId]);
   
   if (!media) {
     return res.status(404).json({ error: "Media not found" });
   }
   
   await execute(
-    "UPDATE media SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?",
-    [req.params.id]
+    "UPDATE media SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?",
+    [req.params.id, req.userId]
   );
   
   logger.info("Media deleted", { service: "media", mediaId: req.params.id, filename: media.filename });
@@ -148,21 +148,21 @@ router.delete("/:id", async (req, res) => {
 
 // Restore soft-deleted item
 router.post("/:id/restore", async (req, res) => {
-  const media = await queryOne("SELECT * FROM media WHERE id = ?", [req.params.id]);
+  const media = await queryOne("SELECT * FROM media WHERE id = ? AND user_id = ?", [req.params.id, req.userId]);
   
   if (!media) {
     return res.status(404).json({ error: "Media not found" });
   }
   
-  await execute("UPDATE media SET deleted_at = NULL WHERE id = ?", [req.params.id]);
+  await execute("UPDATE media SET deleted_at = NULL WHERE id = ? AND user_id = ?", [req.params.id, req.userId]);
   
-  const restored = await queryOne("SELECT * FROM media WHERE id = ?", [req.params.id]);
+  const restored = await queryOne("SELECT * FROM media WHERE id = ? AND user_id = ?", [req.params.id, req.userId]);
   res.json(restored);
 });
 
 // Get usage (which templates use this image)
 router.get("/:id/usage", async (req, res) => {
-  const media = await queryOne<{ url: string }>("SELECT * FROM media WHERE id = ?", [req.params.id]);
+  const media = await queryOne<{ url: string }>("SELECT * FROM media WHERE id = ? AND user_id = ?", [req.params.id, req.userId]);
   
   if (!media) {
     return res.status(404).json({ error: "Media not found" });

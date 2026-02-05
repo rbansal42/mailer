@@ -1,4 +1,4 @@
-import { useAuthStore } from '../hooks/useAuthStore'
+import { auth } from './firebase'
 
 const API_BASE = '/api'
 
@@ -9,38 +9,29 @@ class ApiError extends Error {
   }
 }
 
-// Get token from Zustand store, with fallback to localStorage for SSR/hydration race
-function getToken(): string | null {
-  // Try Zustand store first
-  const storeToken = useAuthStore.getState().token
-  if (storeToken) return storeToken
-  
-  // Fallback: read directly from localStorage (handles hydration race)
-  try {
-    const stored = localStorage.getItem('mailer-auth')
-    if (stored) {
-      const parsed = JSON.parse(stored)
-      return parsed?.state?.token || null
-    }
-  } catch {
-    // Ignore parse errors
+// Get auth headers using Firebase token
+async function getAuthHeaders(): Promise<HeadersInit> {
+  const user = auth.currentUser
+  if (!user) {
+    return { 'Content-Type': 'application/json' }
   }
-  return null
+  
+  const token = await user.getIdToken()
+  return { 
+    Authorization: `Bearer ${token}`,
+    'Content-Type': 'application/json'
+  }
 }
 
 async function request<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const token = getToken()
+  const authHeaders = await getAuthHeaders()
 
   const headers: HeadersInit = {
-    'Content-Type': 'application/json',
+    ...authHeaders,
     ...options.headers,
-  }
-
-  if (token) {
-    (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`
   }
 
   const response = await fetch(`${API_BASE}${endpoint}`, {
@@ -49,7 +40,7 @@ async function request<T>(
   })
 
   if (response.status === 401) {
-    useAuthStore.getState().logout()
+    // Firebase auth handles session - just throw the error
     throw new ApiError(401, 'Unauthorized')
   }
 
@@ -66,21 +57,6 @@ async function request<T>(
 }
 
 export const api = {
-  // Auth
-  login: (password: string) =>
-    request<{ token: string }>('/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ password }),
-    }),
-
-  setup: (password: string) =>
-    request<{ token: string }>('/auth/setup', {
-      method: 'POST',
-      body: JSON.stringify({ password }),
-    }),
-
-  checkSetup: () => request<{ needsSetup: boolean }>('/auth/check'),
-
   // Templates
   getTemplates: () => request<Template[]>('/templates'),
   getTemplate: (id: number) => request<Template>(`/templates/${id}`),
@@ -205,13 +181,10 @@ export const api = {
   
   // Download certificates as ZIP (for large batches - server-side ZIP creation)
   downloadCertificatesZip: async (configId: number, recipients: CertificateData[]): Promise<Blob> => {
-    const token = getToken()
+    const headers = await getAuthHeaders()
     const response = await fetch(`${API_BASE}/certificates/generate/zip`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-      },
+      headers,
       body: JSON.stringify({ configId, recipients }),
     })
     
@@ -650,11 +623,7 @@ export const listsApi = {
     }),
   
   export: async (listId: number, listName: string): Promise<void> => {
-    const token = getToken()
-    const headers: HeadersInit = {}
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`
-    }
+    const headers = await getAuthHeaders()
 
     const res = await fetch(`${API_BASE}/contacts/lists/${listId}/export`, { headers })
     if (!res.ok) throw new Error('Failed to export list')
@@ -980,4 +949,114 @@ export interface StoredLLMProvider {
 export interface LLMSettings {
   providers: StoredLLMProvider[]
   activeProvider: LLMProviderId | null
+}
+
+// User Management Types
+export interface User {
+  id: string
+  email: string
+  name: string
+  isAdmin: boolean
+  avatarUrl: string | null
+}
+
+export interface AdminUser extends User {
+  createdAt: string
+  stats?: {
+    campaigns: number
+    contacts: number
+    emailsSent: number
+  }
+}
+
+export interface UsersListResponse {
+  users: AdminUser[]
+  total: number
+  page: number
+  limit: number
+}
+
+export interface AnalyticsOverview {
+  totalUsers: number
+  totalCampaigns: number
+  totalEmailsSent: number
+  totalContacts: number
+  recentSignups: Array<{ date: string; count: number }>
+}
+
+export interface UserAnalytics {
+  signups: Array<{ date: string; count: number }>
+  activeUsers: number
+}
+
+export interface EmailAnalytics {
+  emailsByDay: Array<{ date: string; count: number }>
+  statusBreakdown: Record<string, number>
+  bounces: number
+}
+
+export interface StorageAnalytics {
+  topUsersByStorage: Array<{
+    userId: string
+    name: string
+    bytes: number
+  }>
+  totalMediaBytes: number
+  totalAttachmentsBytes: number
+}
+
+// Admin API functions
+export const adminApi = {
+  // Users
+  listUsers: async (params: { page?: number; limit?: number; search?: string }) => {
+    const searchParams = new URLSearchParams()
+    if (params.page) searchParams.set('page', String(params.page))
+    if (params.limit) searchParams.set('limit', String(params.limit))
+    if (params.search) searchParams.set('search', params.search)
+    return request<UsersListResponse>(`/admin/users?${searchParams}`)
+  },
+
+  getUser: async (id: string) => {
+    return request<AdminUser>(`/admin/users/${id}`)
+  },
+
+  updateUser: async (id: string, data: { name?: string; isAdmin?: boolean }) => {
+    return request<User>(`/admin/users/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data)
+    })
+  },
+
+  deleteUser: async (id: string) => {
+    return request<{ success: boolean }>(`/admin/users/${id}`, { method: 'DELETE' })
+  },
+
+  suspendUser: async (id: string) => {
+    return request<{ success: boolean }>(`/admin/users/${id}/suspend`, { method: 'POST' })
+  },
+
+  unsuspendUser: async (id: string) => {
+    return request<{ success: boolean }>(`/admin/users/${id}/unsuspend`, { method: 'POST' })
+  },
+
+  impersonateUser: async (id: string) => {
+    return request<{ token: string }>(`/admin/users/${id}/impersonate`, { method: 'POST' })
+  },
+
+  // Analytics
+  getOverview: async () => {
+    return request<AnalyticsOverview>('/admin/analytics/overview')
+  },
+
+  // Settings
+  getSettings: async () => {
+    return request<Record<string, string>>('/admin/settings')
+  },
+
+  updateSettings: async (settings: Record<string, string>) => {
+    return request<Record<string, string>>('/admin/settings', {
+      method: 'PATCH',
+      body: JSON.stringify(settings)
+    })
+  }
 }

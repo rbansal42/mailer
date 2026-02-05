@@ -5,9 +5,13 @@ import { useAuthStore } from './hooks/useAuthStore'
 import { useThemeStore } from './hooks/useThemeStore'
 import { applyTheme } from './lib/theme'
 import Layout from './components/Layout'
+import AdminLayout from './components/AdminLayout'
 
 // Eagerly loaded - needed immediately
 import Login from './pages/Login'
+import Register from './pages/Register'
+import VerifyEmail from './pages/VerifyEmail'
+import ForgotPassword from './pages/ForgotPassword'
 
 // Lazy loaded pages - code split into separate chunks
 const Campaigns = lazy(() => import('./pages/Campaigns'))
@@ -19,6 +23,13 @@ const Settings = lazy(() => import('./pages/Settings'))
 const Certificates = lazy(() => import('./pages/Certificates'))
 const SuppressionList = lazy(() => import('./pages/SuppressionList'))
 const Sequences = lazy(() => import('./pages/Sequences'))
+const AccountSettings = lazy(() => import('./pages/AccountSettings'))
+
+// Admin pages
+const AdminDashboard = lazy(() => import('./pages/admin/Dashboard'))
+const AdminUsers = lazy(() => import('./pages/admin/Users'))
+const AdminUserDetail = lazy(() => import('./pages/admin/UserDetail'))
+const AdminSettings = lazy(() => import('./pages/admin/Settings'))
 
 // Error Boundary for catching lazy loading failures
 interface ErrorBoundaryState {
@@ -64,6 +75,28 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+function AdminRoute({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, isLoading, user } = useAuthStore()
+  
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 dark:border-gray-100" />
+      </div>
+    )
+  }
+  
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />
+  }
+  
+  if (!user?.isAdmin) {
+    return <Navigate to="/" replace />
+  }
+  
+  return <>{children}</>
+}
+
 function ThemeProvider({ children }: { children: React.ReactNode }) {
   const mode = useThemeStore((state) => state.mode)
   const primaryColor = useThemeStore((state) => state.primaryColor)
@@ -95,10 +128,28 @@ function LazyRoute({ component: LazyComponent }: { component: React.LazyExoticCo
 }
 
 export default function App() {
+  const { isLoading, initialize } = useAuthStore()
+
+  useEffect(() => {
+    initialize()
+  }, [initialize])
+
+  // Show a loading state while checking auth
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 dark:border-gray-100" />
+      </div>
+    )
+  }
+
   return (
     <ThemeProvider>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/verify-email" element={<VerifyEmail />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route
           path="/"
           element={
@@ -117,6 +168,20 @@ export default function App() {
           <Route path="settings" element={<LazyRoute component={Settings} />} />
           <Route path="suppression" element={<LazyRoute component={SuppressionList} />} />
           <Route path="sequences" element={<LazyRoute component={Sequences} />} />
+          <Route path="settings/account" element={<LazyRoute component={AccountSettings} />} />
+        </Route>
+        <Route
+          path="/admin"
+          element={
+            <AdminRoute>
+              <AdminLayout />
+            </AdminRoute>
+          }
+        >
+          <Route index element={<LazyRoute component={AdminDashboard} />} />
+          <Route path="users" element={<LazyRoute component={AdminUsers} />} />
+          <Route path="users/:id" element={<LazyRoute component={AdminUserDetail} />} />
+          <Route path="settings" element={<LazyRoute component={AdminSettings} />} />
         </Route>
       </Routes>
       <Toaster position="top-right" richColors />

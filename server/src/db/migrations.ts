@@ -33,6 +33,7 @@ const VALID_TABLES = new Set([
   'suppression_list',
   'bounces',
   'google_sheets_syncs',
+  'users',
 ])
 
 // Migration helper - add columns if they don't exist
@@ -77,6 +78,23 @@ export async function runColumnMigrations() {
   await addColumnIfNotExists('sequence_enrollments', 'action_clicked_at', 'TIMESTAMPTZ')
   await addColumnIfNotExists('sequence_enrollments', 'branch_switched_at', 'TIMESTAMPTZ')
   await addColumnIfNotExists('sequences', 'branch_delay_hours', 'INTEGER', '0')
+
+  // User management columns
+  await addColumnIfNotExists('settings', 'user_id', 'UUID REFERENCES users(id) ON DELETE CASCADE')
+  await addColumnIfNotExists('templates', 'is_system', 'BOOLEAN', 'false')
+  await addColumnIfNotExists('templates', 'user_id', 'UUID REFERENCES users(id) ON DELETE CASCADE')
+  await addColumnIfNotExists('sender_accounts', 'user_id', 'UUID REFERENCES users(id) ON DELETE CASCADE')
+  await addColumnIfNotExists('mails', 'user_id', 'UUID REFERENCES users(id) ON DELETE CASCADE')
+  await addColumnIfNotExists('certificate_configs', 'user_id', 'UUID REFERENCES users(id) ON DELETE CASCADE')
+  await addColumnIfNotExists('generated_certificates', 'user_id', 'UUID REFERENCES users(id) ON DELETE CASCADE')
+  await addColumnIfNotExists('media', 'user_id', 'UUID REFERENCES users(id) ON DELETE CASCADE')
+  await addColumnIfNotExists('campaigns', 'user_id', 'UUID REFERENCES users(id) ON DELETE CASCADE')
+  await addColumnIfNotExists('recurring_campaigns', 'user_id', 'UUID REFERENCES users(id) ON DELETE CASCADE')
+  await addColumnIfNotExists('sequences', 'user_id', 'UUID REFERENCES users(id) ON DELETE CASCADE')
+  await addColumnIfNotExists('contacts', 'user_id', 'UUID REFERENCES users(id) ON DELETE CASCADE')
+  await addColumnIfNotExists('lists', 'user_id', 'UUID REFERENCES users(id) ON DELETE CASCADE')
+  await addColumnIfNotExists('drafts', 'user_id', 'UUID REFERENCES users(id) ON DELETE CASCADE')
+  await addColumnIfNotExists('attachments', 'user_id', 'UUID REFERENCES users(id) ON DELETE CASCADE')
 }
 
 // Run SQL migrations from the migrations directory (with tracking)

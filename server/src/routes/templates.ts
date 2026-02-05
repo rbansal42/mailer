@@ -11,6 +11,8 @@ interface TemplateRow {
   description: string | null
   blocks: string
   is_default: boolean | null
+  is_system: boolean | null
+  user_id: string | null
   created_at: string
   updated_at: string
 }
@@ -22,22 +24,29 @@ function formatTemplate(row: TemplateRow) {
     description: row.description,
     blocks: safeJsonParse(row.blocks, []),
     isDefault: row.is_default,
+    isSystem: row.is_system,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
 }
 
-// List templates
-templatesRouter.get('/', async (_, res) => {
-  logger.info('Listing templates', { service: 'templates' })
-  const rows = await queryAll<TemplateRow>('SELECT * FROM templates ORDER BY updated_at DESC')
+// List templates - users see their own templates AND system templates
+templatesRouter.get('/', async (req, res) => {
+  logger.info('Listing templates', { service: 'templates', userId: req.userId })
+  const rows = await queryAll<TemplateRow>(
+    'SELECT * FROM templates WHERE user_id = ? OR is_system = true ORDER BY is_system DESC, created_at DESC',
+    [req.userId]
+  )
   res.json(rows.map(formatTemplate))
 })
 
-// Get template
+// Get template - users can access their own templates OR system templates
 templatesRouter.get('/:id', async (req, res) => {
-  logger.info('Getting template', { service: 'templates', templateId: req.params.id })
-  const row = await queryOne<TemplateRow>('SELECT * FROM templates WHERE id = ?', [req.params.id])
+  logger.info('Getting template', { service: 'templates', templateId: req.params.id, userId: req.userId })
+  const row = await queryOne<TemplateRow>(
+    'SELECT * FROM templates WHERE id = ? AND (user_id = ? OR is_system = true)',
+    [req.params.id, req.userId]
+  )
   if (!row) {
     logger.warn('Template not found', { service: 'templates', templateId: req.params.id })
     return res.status(404).json({ message: 'Template not found' })
@@ -45,7 +54,7 @@ templatesRouter.get('/:id', async (req, res) => {
   res.json(formatTemplate(row))
 })
 
-// Create template
+// Create template - always set user_id and is_system=false for user-created templates
 templatesRouter.post('/', async (req, res) => {
   const validation = validate(createTemplateSchema, req.body)
   if (!validation.success) {
@@ -54,11 +63,11 @@ templatesRouter.post('/', async (req, res) => {
   }
   const { name, description, blocks } = validation.data
   
-  logger.info('Creating template', { service: 'templates', name })
+  logger.info('Creating template', { service: 'templates', name, userId: req.userId })
   
   const result = await execute(
-    'INSERT INTO templates (name, description, blocks) VALUES (?, ?, ?) RETURNING id',
-    [name, description || null, JSON.stringify(blocks)]
+    'INSERT INTO templates (name, description, blocks, user_id, is_system) VALUES (?, ?, ?, ?, false) RETURNING id',
+    [name, description || null, JSON.stringify(blocks), req.userId]
   )
   
   const row = await queryOne<TemplateRow>('SELECT * FROM templates WHERE id = ?', [result.lastInsertRowid])
@@ -66,7 +75,7 @@ templatesRouter.post('/', async (req, res) => {
   res.status(201).json(formatTemplate(row!))
 })
 
-// Update template
+// Update template - only allow on user's own templates (not system templates)
 templatesRouter.put('/:id', async (req, res) => {
   const validation = validate(updateTemplateSchema, req.body)
   if (!validation.success) {
@@ -75,7 +84,7 @@ templatesRouter.put('/:id', async (req, res) => {
   }
   const { name, description, blocks } = validation.data
   
-  logger.info('Updating template', { service: 'templates', templateId: req.params.id })
+  logger.info('Updating template', { service: 'templates', templateId: req.params.id, userId: req.userId })
   
   // Build dynamic update query based on provided fields
   const updates: string[] = []
@@ -96,28 +105,38 @@ templatesRouter.put('/:id', async (req, res) => {
   
   if (updates.length > 0) {
     updates.push('updated_at = CURRENT_TIMESTAMP')
-    values.push(req.params.id)
-    await execute(`UPDATE templates SET ${updates.join(', ')} WHERE id = ?`, values)
+    values.push(req.params.id, req.userId)
+    // Only update if user owns the template (not system templates)
+    await execute(`UPDATE templates SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`, values)
   }
   
-  const row = await queryOne<TemplateRow>('SELECT * FROM templates WHERE id = ?', [req.params.id])
+  // Fetch the template to return (user's own or system for reading)
+  const row = await queryOne<TemplateRow>(
+    'SELECT * FROM templates WHERE id = ? AND (user_id = ? OR is_system = true)',
+    [req.params.id, req.userId]
+  )
   if (!row) {
     logger.warn('Template not found for update', { service: 'templates', templateId: req.params.id })
     return res.status(404).json({ message: 'Template not found' })
+  }
+  // If it's a system template, the update didn't happen - return 403
+  if (row.is_system) {
+    logger.warn('Attempted to update system template', { service: 'templates', templateId: req.params.id })
+    return res.status(403).json({ error: 'Cannot modify system templates' })
   }
   logger.info('Template updated', { service: 'templates', templateId: row.id })
   res.json(formatTemplate(row))
 })
 
-// Delete template
+// Delete template - only allow on user's own templates (not system templates)
 templatesRouter.delete('/:id', async (req, res) => {
   const { id } = req.params
-  logger.info('Deleting template', { service: 'templates', templateId: id })
+  logger.info('Deleting template', { service: 'templates', templateId: id, userId: req.userId })
 
-  // Check if template exists and if it's a default template
-  const template = await queryOne<{ is_default: boolean }>(
-    'SELECT is_default FROM templates WHERE id = ?',
-    [id]
+  // Check if template exists and belongs to user
+  const template = await queryOne<{ is_default: boolean; is_system: boolean; user_id: string | null }>(
+    'SELECT is_default, is_system, user_id FROM templates WHERE id = ? AND (user_id = ? OR is_system = true)',
+    [id, req.userId]
   )
 
   if (!template) {
@@ -126,13 +145,14 @@ templatesRouter.delete('/:id', async (req, res) => {
     return
   }
 
-  if (template.is_default) {
-    logger.warn('Attempted to delete default template', { service: 'templates', templateId: id })
-    res.status(403).json({ error: 'Cannot delete built-in templates' })
+  if (template.is_default || template.is_system) {
+    logger.warn('Attempted to delete system/default template', { service: 'templates', templateId: id })
+    res.status(403).json({ error: 'Cannot delete system templates' })
     return
   }
 
-  await execute('DELETE FROM templates WHERE id = ?', [id])
+  // Only delete if user owns the template
+  await execute('DELETE FROM templates WHERE id = ? AND user_id = ?', [id, req.userId])
   logger.info('Template deleted', { service: 'templates', templateId: id })
   res.status(204).send()
 })

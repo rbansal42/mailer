@@ -7,6 +7,7 @@ import { getOrCreateToken, getTrackingSettings } from './tracking'
 
 interface RecurringCampaign {
   id: number
+  user_id: number
   name: string
   template_id: number | null
   subject: string
@@ -230,10 +231,13 @@ async function runRecurringCampaign(campaign: RecurringCampaign): Promise<void> 
     return
   }
 
-  // Get template
+  // Get template (user-scoped: must belong to user or be a system template)
   let templateBlocks: BlockInput[] = []
   if (campaign.template_id) {
-    const template = await queryOne<TemplateRow>('SELECT id, blocks FROM templates WHERE id = ?', [campaign.template_id])
+    const template = await queryOne<TemplateRow>(
+      'SELECT id, blocks FROM templates WHERE id = ? AND (user_id = ? OR is_system = true)',
+      [campaign.template_id, campaign.user_id]
+    )
 
     if (template) {
       templateBlocks = safeJsonParse(template.blocks, []) as BlockInput[]
@@ -242,10 +246,11 @@ async function runRecurringCampaign(campaign: RecurringCampaign): Promise<void> 
 
   // Create a regular campaign record for tracking
   const result = await execute(
-    `INSERT INTO campaigns (name, template_id, subject, total_recipients, cc, bcc, status, started_at)
-     VALUES (?, ?, ?, ?, ?, ?, 'sending', CURRENT_TIMESTAMP)
+    `INSERT INTO campaigns (user_id, name, template_id, subject, total_recipients, cc, bcc, status, started_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'sending', CURRENT_TIMESTAMP)
      RETURNING id`,
     [
+      campaign.user_id,
       `${campaign.name} - ${new Date().toLocaleDateString()}`,
       campaign.template_id,
       campaign.subject,

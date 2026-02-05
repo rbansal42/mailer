@@ -53,6 +53,26 @@ mailer/
 2. **Certificate Generator** - Generate PDF certificates with 4 templates
 3. **Attachment Matching** - Match attachments to recipients by column/filename
 4. **Tracking** - Open and click tracking
+5. **User Management** - Multi-tenant user isolation with Firebase Auth
+
+## User Management
+
+The app supports multi-tenant user management:
+
+- **Authentication**: Firebase Auth (email/password + Google OAuth)
+- **User isolation**: Each user has their own data silo
+- **Admin panel**: `/admin` routes for user management and analytics
+
+### First User Setup
+
+The first user to register becomes an admin automatically. All existing data from single-user mode is migrated to this user.
+
+### Firebase Setup
+
+1. Create a Firebase project at console.firebase.google.com
+2. Enable Authentication with Email/Password and Google providers
+3. Generate a service account key (Project Settings > Service Accounts)
+4. Copy the config values to your `.env` file
 
 ## Certificate Templates
 
@@ -98,6 +118,17 @@ BASE_URL=https://mailer.example.com
 
 # Server
 PORT=3342
+
+# Firebase Admin SDK (Backend)
+# Download JSON key from Firebase Console > Project Settings > Service Accounts
+# Stringify the JSON and paste as single line:
+FIREBASE_SERVICE_ACCOUNT={"type":"service_account","project_id":"your-project",...}
+
+# Firebase Client SDK (Frontend)
+# Get these from Firebase Console > Project Settings > General > Your apps
+VITE_FIREBASE_API_KEY=your-api-key
+VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your-project
 ```
 
 ## Known Issues / Gotchas
