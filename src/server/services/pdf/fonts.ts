@@ -1,9 +1,10 @@
 import { Font } from '@react-pdf/renderer'
 import path from 'path'
 
-// Fonts are copied to dist/assets/fonts during build
-// import.meta.dir points to dist/ when running bundled code
-const FONTS_DIR = path.join(import.meta.dir, 'assets/fonts')
+// Server is always run from project root (both dev and production)
+// In dev: process.cwd() = <root>, fonts at <root>/assets/fonts/
+// In prod: process.cwd() = <root>, fonts at <root>/assets/fonts/ (copied during build)
+const FONTS_DIR = path.join(process.cwd(), 'assets', 'fonts')
 
 // Register Montserrat font family
 Font.register({

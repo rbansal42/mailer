@@ -1,16 +1,13 @@
 import { Router } from "express";
 import multer from "multer";
 import sharp from "sharp";
-import { queryAll, queryOne, execute, safeJsonParse } from "../db";
+import { queryAll, queryOne, execute, safeJsonParse, DATA_DIR } from "../db";
 import { nanoid } from "nanoid";
 import { join } from "path";
 import { existsSync, mkdirSync, unlinkSync } from "fs";
 import { logger } from "../lib/logger";
 
 const router = Router();
-
-// Use same DATA_DIR as db module for consistency
-const DATA_DIR = process.env.DATA_DIR || join(process.cwd(), "data");
 const MEDIA_DIR = join(DATA_DIR, "media");
 if (!existsSync(MEDIA_DIR)) {
   mkdirSync(MEDIA_DIR, { recursive: true });

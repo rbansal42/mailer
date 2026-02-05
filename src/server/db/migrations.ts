@@ -109,9 +109,8 @@ export async function runSqlMigrations() {
 
   // Try multiple possible locations for migrations
   const possiblePaths = [
-    join(process.cwd(), 'src', 'db', 'migrations'),           // Running from server/
-    join(process.cwd(), 'server', 'src', 'db', 'migrations'), // Running from root
-    join(dirname(import.meta.path), 'migrations'),            // Relative to this file
+    join(process.cwd(), 'src', 'server', 'db', 'migrations'), // Running from project root (dev)
+    join(dirname(import.meta.path), 'migrations'),             // Relative to this file
   ]
 
   const migrationsDir = possiblePaths.find(p => existsSync(p))

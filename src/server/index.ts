@@ -1,13 +1,10 @@
-import { config } from 'dotenv';
-import { join } from 'path';
+import './env' // Must be first — loads .env before other modules evaluate
+import { join } from 'path'
 import { existsSync } from 'fs'
-
-// Load .env from project root
-config({ path: join(__dirname, '../../.env') });
 
 import express from 'express'
 import cors from 'cors'
-import { initializeDatabase, checkDatabaseHealth, queryOne, queryAll } from './db'
+import { initializeDatabase, checkDatabaseHealth, queryOne, queryAll, DATA_DIR } from './db'
 import { authRouter } from './routes/auth'
 import { templatesRouter } from './routes/templates'
 import { draftsRouter } from './routes/drafts'
@@ -157,12 +154,11 @@ app.use('/api/users', firebaseAuthMiddleware, usersRouter)
 app.use('/api/admin', firebaseAuthMiddleware, adminRouter)
 
 // Serve media files publicly (no auth - these are for emails)
-const DATA_DIR = process.env.DATA_DIR || join(process.cwd(), 'data')
 const mediaPath = join(DATA_DIR, 'media')
 app.use('/media', express.static(mediaPath))
 
 // Serve static frontend in production
-const publicPath = join(process.cwd(), 'public')
+const publicPath = join(process.cwd(), 'dist', 'public')
 if (existsSync(publicPath)) {
   app.use(express.static(publicPath))
   app.get('*', (_, res) => {

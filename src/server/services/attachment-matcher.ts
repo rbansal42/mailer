@@ -1,10 +1,8 @@
 import AdmZip from 'adm-zip'
 import { join, basename, extname } from 'path'
 import { mkdirSync, existsSync, copyFileSync, statSync, readdirSync, rmSync, unlinkSync } from 'fs'
-import { queryAll, queryOne, execute } from '../db'
+import { queryAll, queryOne, execute, DATA_DIR } from '../db'
 import { logger } from '../lib/logger'
-
-const DATA_DIR = process.env.DATA_DIR || join(process.cwd(), '..', 'data')
 const ATTACHMENTS_DIR = join(DATA_DIR, 'attachments')
 const TEMP_DIR = join(DATA_DIR, 'temp')
 

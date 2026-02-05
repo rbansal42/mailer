@@ -2,7 +2,7 @@ import { Router } from 'express'
 import archiver from 'archiver'
 import { join } from 'path'
 import { mkdirSync, existsSync, writeFileSync, unlinkSync } from 'fs'
-import { queryAll, queryOne, execute, sql, safeJsonParse } from '../db'
+import { queryAll, queryOne, execute, sql, safeJsonParse, DATA_DIR } from '../db'
 import { logger } from '../lib/logger'
 import { 
   generateCertificateId,
@@ -19,7 +19,6 @@ import type {
 import { validateLogoUrls, validateSignatoryUrls } from '../lib/url-validation'
 
 // Data directory for storing generated certificates
-const DATA_DIR = process.env.DATA_DIR || join(process.cwd(), '..', 'data')
 const CERTIFICATES_DIR = join(DATA_DIR, 'certificates')
 
 // Helper to replace template variables in description
