@@ -80,6 +80,7 @@ export async function runColumnMigrations() {
   await addColumnIfNotExists('sequences', 'branch_delay_hours', 'INTEGER', '0')
 
   // User management columns
+  await addColumnIfNotExists('settings', 'user_id', 'UUID REFERENCES users(id) ON DELETE CASCADE')
   await addColumnIfNotExists('templates', 'is_system', 'BOOLEAN', 'false')
   await addColumnIfNotExists('templates', 'user_id', 'UUID REFERENCES users(id) ON DELETE CASCADE')
   await addColumnIfNotExists('sender_accounts', 'user_id', 'UUID REFERENCES users(id) ON DELETE CASCADE')
@@ -93,6 +94,7 @@ export async function runColumnMigrations() {
   await addColumnIfNotExists('contacts', 'user_id', 'UUID REFERENCES users(id) ON DELETE CASCADE')
   await addColumnIfNotExists('lists', 'user_id', 'UUID REFERENCES users(id) ON DELETE CASCADE')
   await addColumnIfNotExists('drafts', 'user_id', 'UUID REFERENCES users(id) ON DELETE CASCADE')
+  await addColumnIfNotExists('attachments', 'user_id', 'UUID REFERENCES users(id) ON DELETE CASCADE')
 }
 
 // Run SQL migrations from the migrations directory (with tracking)

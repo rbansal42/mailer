@@ -35,6 +35,7 @@ export interface MatchSummary {
 
 interface AttachmentRow {
   id: number
+  user_id: string | null
   campaign_id: number | null
   draft_id: number | null
   filename: string
@@ -165,12 +166,14 @@ function getMimeType(filename: string): string {
  * @param files - Array of file paths to store
  * @param draftId - Optional draft ID to associate with
  * @param campaignId - Optional campaign ID to associate with
+ * @param userId - User ID to associate with
  * @returns Array of created attachment IDs
  */
 export async function storeAttachments(
   files: string[],
   draftId?: number,
-  campaignId?: number
+  campaignId?: number,
+  userId?: string
 ): Promise<number[]> {
   ensureDirectories()
 
@@ -195,10 +198,11 @@ export async function storeAttachments(
 
     // Create DB record
     const result = await execute(
-      `INSERT INTO attachments (campaign_id, draft_id, filename, original_filename, filepath, size_bytes, mime_type)
-       VALUES (?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO attachments (user_id, campaign_id, draft_id, filename, original_filename, filepath, size_bytes, mime_type)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
        RETURNING id`,
       [
+        userId ?? null,
         campaignId ?? null,
         draftId ?? null,
         uniqueFilename,
@@ -217,12 +221,36 @@ export async function storeAttachments(
       originalFilename,
       uniqueFilename,
       sizeBytes: stats.size,
+      userId,
       draftId,
       campaignId,
     })
   }
 
   return attachmentIds
+}
+
+/**
+ * Verify that all attachments belong to the specified user
+ * @param attachmentIds - Array of attachment IDs to verify
+ * @param userId - User ID to check ownership against
+ * @returns true if all attachments belong to the user, false otherwise
+ */
+export async function verifyAttachmentOwnership(
+  attachmentIds: number[],
+  userId?: string
+): Promise<boolean> {
+  if (attachmentIds.length === 0) {
+    return true
+  }
+
+  // Build placeholders for the IN clause
+  const placeholders = attachmentIds.map(() => '?').join(', ')
+  const query = `SELECT COUNT(*) as count FROM attachments WHERE id IN (${placeholders}) AND user_id = ?`
+  
+  const result = await queryOne<{ count: number }>(query, [...attachmentIds, userId ?? null])
+  
+  return result?.count === attachmentIds.length
 }
 
 /**
