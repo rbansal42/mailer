@@ -58,25 +58,33 @@ export async function firebaseAuthMiddleware(
 
     let user: UserRow
     if (rows.length === 0) {
-      // Check if first user (becomes admin)
-      const countResult = await sql<{count: string}[]>`SELECT COUNT(*) as count FROM users`
-      const isFirstUser = parseInt(countResult[0].count) === 0
-
+      // Insert user without admin flag first
       const newRows = await sql<UserRow[]>`
         INSERT INTO users (firebase_uid, email, name, is_admin, avatar_url)
         VALUES (
           ${decoded.uid},
           ${decoded.email!},
           ${decoded.name || decoded.email!.split('@')[0]},
-          ${isFirstUser},
+          false,
           ${decoded.picture ?? null}
         )
         RETURNING *
       `
       user = newRows[0]
+
+      // Atomically promote to admin if this is the first user
+      // This prevents race conditions where two simultaneous registrations
+      // could both see count=0 and both become admins
+      const promoted = await sql<{ is_admin: boolean }[]>`
+        UPDATE users 
+        SET is_admin = true 
+        WHERE id = ${user.id} 
+        AND (SELECT COUNT(*) FROM users) = 1
+        RETURNING is_admin
+      `
       
-      // If first user, migrate existing data
-      if (isFirstUser) {
+      if (promoted.length > 0) {
+        user.is_admin = true
         await migrateExistingData(user.id)
       }
     } else {
