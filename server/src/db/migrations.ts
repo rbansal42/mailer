@@ -78,6 +78,9 @@ export async function runColumnMigrations() {
   await addColumnIfNotExists('sequence_enrollments', 'action_clicked_at', 'TIMESTAMPTZ')
   await addColumnIfNotExists('sequence_enrollments', 'branch_switched_at', 'TIMESTAMPTZ')
   await addColumnIfNotExists('sequences', 'branch_delay_hours', 'INTEGER', '0')
+
+  // User management columns
+  await addColumnIfNotExists('templates', 'is_system', 'BOOLEAN', 'false')
 }
 
 // Run SQL migrations from the migrations directory (with tracking)
