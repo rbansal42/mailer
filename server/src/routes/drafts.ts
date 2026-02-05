@@ -42,11 +42,11 @@ function formatDraft(row: DraftRow) {
 }
 
 // Helper to generate unique draft names with collision handling
-export async function getUniqueDraftName(baseName: string): Promise<string> {
-  // Check if name exists
+export async function getUniqueDraftName(baseName: string, userId: string): Promise<string> {
+  // Check if name exists for this user
   const existing = await queryOne<{ id: number }>(
-    'SELECT id FROM drafts WHERE name = ?',
-    [baseName]
+    'SELECT id FROM drafts WHERE name = ? AND user_id = ?',
+    [baseName, userId]
   )
 
   if (!existing) {
@@ -58,8 +58,8 @@ export async function getUniqueDraftName(baseName: string): Promise<string> {
   while (true) {
     const numberedName = `${baseName} (${counter})`
     const exists = await queryOne<{ id: number }>(
-      'SELECT id FROM drafts WHERE name = ?',
-      [numberedName]
+      'SELECT id FROM drafts WHERE name = ? AND user_id = ?',
+      [numberedName, userId]
     )
     if (!exists) {
       return numberedName

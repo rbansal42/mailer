@@ -64,14 +64,14 @@ function formatSendLog(row: SendLogRow) {
 }
 
 // List campaigns
-campaignsRouter.get('/', async (_, res) => {
-  const rows = await queryAll<CampaignRow>('SELECT * FROM campaigns ORDER BY created_at DESC')
+campaignsRouter.get('/', async (req, res) => {
+  const rows = await queryAll<CampaignRow>('SELECT * FROM campaigns WHERE user_id = ? ORDER BY created_at DESC', [req.userId])
   res.json(rows.map(formatCampaign))
 })
 
 // Get campaign with logs
 campaignsRouter.get('/:id', async (req, res) => {
-  const campaign = await queryOne<CampaignRow>('SELECT * FROM campaigns WHERE id = ?', [req.params.id])
+  const campaign = await queryOne<CampaignRow>('SELECT * FROM campaigns WHERE id = ? AND user_id = ?', [req.params.id, req.userId])
   if (!campaign) {
     return res.status(404).json({ message: 'Campaign not found' })
   }
@@ -94,8 +94,8 @@ campaignsRouter.post('/:id/duplicate', async (req, res) => {
     }
 
     const campaign = await queryOne<CampaignRow>(
-      'SELECT * FROM campaigns WHERE id = ?',
-      [id]
+      'SELECT * FROM campaigns WHERE id = ? AND user_id = ?',
+      [id, req.userId]
     )
 
     if (!campaign) {
@@ -143,6 +143,6 @@ campaignsRouter.post('/:id/duplicate', async (req, res) => {
 
 // Delete campaign
 campaignsRouter.delete('/:id', async (req, res) => {
-  await execute('DELETE FROM campaigns WHERE id = ?', [req.params.id])
+  await execute('DELETE FROM campaigns WHERE id = ? AND user_id = ?', [req.params.id, req.userId])
   res.status(204).send()
 })
