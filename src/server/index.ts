@@ -172,7 +172,10 @@ async function setupFrontend() {
     const publicPath = join(process.cwd(), 'dist', 'public')
     if (existsSync(publicPath)) {
       app.use(express.static(publicPath))
-      app.get('*', (_req, res) => {
+      app.get('*', (req, res) => {
+        if (req.path.startsWith('/api/')) {
+          return res.status(404).json({ error: 'Not found' })
+        }
         res.sendFile(join(publicPath, 'index.html'))
       })
     }

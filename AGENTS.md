@@ -17,7 +17,7 @@ Mailer is a self-hosted email campaign management system with certificate genera
 
 ```bash
 # Development
-bun run dev          # Start dev server (frontend + backend)
+bun run dev          # Start dev server (Express + Vite HMR, single process)
 
 # Building
 bun run build        # Build both frontend and backend
@@ -46,6 +46,15 @@ mailer/
 ├── data/                 # Attachments, certificates
 └── package.json          # Single package config
 ```
+
+## Shared Types
+
+All API contract types live in `src/shared/types.ts` — the single source of truth for data structures exchanged between client and server.
+
+- **When adding new API types:** Add them to `src/shared/types.ts`
+- **Frontend access:** `src/client/lib/api.ts` re-exports shared types for convenience
+- **Server access:** Routes can import directly from `../../shared/types`
+- **Validation schemas** remain in `src/server/lib/validation.ts` (Zod)
 
 ## Key Features
 
@@ -154,7 +163,7 @@ VITE_FIREBASE_PROJECT_ID=your-project
    - Add a migration in `src/server/db/migrations/`
    - Update the row interface and `formatX()` function in the route
    - Update validation schema in `src/server/lib/validation.ts`
-   - Update frontend TypeScript interface in `src/client/lib/api.ts`
+   - Update shared types in `src/shared/types.ts`
    - Update both CREATE and UPDATE handlers
 
 ## Workflow

@@ -1,31 +1,31 @@
 import { auth } from './firebase'
 
 import type {
-  Template, Mail, Block, Draft, Recipient,
-  Campaign, CampaignDetail, SendLog, CampaignAnalytics,
-  SenderAccount, GmailConfig, SmtpConfig,
+  Template, Mail, Block, Draft,
+  Campaign, CampaignDetail, CampaignAnalytics,
+  SenderAccount,
   QueueItem, AppSettings,
-  CertificateTemplate, LogoConfig, SignatoryConfig, CertificateConfig, CertificateData, GeneratedCertificate, GenerateResponse,
+  CertificateTemplate, LogoConfig, SignatoryConfig, CertificateConfig, CertificateData, GenerateResponse,
   Media, MediaUsage, SuppressionItem,
   Contact, ContactList, PaginatedResponse,
-  GoogleSheetsStatus, GoogleSheetsCredentials, SpreadsheetMetadata, SpreadsheetPreview, ColumnMapping, SyncConfig, SyncResult, SheetSync,
-  SequenceStep, Sequence, SequenceAction, SequenceEnrollment, SequenceListItem, GenerateSequenceRequest, GeneratedSequenceEmail, GenerateSequenceResponse,
-  LLMProviderId, LLMModelInfo, LLMProviderInfo, StoredLLMProvider, LLMSettings,
-  User, AdminUser, UsersListResponse, AnalyticsOverview, UserAnalytics, EmailAnalytics, StorageAnalytics,
+  GoogleSheetsStatus, GoogleSheetsCredentials, SpreadsheetMetadata, SpreadsheetPreview, SyncConfig, SyncResult, SheetSync,
+  SequenceStep, Sequence, SequenceAction, SequenceEnrollment, SequenceListItem, GenerateSequenceRequest, GenerateSequenceResponse,
+  LLMProviderId, LLMProviderInfo, LLMSettings,
+  User, AdminUser, UsersListResponse, AnalyticsOverview,
 } from '../../shared/types'
 
 export type {
-  Template, Mail, Block, Draft, Recipient,
-  Campaign, CampaignDetail, SendLog, CampaignAnalytics,
-  SenderAccount, GmailConfig, SmtpConfig,
+  Template, Mail, Block, Draft,
+  Campaign, CampaignDetail, CampaignAnalytics,
+  SenderAccount,
   QueueItem, AppSettings,
-  CertificateTemplate, LogoConfig, SignatoryConfig, CertificateConfig, CertificateData, GeneratedCertificate, GenerateResponse,
+  CertificateTemplate, LogoConfig, SignatoryConfig, CertificateConfig, CertificateData, GenerateResponse,
   Media, MediaUsage, SuppressionItem,
   Contact, ContactList, PaginatedResponse,
-  GoogleSheetsStatus, GoogleSheetsCredentials, SpreadsheetMetadata, SpreadsheetPreview, ColumnMapping, SyncConfig, SyncResult, SheetSync,
-  SequenceStep, Sequence, SequenceAction, SequenceEnrollment, SequenceListItem, GenerateSequenceRequest, GeneratedSequenceEmail, GenerateSequenceResponse,
-  LLMProviderId, LLMModelInfo, LLMProviderInfo, StoredLLMProvider, LLMSettings,
-  User, AdminUser, UsersListResponse, AnalyticsOverview, UserAnalytics, EmailAnalytics, StorageAnalytics,
+  GoogleSheetsStatus, GoogleSheetsCredentials, SpreadsheetMetadata, SpreadsheetPreview, SyncConfig, SyncResult, SheetSync,
+  SequenceStep, Sequence, SequenceAction, SequenceEnrollment, SequenceListItem, GenerateSequenceRequest, GenerateSequenceResponse,
+  LLMProviderId, LLMProviderInfo, LLMSettings,
+  User, AdminUser, UsersListResponse, AnalyticsOverview,
 } from '../../shared/types'
 
 const API_BASE = '/api'
