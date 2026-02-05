@@ -19,7 +19,7 @@ interface UserRow {
 router.get('/', async (req, res) => {
   try {
     const page = parseInt(req.query.page as string) || 1
-    const limit = parseInt(req.query.limit as string) || 20
+    const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 20, 1), 100)
     const search = req.query.search as string || ''
     const offset = (page - 1) * limit
 
@@ -113,6 +113,22 @@ router.patch('/:id', async (req, res) => {
       return res.status(400).json({ error: 'No updates provided' })
     }
 
+    // Prevent self-demotion
+    if (id === req.userId && isAdmin === false) {
+      return res.status(400).json({ error: 'Cannot remove your own admin privileges' })
+    }
+
+    // Prevent removing last admin
+    if (isAdmin === false) {
+      const adminCount = await sql<{count: string}[]>`SELECT COUNT(*) as count FROM users WHERE is_admin = true`
+      if (parseInt(adminCount[0].count) <= 1) {
+        const targetUser = await sql<{is_admin: boolean}[]>`SELECT is_admin FROM users WHERE id = ${id}`
+        if (targetUser[0]?.is_admin) {
+          return res.status(400).json({ error: 'Cannot remove the last admin' })
+        }
+      }
+    }
+
     const result = await sql<UserRow[]>`
       UPDATE users 
       SET name = COALESCE(${name ?? null}, name),
@@ -141,6 +157,11 @@ router.patch('/:id', async (req, res) => {
 router.post('/:id/suspend', async (req, res) => {
   try {
     const { id } = req.params
+
+    // Prevent self-suspension
+    if (id === req.userId) {
+      return res.status(400).json({ error: 'Cannot suspend your own account' })
+    }
     
     const users = await sql<UserRow[]>`SELECT * FROM users WHERE id = ${id}`
     if (users.length === 0) {
