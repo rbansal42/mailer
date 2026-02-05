@@ -57,21 +57,6 @@ async function request<T>(
 }
 
 export const api = {
-  // Auth
-  login: (password: string) =>
-    request<{ token: string }>('/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ password }),
-    }),
-
-  setup: (password: string) =>
-    request<{ token: string }>('/auth/setup', {
-      method: 'POST',
-      body: JSON.stringify({ password }),
-    }),
-
-  checkSetup: () => request<{ needsSetup: boolean }>('/auth/check'),
-
   // Templates
   getTemplates: () => request<Template[]>('/templates'),
   getTemplate: (id: number) => request<Template>(`/templates/${id}`),
