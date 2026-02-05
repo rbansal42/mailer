@@ -273,13 +273,13 @@ draftsRouter.post('/:id/duplicate', async (req, res) => {
 // Delete draft
 draftsRouter.delete('/:id', async (req, res) => {
   try {
-    const existing = await queryOne<{ id: number }>('SELECT id FROM drafts WHERE id = ?', [req.params.id])
+    const existing = await queryOne<{ id: number }>('SELECT id FROM drafts WHERE id = ? AND user_id = ?', [req.params.id, req.userId])
     if (!existing) {
       logger.warn('Draft not found for deletion', { requestId: (req as any).requestId, draftId: req.params.id })
       return res.status(404).json({ error: 'Draft not found' })
     }
 
-    await execute('DELETE FROM drafts WHERE id = ?', [req.params.id])
+    await execute('DELETE FROM drafts WHERE id = ? AND user_id = ?', [req.params.id, req.userId])
     logger.info('Draft deleted', { requestId: (req as any).requestId, draftId: req.params.id })
     res.status(204).send()
   } catch (error) {
