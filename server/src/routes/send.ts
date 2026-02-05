@@ -178,11 +178,11 @@ sendRouter.get('/', async (req: Request, res: Response) => {
   }
   async function getBlocks(): Promise<{ blocks: BlockInput[], sourceId: number, sourceType: 'template' | 'mail' } | null> {
     if (validatedMailId) {
-      const mail = await queryOne<MailRow>('SELECT * FROM mails WHERE id = ?', [validatedMailId])
+      const mail = await queryOne<MailRow>('SELECT * FROM mails WHERE id = ? AND user_id = ?', [validatedMailId, req.userId])
       if (!mail) return null
       return { blocks: safeJsonParse(mail.blocks, []) as BlockInput[], sourceId: validatedMailId, sourceType: 'mail' }
     } else if (validatedTemplateId) {
-      const template = await queryOne<TemplateRow>('SELECT * FROM templates WHERE id = ?', [validatedTemplateId])
+      const template = await queryOne<TemplateRow>('SELECT * FROM templates WHERE id = ? AND (user_id = ? OR is_system = true)', [validatedTemplateId, req.userId])
       if (!template) return null
       return { blocks: safeJsonParse(template.blocks, []) as BlockInput[], sourceId: validatedTemplateId, sourceType: 'template' }
     }
@@ -201,9 +201,9 @@ sendRouter.get('/', async (req: Request, res: Response) => {
 
     // Create scheduled campaign (store template_id for backwards compatibility, or mail reference)
     const result = await execute(`
-      INSERT INTO campaigns (name, template_id, subject, total_recipients, cc, bcc, status, scheduled_for)
-      VALUES (?, ?, ?, ?, ?, ?, 'scheduled', ?) RETURNING id
-    `, [campaignName || 'Scheduled Campaign', validatedTemplateId ?? validatedMailId ?? null, validatedSubject, recipients.length, JSON.stringify(cc || []), JSON.stringify(bcc || []), scheduledFor])
+      INSERT INTO campaigns (name, template_id, subject, total_recipients, cc, bcc, status, scheduled_for, user_id)
+      VALUES (?, ?, ?, ?, ?, ?, 'scheduled', ?, ?) RETURNING id
+    `, [campaignName || 'Scheduled Campaign', validatedTemplateId ?? validatedMailId ?? null, validatedSubject, recipients.length, JSON.stringify(cc || []), JSON.stringify(bcc || []), scheduledFor, req.userId])
 
     const campaignId = Number(result.lastInsertRowid)
 
@@ -263,9 +263,9 @@ sendRouter.get('/', async (req: Request, res: Response) => {
 
     // Create campaign record with cc/bcc
     const result = await execute(
-      `INSERT INTO campaigns (name, template_id, subject, total_recipients, cc, bcc, status, started_at)
-       VALUES (?, ?, ?, ?, ?, ?, 'sending', CURRENT_TIMESTAMP) RETURNING id`,
-      [campaignName || 'Unnamed', validatedTemplateId ?? null, validatedSubject, recipients.length, JSON.stringify(cc || []), JSON.stringify(bcc || [])]
+      `INSERT INTO campaigns (name, template_id, subject, total_recipients, cc, bcc, status, started_at, user_id)
+       VALUES (?, ?, ?, ?, ?, ?, 'sending', CURRENT_TIMESTAMP, ?) RETURNING id`,
+      [campaignName || 'Unnamed', validatedTemplateId ?? null, validatedSubject, recipients.length, JSON.stringify(cc || []), JSON.stringify(bcc || []), req.userId]
     )
     const campaignId = Number(result.lastInsertRowid)
 
