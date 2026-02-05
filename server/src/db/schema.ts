@@ -434,6 +434,22 @@ export async function createIndexes() {
   await execute('CREATE INDEX IF NOT EXISTS idx_sequence_steps_branch ON sequence_steps(branch_id)')
   await execute('CREATE INDEX IF NOT EXISTS idx_users_firebase_uid ON users(firebase_uid)')
   await execute('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)')
+
+  // User management indexes
+  await execute('CREATE INDEX IF NOT EXISTS idx_templates_user_id ON templates(user_id)')
+  await execute('CREATE INDEX IF NOT EXISTS idx_sender_accounts_user_id ON sender_accounts(user_id)')
+  await execute('CREATE INDEX IF NOT EXISTS idx_mails_user_id ON mails(user_id)')
+  await execute('CREATE INDEX IF NOT EXISTS idx_certificate_configs_user_id ON certificate_configs(user_id)')
+  await execute('CREATE INDEX IF NOT EXISTS idx_generated_certificates_user_id ON generated_certificates(user_id)')
+  await execute('CREATE INDEX IF NOT EXISTS idx_media_user_id ON media(user_id)')
+  await execute('CREATE INDEX IF NOT EXISTS idx_campaigns_user_id ON campaigns(user_id)')
+  await execute('CREATE INDEX IF NOT EXISTS idx_recurring_campaigns_user_id ON recurring_campaigns(user_id)')
+  await execute('CREATE INDEX IF NOT EXISTS idx_sequences_user_id ON sequences(user_id)')
+  await execute('CREATE INDEX IF NOT EXISTS idx_contacts_user_id ON contacts(user_id)')
+  await execute('CREATE INDEX IF NOT EXISTS idx_lists_user_id ON lists(user_id)')
+  await execute('CREATE INDEX IF NOT EXISTS idx_drafts_user_id ON drafts(user_id)')
+  await execute('CREATE INDEX IF NOT EXISTS idx_attachments_user_id ON attachments(user_id)')
+  await execute('CREATE INDEX IF NOT EXISTS idx_settings_user_id ON settings(user_id)')
 }
 
 // Initialize default settings
