@@ -775,20 +775,21 @@ certificatesRouter.post('/generate/campaign', async (req, res) => {
             ]
           )
           
-          // Save certificate record
-          await tx.unsafe(
-            `INSERT INTO generated_certificates 
-             (certificate_id, config_id, recipient_name, recipient_email, data, pdf_path)
-             VALUES ($1, $2, $3, $4, $5, $6)`,
-            [
-              certificateId,
-              configId,
-              name,
-              email,
-              JSON.stringify(dataWithId),
-              filepath,
-            ]
-          )
+        // Save certificate record
+            await tx.unsafe(
+              `INSERT INTO generated_certificates 
+               (certificate_id, config_id, recipient_name, recipient_email, data, pdf_path, user_id)
+               VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+              [
+                certificateId,
+                configId,
+                name,
+                email,
+                JSON.stringify(dataWithId),
+                filepath,
+                req.userId,
+              ]
+            )
           
           results.push({
             email: recipientData.email!,
