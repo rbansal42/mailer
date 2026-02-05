@@ -64,14 +64,14 @@ function formatSendLog(row: SendLogRow) {
 }
 
 // List campaigns
-campaignsRouter.get('/', async (_, res) => {
-  const rows = await queryAll<CampaignRow>('SELECT * FROM campaigns ORDER BY created_at DESC')
+campaignsRouter.get('/', async (req, res) => {
+  const rows = await queryAll<CampaignRow>('SELECT * FROM campaigns WHERE user_id = ? ORDER BY created_at DESC', [req.userId])
   res.json(rows.map(formatCampaign))
 })
 
 // Get campaign with logs
 campaignsRouter.get('/:id', async (req, res) => {
-  const campaign = await queryOne<CampaignRow>('SELECT * FROM campaigns WHERE id = ?', [req.params.id])
+  const campaign = await queryOne<CampaignRow>('SELECT * FROM campaigns WHERE id = ? AND user_id = ?', [req.params.id, req.userId])
   if (!campaign) {
     return res.status(404).json({ message: 'Campaign not found' })
   }
@@ -94,8 +94,8 @@ campaignsRouter.post('/:id/duplicate', async (req, res) => {
     }
 
     const campaign = await queryOne<CampaignRow>(
-      'SELECT * FROM campaigns WHERE id = ?',
-      [id]
+      'SELECT * FROM campaigns WHERE id = ? AND user_id = ?',
+      [id, req.userId]
     )
 
     if (!campaign) {
@@ -103,7 +103,7 @@ campaignsRouter.post('/:id/duplicate', async (req, res) => {
       return
     }
 
-    const newName = await getUniqueDraftName(`Copy of ${campaign.name || 'Untitled'}`)
+    const newName = await getUniqueDraftName(`Copy of ${campaign.name || 'Untitled'}`, req.userId)
 
     // Determine if the stored template_id is actually a template or mail
     // Campaigns store either template ID or mail ID in the template_id column
@@ -111,8 +111,11 @@ campaignsRouter.post('/:id/duplicate', async (req, res) => {
     let mailId: number | null = null
 
     if (campaign.template_id) {
-      // Check if it's a template first
-      const template = await queryOne<{ id: number }>('SELECT id FROM templates WHERE id = ?', [campaign.template_id])
+      // Check if it's a template first (user's own or system template)
+      const template = await queryOne<{ id: number }>(
+        'SELECT id FROM templates WHERE id = ? AND (user_id = ? OR is_system = true)',
+        [campaign.template_id, req.userId]
+      )
       if (template) {
         templateId = campaign.template_id
       } else {
@@ -122,8 +125,8 @@ campaignsRouter.post('/:id/duplicate', async (req, res) => {
     }
 
     const result = await execute(
-      `INSERT INTO drafts (name, template_id, mail_id, subject, cc, bcc)
-       VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
+      `INSERT INTO drafts (name, template_id, mail_id, subject, cc, bcc, user_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id`,
       [
         newName,
         templateId,
@@ -131,6 +134,7 @@ campaignsRouter.post('/:id/duplicate', async (req, res) => {
         campaign.subject ?? null,
         campaign.cc ? JSON.stringify(campaign.cc) : null,
         campaign.bcc ? JSON.stringify(campaign.bcc) : null,
+        req.userId,
       ]
     )
 
@@ -143,6 +147,6 @@ campaignsRouter.post('/:id/duplicate', async (req, res) => {
 
 // Delete campaign
 campaignsRouter.delete('/:id', async (req, res) => {
-  await execute('DELETE FROM campaigns WHERE id = ?', [req.params.id])
+  await execute('DELETE FROM campaigns WHERE id = ? AND user_id = ?', [req.params.id, req.userId])
   res.status(204).send()
 })

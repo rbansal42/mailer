@@ -12,6 +12,7 @@ import {
   getRecipientAttachment,
   cleanupTempFiles,
   createTempDir,
+  verifyAttachmentOwnership,
   type Recipient,
   type MatchConfig,
 } from '../services/attachment-matcher'
@@ -127,6 +128,7 @@ const upload = multer({
 
 interface AttachmentRow {
   id: number
+  user_id: string | null
   campaign_id: number | null
   draft_id: number | null
   filename: string
@@ -236,7 +238,7 @@ attachmentsRouter.post('/upload', (req, res, next) => {
     }
 
     // Store attachments in the database
-    const attachmentIds = await storeAttachments(filesToStore, draftId, campaignId)
+    const attachmentIds = await storeAttachments(filesToStore, draftId, campaignId, req.userId)
 
     // Clean up temp directories (files have been copied to attachments dir)
     for (const dir of tempDirs) {
@@ -294,6 +296,13 @@ attachmentsRouter.post('/match', async (req, res) => {
   }
 
   try {
+    // Verify user owns all the attachments
+    const ownershipValid = await verifyAttachmentOwnership(attachmentIds, req.userId)
+    if (!ownershipValid) {
+      logger.warn('Attachment ownership verification failed', { requestId, attachmentIds })
+      return res.status(403).json({ error: 'Access denied to one or more attachments' })
+    }
+
     const results = await matchAttachments(attachmentIds, recipients, config, draftId, campaignId)
     const summary = getMatchSummary(results)
 
@@ -326,8 +335,8 @@ attachmentsRouter.get('/draft/:draftId', async (req, res) => {
 
   try {
     const attachments = await queryAll<AttachmentRow>(
-      'SELECT * FROM attachments WHERE draft_id = ? ORDER BY created_at DESC',
-      [draftId]
+      'SELECT * FROM attachments WHERE draft_id = ? AND user_id = ? ORDER BY created_at DESC',
+      [draftId, req.userId]
     )
 
     logger.debug('Retrieved attachments for draft', {
@@ -402,14 +411,14 @@ attachmentsRouter.delete('/:id', async (req, res) => {
   }
 
   try {
-    // Get the attachment to find the file path
+    // Get the attachment to find the file path (verify ownership)
     const attachment = await queryOne<AttachmentRow>(
-      'SELECT * FROM attachments WHERE id = ?',
-      [attachmentId]
+      'SELECT * FROM attachments WHERE id = ? AND user_id = ?',
+      [attachmentId, req.userId]
     )
 
     if (!attachment) {
-      logger.warn('Attachment not found', { requestId, attachmentId })
+      logger.warn('Attachment not found or access denied', { requestId, attachmentId })
       return res.status(404).json({ error: 'Attachment not found' })
     }
 
@@ -427,8 +436,8 @@ attachmentsRouter.delete('/:id', async (req, res) => {
     // Delete recipient_attachments records
     await execute('DELETE FROM recipient_attachments WHERE attachment_id = ?', [attachmentId])
 
-    // Delete the attachment record
-    await execute('DELETE FROM attachments WHERE id = ?', [attachmentId])
+    // Delete the attachment record (user_id already verified above)
+    await execute('DELETE FROM attachments WHERE id = ? AND user_id = ?', [attachmentId, req.userId])
 
     logger.info('Attachment deleted', { requestId, attachmentId })
     res.status(204).send()

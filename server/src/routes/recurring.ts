@@ -24,9 +24,12 @@ interface RecurringCampaignRow {
 }
 
 // GET / - List all recurring campaigns
-recurringRouter.get('/', async (_req: Request, res: Response) => {
+recurringRouter.get('/', async (req: Request, res: Response) => {
   try {
-    const campaigns = await queryAll<RecurringCampaignRow>('SELECT * FROM recurring_campaigns ORDER BY created_at DESC')
+    const campaigns = await queryAll<RecurringCampaignRow>(
+      'SELECT * FROM recurring_campaigns WHERE user_id = ? ORDER BY created_at DESC',
+      [req.userId]
+    )
 
     res.json(campaigns.map(c => ({
       ...c,
@@ -44,7 +47,10 @@ recurringRouter.get('/', async (_req: Request, res: Response) => {
 recurringRouter.get('/:id', async (req: Request<{ id: string }>, res: Response) => {
   try {
     const id = parseInt(req.params.id, 10)
-    const campaign = await queryOne<RecurringCampaignRow>('SELECT * FROM recurring_campaigns WHERE id = ?', [id])
+    const campaign = await queryOne<RecurringCampaignRow>(
+      'SELECT * FROM recurring_campaigns WHERE id = ? AND user_id = ?',
+      [id, req.userId]
+    )
 
     if (!campaign) {
       res.status(404).json({ error: 'Recurring campaign not found' })
@@ -97,8 +103,8 @@ recurringRouter.post('/', async (req: Request, res: Response) => {
 
     const result = await execute(
       `INSERT INTO recurring_campaigns 
-       (name, template_id, subject, recipient_source, recipient_data, schedule_cron, timezone, cc, bcc, enabled, next_run_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+       (name, template_id, subject, recipient_source, recipient_data, schedule_cron, timezone, cc, bcc, enabled, next_run_at, user_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
       [
         name,
         templateId || null,
@@ -110,7 +116,8 @@ recurringRouter.post('/', async (req: Request, res: Response) => {
         JSON.stringify(cc || []),
         JSON.stringify(bcc || []),
         enabled !== false,
-        nextRunAt.toISOString()
+        nextRunAt.toISOString(),
+        req.userId
       ]
     )
 
@@ -163,8 +170,8 @@ recurringRouter.put('/:id', async (req: Request<{ id: string }>, res: Response) 
       return
     }
 
-    params.push(id)
-    await execute(`UPDATE recurring_campaigns SET ${updates.join(', ')} WHERE id = ?`, params)
+    params.push(id, req.userId)
+    await execute(`UPDATE recurring_campaigns SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`, params)
 
     logger.info('Updated recurring campaign', { service: 'recurring', campaignId: id })
     res.json({ message: 'Recurring campaign updated' })
@@ -178,7 +185,7 @@ recurringRouter.put('/:id', async (req: Request<{ id: string }>, res: Response) 
 recurringRouter.delete('/:id', async (req: Request<{ id: string }>, res: Response) => {
   try {
     const id = parseInt(req.params.id, 10)
-    await execute('DELETE FROM recurring_campaigns WHERE id = ?', [id])
+    await execute('DELETE FROM recurring_campaigns WHERE id = ? AND user_id = ?', [id, req.userId])
     
     logger.info('Deleted recurring campaign', { service: 'recurring', campaignId: id })
     res.json({ message: 'Recurring campaign deleted' })
@@ -195,8 +202,8 @@ recurringRouter.post('/:id/run', async (req: Request<{ id: string }>, res: Respo
     
     // Update next_run_at to now to trigger immediate execution
     await execute(
-      `UPDATE recurring_campaigns SET next_run_at = CURRENT_TIMESTAMP WHERE id = ?`,
-      [id]
+      `UPDATE recurring_campaigns SET next_run_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?`,
+      [id, req.userId]
     )
 
     // Process immediately

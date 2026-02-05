@@ -169,10 +169,11 @@ certificatesRouter.get('/templates', (_, res) => {
 })
 
 // GET /configs - List saved certificate configs
-certificatesRouter.get('/configs', async (_, res) => {
+certificatesRouter.get('/configs', async (req, res) => {
   logger.info('Listing certificate configs', { service: 'certificates' })
   const rows = await queryAll<CertificateConfigRow>(
-    'SELECT * FROM certificate_configs ORDER BY updated_at DESC'
+    'SELECT * FROM certificate_configs WHERE user_id = ? ORDER BY updated_at DESC',
+    [req.userId]
   )
   res.json(rows.map(formatConfig))
 })
@@ -183,8 +184,8 @@ certificatesRouter.get('/configs/:id', async (req, res) => {
   logger.info('Getting certificate config', { service: 'certificates', configId: id })
   
   const row = await queryOne<CertificateConfigRow>(
-    'SELECT * FROM certificate_configs WHERE id = ?',
-    [id]
+    'SELECT * FROM certificate_configs WHERE id = ? AND user_id = ?',
+    [id, req.userId]
   )
   
   if (!row) {
@@ -226,8 +227,8 @@ certificatesRouter.post('/configs', async (req, res) => {
   
   const result = await execute(
     `INSERT INTO certificate_configs 
-     (name, template_id, colors, logos, signatories, title_text, subtitle_text, description_template)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+     (name, template_id, colors, logos, signatories, title_text, subtitle_text, description_template, user_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
     [
       name,
       templateId,
@@ -237,6 +238,7 @@ certificatesRouter.post('/configs', async (req, res) => {
       titleText || 'CERTIFICATE',
       subtitleText || 'of Participation',
       descriptionTemplate || 'For participating in {{title}} on {{date}}.',
+      req.userId,
     ]
   )
   
@@ -315,12 +317,13 @@ certificatesRouter.put('/configs/:id', async (req, res) => {
   
   updates.push('updated_at = CURRENT_TIMESTAMP')
   values.push(id)
+  values.push(req.userId)
   
-  await execute(`UPDATE certificate_configs SET ${updates.join(', ')} WHERE id = ?`, values)
+  await execute(`UPDATE certificate_configs SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`, values)
   
   const row = await queryOne<CertificateConfigRow>(
-    'SELECT * FROM certificate_configs WHERE id = ?',
-    [id]
+    'SELECT * FROM certificate_configs WHERE id = ? AND user_id = ?',
+    [id, req.userId]
   )
   
   if (!row) {
@@ -337,7 +340,7 @@ certificatesRouter.delete('/configs/:id', async (req, res) => {
   const { id } = req.params
   logger.info('Deleting certificate config', { service: 'certificates', configId: id })
   
-  await execute('DELETE FROM certificate_configs WHERE id = ?', [id])
+  await execute('DELETE FROM certificate_configs WHERE id = ? AND user_id = ?', [id, req.userId])
   
   logger.info('Certificate config deleted', { service: 'certificates', configId: id })
   res.status(204).send()
@@ -355,8 +358,8 @@ certificatesRouter.post('/preview', async (req, res) => {
   
   try {
     const configRow = await queryOne<CertificateConfigRow>(
-      'SELECT * FROM certificate_configs WHERE id = ?',
-      [configId]
+      'SELECT * FROM certificate_configs WHERE id = ? AND user_id = ?',
+      [configId, req.userId]
     )
     
     if (!configRow) {
@@ -467,8 +470,8 @@ certificatesRouter.post('/generate', async (req, res) => {
   
   try {
     const configRow = await queryOne<CertificateConfigRow>(
-      'SELECT * FROM certificate_configs WHERE id = ?',
-      [configId]
+      'SELECT * FROM certificate_configs WHERE id = ? AND user_id = ?',
+      [configId, req.userId]
     )
     
     if (!configRow) {
@@ -505,14 +508,15 @@ certificatesRouter.post('/generate', async (req, res) => {
         const dataWithId = { ...recipientData, certificate_id: certificateId }
         await tx.unsafe(
           `INSERT INTO generated_certificates 
-           (certificate_id, config_id, recipient_name, recipient_email, data)
-           VALUES ($1, $2, $3, $4, $5)`,
+           (certificate_id, config_id, recipient_name, recipient_email, data, user_id)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
           [
             certificateId,
             configId,
             recipientData.name,
             recipientData.email || null,
             JSON.stringify(dataWithId),
+            req.userId,
           ]
         )
         
@@ -561,8 +565,8 @@ certificatesRouter.post('/generate/zip', async (req, res) => {
   
   try {
     const configRow = await queryOne<CertificateConfigRow>(
-      'SELECT * FROM certificate_configs WHERE id = ?',
-      [configId]
+      'SELECT * FROM certificate_configs WHERE id = ? AND user_id = ?',
+      [configId, req.userId]
     )
     
     if (!configRow) {
@@ -623,14 +627,15 @@ certificatesRouter.post('/generate/zip', async (req, res) => {
         const dataWithId = { ...recipientData, certificate_id: certificateId }
         await tx.unsafe(
           `INSERT INTO generated_certificates 
-           (certificate_id, config_id, recipient_name, recipient_email, data)
-           VALUES ($1, $2, $3, $4, $5)`,
+           (certificate_id, config_id, recipient_name, recipient_email, data, user_id)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
           [
             certificateId,
             configId,
             recipientData.name,
             recipientData.email || null,
             JSON.stringify(dataWithId),
+            req.userId,
           ]
         )
       }
@@ -690,8 +695,8 @@ certificatesRouter.post('/generate/campaign', async (req, res) => {
   
   try {
     const configRow = await queryOne<CertificateConfigRow>(
-      'SELECT * FROM certificate_configs WHERE id = ?',
-      [configId]
+      'SELECT * FROM certificate_configs WHERE id = ? AND user_id = ?',
+      [configId, req.userId]
     )
     
     if (!configRow) {
@@ -770,20 +775,21 @@ certificatesRouter.post('/generate/campaign', async (req, res) => {
             ]
           )
           
-          // Save certificate record
-          await tx.unsafe(
-            `INSERT INTO generated_certificates 
-             (certificate_id, config_id, recipient_name, recipient_email, data, pdf_path)
-             VALUES ($1, $2, $3, $4, $5, $6)`,
-            [
-              certificateId,
-              configId,
-              name,
-              email,
-              JSON.stringify(dataWithId),
-              filepath,
-            ]
-          )
+        // Save certificate record
+            await tx.unsafe(
+              `INSERT INTO generated_certificates 
+               (certificate_id, config_id, recipient_name, recipient_email, data, pdf_path, user_id)
+               VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+              [
+                certificateId,
+                configId,
+                name,
+                email,
+                JSON.stringify(dataWithId),
+                filepath,
+                req.userId,
+              ]
+            )
           
           results.push({
             email: recipientData.email!,
