@@ -22,6 +22,7 @@ const Settings = lazy(() => import('./pages/Settings'))
 const Certificates = lazy(() => import('./pages/Certificates'))
 const SuppressionList = lazy(() => import('./pages/SuppressionList'))
 const Sequences = lazy(() => import('./pages/Sequences'))
+const AccountSettings = lazy(() => import('./pages/AccountSettings'))
 
 // Error Boundary for catching lazy loading failures
 interface ErrorBoundaryState {
@@ -123,6 +124,7 @@ export default function App() {
           <Route path="settings" element={<LazyRoute component={Settings} />} />
           <Route path="suppression" element={<LazyRoute component={SuppressionList} />} />
           <Route path="sequences" element={<LazyRoute component={Sequences} />} />
+          <Route path="settings/account" element={<LazyRoute component={AccountSettings} />} />
         </Route>
       </Routes>
       <Toaster position="top-right" richColors />
