@@ -391,6 +391,20 @@ export async function createTables() {
       UNIQUE(list_id, spreadsheet_id)
     )
   `)
+
+  // Users table for multi-tenant user management
+  await execute(`
+    CREATE TABLE IF NOT EXISTS users (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      firebase_uid TEXT UNIQUE NOT NULL,
+      email TEXT NOT NULL,
+      name TEXT NOT NULL,
+      is_admin BOOLEAN DEFAULT false,
+      avatar_url TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `)
 }
 
 // Create all database indexes
@@ -418,6 +432,8 @@ export async function createIndexes() {
   await execute('CREATE INDEX IF NOT EXISTS idx_sequence_actions_enrollment ON sequence_actions(enrollment_id)')
   await execute('CREATE INDEX IF NOT EXISTS idx_sequence_actions_step ON sequence_actions(step_id)')
   await execute('CREATE INDEX IF NOT EXISTS idx_sequence_steps_branch ON sequence_steps(branch_id)')
+  await execute('CREATE INDEX IF NOT EXISTS idx_users_firebase_uid ON users(firebase_uid)')
+  await execute('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)')
 }
 
 // Initialize default settings

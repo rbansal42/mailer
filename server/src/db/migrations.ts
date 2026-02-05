@@ -33,6 +33,7 @@ const VALID_TABLES = new Set([
   'suppression_list',
   'bounces',
   'google_sheets_syncs',
+  'users',
 ])
 
 // Migration helper - add columns if they don't exist
