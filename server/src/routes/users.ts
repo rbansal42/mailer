@@ -48,6 +48,18 @@ router.patch('/me', async (req, res) => {
 // DELETE /api/users/me - Delete account and all data
 router.delete('/me', async (req, res) => {
   try {
+    // Prevent last admin from self-deleting
+    if (req.user.isAdmin) {
+      const adminCount = await sql<{count: string}[]>`
+        SELECT COUNT(*) as count FROM users WHERE is_admin = true
+      `
+      if (parseInt(adminCount[0].count) <= 1) {
+        return res.status(400).json({ 
+          error: 'Cannot delete the last admin account. Promote another user to admin first.' 
+        })
+      }
+    }
+
     // Delete from Firebase first - if this fails, we don't want to delete locally
     if (firebaseAuth) {
       await firebaseAuth.deleteUser(req.user.firebaseUid)
