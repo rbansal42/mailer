@@ -29,9 +29,6 @@ import {
   SequenceStep,
   SequenceEnrollment,
   GenerateSequenceResponse,
-  getSequence, 
-  getSequenceEnrollments,
-  createBranchPoint,
   sequences as sequencesApi
 } from '@/lib/api'
 import { BRANCH_ACTION, BRANCH_DEFAULT } from '../../shared/constants'
@@ -63,7 +60,7 @@ export default function Sequences() {
 
   const handleEditSequence = async (id: number) => {
     try {
-      const sequence = await getSequence(id)
+      const sequence = await sequencesApi.get(id)
       setEditingSequence(sequence)
     } catch {
       toast.error('Failed to load sequence')
@@ -385,7 +382,7 @@ function SequenceEditor({ sequence, onBack, onUpdate }: SequenceEditorProps) {
 
   const refreshSequence = async () => {
     try {
-      const updated = await getSequence(sequence.id)
+      const updated = await sequencesApi.get(sequence.id)
       onUpdate(updated)
     } catch {
       toast.error('Failed to refresh sequence')
@@ -399,9 +396,9 @@ function SequenceEditor({ sequence, onBack, onUpdate }: SequenceEditorProps) {
   }
 
   const addBranchPointMutation = useMutation({
-    mutationFn: (afterStep: number) => createBranchPoint(sequence.id, afterStep, 0),
+    mutationFn: (afterStep: number) => sequencesApi.createBranchPoint(sequence.id, afterStep, 0),
     onSuccess: async () => {
-      const updated = await getSequence(sequence.id)
+      const updated = await sequencesApi.get(sequence.id)
       onUpdate(updated)
       queryClient.invalidateQueries({ queryKey: ['sequences'] })
       toast.success('Branch point added')
@@ -664,7 +661,7 @@ function StepDialog({ open, onOpenChange, sequenceId, branchId, step, onSaved }:
 function SequencePathStats({ sequenceId }: { sequenceId: number }) {
   const { data: enrollments } = useQuery({
     queryKey: ['sequence-enrollments', sequenceId],
-    queryFn: () => getSequenceEnrollments(sequenceId)
+    queryFn: () => sequencesApi.getEnrollments(sequenceId)
   })
 
   if (!enrollments || enrollments.length === 0) return null

@@ -426,34 +426,7 @@ export const googleSheetsApi = {
     }),
 }
 
-// Sequence API functions
-export function getSequence(id: number): Promise<Sequence> {
-  return request<Sequence>(`/sequences/${id}`)
-}
-
-export function addSequenceStep(sequenceId: number, step: Partial<SequenceStep>): Promise<SequenceStep> {
-  return request<SequenceStep>(`/sequences/${sequenceId}/steps`, {
-    method: 'POST',
-    body: JSON.stringify(step)
-  })
-}
-
-export function createBranchPoint(sequenceId: number, afterStep: number, delayHours: number = 0): Promise<void> {
-  return request<void>(`/sequences/${sequenceId}/branch-point`, {
-    method: 'POST',
-    body: JSON.stringify({ afterStep, delayBeforeSwitch: delayHours })
-  })
-}
-
-export function getSequenceActions(sequenceId: number): Promise<SequenceAction[]> {
-  return request<SequenceAction[]>(`/sequences/${sequenceId}/actions`)
-}
-
-export function getSequenceEnrollments(sequenceId: number): Promise<SequenceEnrollment[]> {
-  return request<SequenceEnrollment[]>(`/sequences/${sequenceId}/enrollments`)
-}
-
-// Full sequences API
+// Sequences API
 export const sequences = {
   list: () => request<SequenceListItem[]>('/sequences'),
   
@@ -507,6 +480,18 @@ export const sequences = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+  
+  createBranchPoint: (sequenceId: number, afterStep: number, delayHours: number = 0) =>
+    request<void>(`/sequences/${sequenceId}/branch-point`, {
+      method: 'POST',
+      body: JSON.stringify({ afterStep, delayBeforeSwitch: delayHours }),
+    }),
+  
+  getActions: (sequenceId: number) =>
+    request<SequenceAction[]>(`/sequences/${sequenceId}/actions`),
+  
+  getEnrollments: (sequenceId: number) =>
+    request<SequenceEnrollment[]>(`/sequences/${sequenceId}/enrollments`),
 }
 
 // Admin API functions
