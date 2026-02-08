@@ -1,4 +1,3 @@
-// server/src/services/google-sheets.ts
 import { google } from 'googleapis'
 
 type OAuth2Client = InstanceType<typeof google.auth.OAuth2>

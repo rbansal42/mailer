@@ -1,4 +1,3 @@
-// server/src/services/circuit-breaker.test.ts
 import { describe, test, expect, mock, beforeEach, afterEach } from 'bun:test'
 
 // Mock return values - using variables allows dynamic control per test

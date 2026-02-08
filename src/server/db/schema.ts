@@ -431,6 +431,7 @@ export async function createIndexes() {
   await execute('CREATE INDEX IF NOT EXISTS idx_google_sheets_syncs_list ON google_sheets_syncs(list_id)')
   await execute('CREATE INDEX IF NOT EXISTS idx_sequence_actions_enrollment ON sequence_actions(enrollment_id)')
   await execute('CREATE INDEX IF NOT EXISTS idx_sequence_actions_step ON sequence_actions(step_id)')
+  await execute('CREATE INDEX IF NOT EXISTS idx_sequence_actions_sequence ON sequence_actions(sequence_id)')
   await execute('CREATE INDEX IF NOT EXISTS idx_sequence_steps_branch ON sequence_steps(branch_id)')
   await execute('CREATE INDEX IF NOT EXISTS idx_users_firebase_uid ON users(firebase_uid)')
   await execute('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)')

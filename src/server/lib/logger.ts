@@ -1,4 +1,3 @@
-// server/src/lib/logger.ts
 type LogLevel = 'debug' | 'info' | 'warn' | 'error'
 
 interface LogContext {

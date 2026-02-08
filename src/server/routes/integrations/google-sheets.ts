@@ -1,4 +1,3 @@
-// server/src/routes/integrations/google-sheets.ts
 import { Router, Request, Response } from 'express'
 import { queryOne, queryAll, execute, safeJsonParse } from '../../db'
 import { logger } from '../../lib/logger'

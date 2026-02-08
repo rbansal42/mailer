@@ -1,4 +1,3 @@
-// server/src/lib/validation.ts
 import { z } from 'zod'
 
 // Email validation (RFC 5322 simplified)

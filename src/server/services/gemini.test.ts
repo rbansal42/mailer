@@ -1,4 +1,3 @@
-// server/src/services/gemini.test.ts
 import { describe, test, expect, mock, beforeEach, afterEach, spyOn } from 'bun:test'
 
 // Store the original env

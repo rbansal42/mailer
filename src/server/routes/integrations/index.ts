@@ -1,4 +1,3 @@
-// server/src/routes/integrations/index.ts
 import { Router } from 'express'
 import googleSheetsRouter from './google-sheets'
 
