@@ -4,8 +4,7 @@ import { compileTemplate, replaceVariables, injectTracking } from './template-co
 import { getNextAvailableAccount, incrementSendCount } from './account-manager'
 import { createProvider } from '../providers'
 import { getOrCreateToken, getTrackingSettings } from './tracking'
-
-const BRANCH_ACTION = 'action'
+import { BRANCH_ACTION } from '../../shared/constants'
 
 interface Sequence {
   id: number

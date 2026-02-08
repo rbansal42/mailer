@@ -2,9 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Plus, GitBranch, Clock } from 'lucide-react'
 import { SequenceStep } from '@/lib/api'
-
-const BRANCH_ACTION = 'action'
-const BRANCH_DEFAULT = 'default'
+import { BRANCH_ACTION, BRANCH_DEFAULT } from '../../shared/constants'
 
 interface Props {
   steps: SequenceStep[]

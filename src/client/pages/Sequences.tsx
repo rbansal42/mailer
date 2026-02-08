@@ -34,6 +34,7 @@ import {
   createBranchPoint,
   sequences as sequencesApi
 } from '@/lib/api'
+import { BRANCH_ACTION, BRANCH_DEFAULT } from '../../shared/constants'
 
 export default function Sequences() {
   const queryClient = useQueryClient()
@@ -669,8 +670,8 @@ function SequencePathStats({ sequenceId }: { sequenceId: number }) {
   if (!enrollments || enrollments.length === 0) return null
 
   const total = enrollments.length
-  const onDefault = enrollments.filter((e) => !e.branch_id || e.branch_id === 'default').length
-  const onAction = enrollments.filter((e) => e.branch_id === 'action').length
+  const onDefault = enrollments.filter((e) => !e.branch_id || e.branch_id === BRANCH_DEFAULT).length
+  const onAction = enrollments.filter((e) => e.branch_id === BRANCH_ACTION).length
   const completed = enrollments.filter((e) => e.status === 'completed').length
   const actionClicked = enrollments.filter((e) => e.action_clicked_at).length
 
