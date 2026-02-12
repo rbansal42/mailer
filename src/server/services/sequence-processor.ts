@@ -242,6 +242,25 @@ async function loadTemplateBlocks(templateId: number): Promise<unknown[] | null>
 }
 
 /**
+ * Try to route an enrollment to the default branch.
+ * Returns true if switched, false if no default branch exists or already on a branch.
+ */
+async function tryRouteToDefaultBranch(enrollment: Enrollment, sequenceId: number): Promise<boolean> {
+  if (enrollment.branch_id) return false // Already on a branch
+
+  const defaultBranch = await queryOne<SequenceBranch>(
+    `SELECT * FROM sequence_branches WHERE sequence_id = ? AND id = ?`,
+    [sequenceId, BRANCH_DEFAULT]
+  )
+
+  if (defaultBranch) {
+    await switchToBranch(enrollment, BRANCH_DEFAULT)
+    return true
+  }
+  return false
+}
+
+/**
  * Evaluate trigger conditions for branches triggered from a specific step
  */
 async function evaluateBranchTriggers(
@@ -264,6 +283,22 @@ async function evaluateBranchTriggers(
     [syntheticCampaignId, enrollment.recipient_email]
   )
 
+  // Pre-fetch all tracking stats in a single query to avoid N queries in the loop
+  let stats = { open_count: 0, click_count: 0 }
+  if (tokenRow) {
+    const trackingStats = await queryOne<{ open_count: number; click_count: number }>(
+      `SELECT 
+        COUNT(*) FILTER (WHERE event_type = 'open')::integer as open_count,
+        COUNT(*) FILTER (WHERE event_type = 'click')::integer as click_count
+      FROM tracking_events 
+      WHERE token_id = ?`,
+      [tokenRow.id]
+    )
+    if (trackingStats) {
+      stats = trackingStats
+    }
+  }
+
   for (const branch of triggeredBranches) {
     const triggerConfig = safeJsonParse(branch.trigger_config ?? '{}', {}) as Record<string, unknown>
     let triggered = false
@@ -280,22 +315,12 @@ async function evaluateBranchTriggers(
       }
       case 'opened': {
         if (!tokenRow) break
-        const openCount = await queryOne<{ count: number }>(
-          `SELECT COUNT(*)::integer as count FROM tracking_events 
-           WHERE token_id = ? AND event_type = 'open'`,
-          [tokenRow.id]
-        )
-        triggered = (openCount?.count ?? 0) > 0
+        triggered = stats.open_count > 0
         break
       }
       case 'clicked_any': {
         if (!tokenRow) break
-        const clickCount = await queryOne<{ count: number }>(
-          `SELECT COUNT(*)::integer as count FROM tracking_events 
-           WHERE token_id = ? AND event_type = 'click'`,
-          [tokenRow.id]
-        )
-        triggered = (clickCount?.count ?? 0) > 0
+        triggered = stats.click_count > 0
         break
       }
       case 'no_engagement': {
@@ -306,12 +331,7 @@ async function evaluateBranchTriggers(
           triggered = true
           break
         }
-        const engagementCount = await queryOne<{ count: number }>(
-          `SELECT COUNT(*)::integer as count FROM tracking_events 
-           WHERE token_id = ? AND event_type = 'open'`,
-          [tokenRow.id]
-        )
-        triggered = (engagementCount?.count ?? 0) === 0
+        triggered = stats.open_count === 0
         break
       }
     }
@@ -389,15 +409,8 @@ async function processEnrollmentStep(enrollment: Enrollment & { sequence_name: s
 
   if (!step) {
     // No more steps on main branch — check if we should route to default branch
-    if (!branchId && !enrollment.branch_switched_at) {
-      const defaultBranch = await queryOne<SequenceBranch>(
-        `SELECT * FROM sequence_branches WHERE sequence_id = ? AND id = ?`,
-        [enrollment.sequence_id, BRANCH_DEFAULT]
-      )
-      if (defaultBranch) {
-        await switchToBranch(enrollment, BRANCH_DEFAULT)
-        return // Will be processed on next tick
-      }
+    if (!enrollment.branch_switched_at && await tryRouteToDefaultBranch(enrollment, enrollment.sequence_id)) {
+      return // Will be processed on next tick
     }
 
     // No more steps, complete the enrollment

@@ -116,11 +116,14 @@ trackingRouter.get('/:token/action', async (req, res) => {
 
     const sequenceId = Math.abs(tokenDetails.campaignId)
     
-    // Find current step from enrollment
+    // Find current step from enrollment, filtering by branch_id to avoid ambiguity
     const enrollment = result.enrollment
+    const branchId = enrollment.branch_id
     const stepRow = await queryOne<{ id: number }>(
-      `SELECT id FROM sequence_steps WHERE sequence_id = ? AND step_order = ?`,
-      [sequenceId, enrollment.current_step]
+      branchId
+        ? `SELECT id FROM sequence_steps WHERE sequence_id = ? AND step_order = ? AND branch_id = ?`
+        : `SELECT id FROM sequence_steps WHERE sequence_id = ? AND step_order = ? AND (branch_id IS NULL OR branch_id = '')`,
+      branchId ? [sequenceId, enrollment.current_step, branchId] : [sequenceId, enrollment.current_step]
     )
 
     if (!stepRow) {

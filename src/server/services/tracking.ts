@@ -265,17 +265,17 @@ export async function recordAction(
 }
 
 /**
- * Find the branch target for a specific button in a step's blocks
+ * Find the branch target for a specific button in a step's blocks.
+ * Looks up the step by its primary key (id) to avoid ambiguity across branches.
  */
 async function findBranchTargetForButton(
-  sequenceId: number,
-  stepOrder: number,
+  stepId: number,
   buttonId: string
 ): Promise<string | null> {
-  // First try step blocks, then fall back to template blocks
+  // Look up step by id to avoid ambiguity when multiple branches share the same step_order
   const stepRow = await queryOne<{ blocks: string | null; template_id: number | null }>(
-    `SELECT blocks, template_id FROM sequence_steps WHERE sequence_id = ? AND step_order = ?`,
-    [sequenceId, stepOrder]
+    `SELECT blocks, template_id FROM sequence_steps WHERE id = ?`,
+    [stepId]
   )
   if (!stepRow) return null
 

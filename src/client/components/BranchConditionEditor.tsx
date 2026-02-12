@@ -119,6 +119,8 @@ export function BranchConditionEditor({ triggerType, triggerConfig, name, color,
           {BRANCH_COLORS.map((c) => (
             <button
               key={c}
+              type="button"
+              aria-label={`Select color ${c}`}
               className={`w-6 h-6 rounded-full border-2 ${localColor === c ? 'border-foreground' : 'border-transparent'}`}
               style={{ backgroundColor: c }}
               onClick={() => setLocalColor(c)}

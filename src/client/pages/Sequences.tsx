@@ -666,6 +666,7 @@ function SequenceEditor({ sequence, onBack, onUpdate }: SequenceEditorProps) {
             <DialogTitle>{editingBranch ? 'Edit Branch' : 'Create Branch'}</DialogTitle>
           </DialogHeader>
           <BranchConditionEditor
+            key={editingBranch?.id || 'new'}
             triggerType={editingBranch?.trigger_type || 'action_click'}
             triggerConfig={editingBranch?.trigger_config || {}}
             name={editingBranch?.name || ''}

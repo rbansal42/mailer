@@ -1286,7 +1286,7 @@ function BlockProperties({ block, onChange, onOpenMediaLibrary, onOpenCropModal 
             <Select
               value={(() => {
                 const bt = props.branchTarget
-                if (!bt || bt === 'none') return 'none'
+                if (bt === null || bt === undefined || bt === 'none') return 'none'
                 return 'custom'
               })()}
               onValueChange={(v) => onChange({ branchTarget: v === 'none' ? null : '' })}
