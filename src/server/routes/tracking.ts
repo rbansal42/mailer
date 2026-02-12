@@ -97,11 +97,12 @@ trackingRouter.get('/:token/c/:linkIndex', (req, res) => {
 trackingRouter.get('/:token/action', async (req, res) => {
   try {
     const { token } = req.params
+    const buttonId = req.query.btn ? String(req.query.btn) : null
     const forwarded = req.headers['x-forwarded-for']
     const ipAddress = req.ip || (Array.isArray(forwarded) ? forwarded[0] : forwarded?.split(',')[0]) || null
     const userAgent = req.headers['user-agent'] || null
 
-    const result = await recordAction(token, ipAddress, userAgent)
+    const result = await recordAction(token, ipAddress, userAgent, buttonId)
 
     if (!result.success) {
       return res.status(404).send('Not found')
@@ -128,7 +129,7 @@ trackingRouter.get('/:token/action', async (req, res) => {
     }
 
     const stepId = stepRow.id
-    const config = await getActionConfig(sequenceId, stepId)
+    const config = await getActionConfig(sequenceId, stepId, buttonId)
 
     if (!config) {
       return res.send(getHostedThankYouPage({ message: 'Thank you for your response!' }))

@@ -4,7 +4,7 @@ import { compileTemplate, replaceVariables, injectTracking } from './template-co
 import { getNextAvailableAccount, incrementSendCount } from './account-manager'
 import { createProvider } from '../providers'
 import { getOrCreateToken, getTrackingSettings } from './tracking'
-import { BRANCH_ACTION } from '../../shared/constants'
+import { BRANCH_ACTION, BRANCH_DEFAULT } from '../../shared/constants'
 
 interface Sequence {
   id: number
@@ -23,6 +23,7 @@ interface SequenceStep {
   send_time: string | null
   branch_id: string | null
   branch_order: number | null
+  blocks: string | null
 }
 
 interface Enrollment {
@@ -36,6 +37,16 @@ interface Enrollment {
   branch_id: string | null
   action_clicked_at: string | null
   branch_switched_at: string | null
+  trigger_data: string | null
+}
+
+interface SequenceBranch {
+  id: string
+  sequence_id: number
+  name: string
+  trigger_step_id: number | null
+  trigger_type: string
+  trigger_config: string | null
 }
 
 interface TemplateRow {
@@ -173,22 +184,27 @@ export async function processSequenceSteps(): Promise<number> {
 }
 
 /**
- * Switch enrollment to action branch when action is clicked
+ * Switch enrollment to a specific branch
  */
-async function switchToBranch(enrollment: Enrollment): Promise<void> {
+async function switchToBranch(enrollment: Enrollment, branchId?: string): Promise<void> {
   const now = new Date().toISOString()
   
-  // Find first step in the 'action' branch
-  const actionBranchStep = await queryOne<SequenceStep>(
+  // Determine target branch: use provided branchId, or check trigger_data, or default to 'action'
+  const targetBranch = branchId 
+    ?? (enrollment.trigger_data ? (safeJsonParse(enrollment.trigger_data, {}) as Record<string, unknown>).branchTarget as string : null)
+    ?? BRANCH_ACTION
+
+  // Find first step in the target branch
+  const branchStep = await queryOne<SequenceStep>(
     `SELECT * FROM sequence_steps 
      WHERE sequence_id = ? AND branch_id = ? 
      ORDER BY branch_order ASC, step_order ASC 
      LIMIT 1`,
-    [enrollment.sequence_id, BRANCH_ACTION]
+    [enrollment.sequence_id, targetBranch]
   )
 
-  if (!actionBranchStep) {
-    // No action branch defined, just mark as switched but stay on current path
+  if (!branchStep) {
+    // No branch defined, just mark as switched but stay on current path
     await execute(
       `UPDATE sequence_enrollments SET branch_switched_at = ? WHERE id = ?`,
       [now, enrollment.id]
@@ -196,9 +212,9 @@ async function switchToBranch(enrollment: Enrollment): Promise<void> {
     return
   }
 
-  const nextSendAt = calculateNextSendAt(actionBranchStep)
+  const nextSendAt = calculateNextSendAt(branchStep)
 
-  // Update enrollment to action branch
+  // Update enrollment to target branch
   await execute(
     `UPDATE sequence_enrollments 
      SET branch_id = ?, 
@@ -206,13 +222,111 @@ async function switchToBranch(enrollment: Enrollment): Promise<void> {
          current_step = ?,
          next_send_at = ?
      WHERE id = ?`,
-    [BRANCH_ACTION, now, actionBranchStep.step_order, nextSendAt, enrollment.id]
+    [targetBranch, now, branchStep.step_order, nextSendAt, enrollment.id]
   )
 
-  logger.info('Enrollment switched to action branch', {
+  logger.info('Enrollment switched to branch', {
     service: 'sequence-processor',
-    enrollmentId: enrollment.id
+    enrollmentId: enrollment.id,
+    branch: targetBranch
   })
+}
+
+/**
+ * Load blocks from a template by ID
+ */
+async function loadTemplateBlocks(templateId: number): Promise<unknown[] | null> {
+  const template = await queryOne<TemplateRow>('SELECT id, blocks FROM templates WHERE id = ?', [templateId])
+  if (!template) return null
+  return safeJsonParse(template.blocks, [])
+}
+
+/**
+ * Evaluate trigger conditions for branches triggered from a specific step
+ */
+async function evaluateBranchTriggers(
+  enrollment: Enrollment,
+  step: SequenceStep
+): Promise<void> {
+  // Load branches triggered from this step
+  const triggeredBranches = await queryAll<SequenceBranch>(
+    `SELECT * FROM sequence_branches 
+     WHERE sequence_id = ? AND trigger_step_id = ?`,
+    [enrollment.sequence_id, step.id]
+  )
+
+  if (triggeredBranches.length === 0) return
+
+  // Get tracking token for this enrollment
+  const syntheticCampaignId = -enrollment.sequence_id
+  const tokenRow = await queryOne<{ id: number }>(
+    `SELECT id FROM tracking_tokens WHERE campaign_id = ? AND recipient_email = ?`,
+    [syntheticCampaignId, enrollment.recipient_email]
+  )
+
+  for (const branch of triggeredBranches) {
+    const triggerConfig = safeJsonParse(branch.trigger_config ?? '{}', {}) as Record<string, unknown>
+    let triggered = false
+
+    switch (branch.trigger_type) {
+      case 'action_click': {
+        // Already handled by recordAction() setting trigger_data
+        // Check if enrollment has trigger_data with matching branchTarget
+        if (enrollment.action_clicked_at) {
+          const triggerData = safeJsonParse(enrollment.trigger_data ?? '{}', {}) as Record<string, unknown>
+          triggered = triggerData.branchTarget === branch.id
+        }
+        break
+      }
+      case 'opened': {
+        if (!tokenRow) break
+        const openCount = await queryOne<{ count: number }>(
+          `SELECT COUNT(*)::integer as count FROM tracking_events 
+           WHERE token_id = ? AND event_type = 'open'`,
+          [tokenRow.id]
+        )
+        triggered = (openCount?.count ?? 0) > 0
+        break
+      }
+      case 'clicked_any': {
+        if (!tokenRow) break
+        const clickCount = await queryOne<{ count: number }>(
+          `SELECT COUNT(*)::integer as count FROM tracking_events 
+           WHERE token_id = ? AND event_type = 'click'`,
+          [tokenRow.id]
+        )
+        triggered = (clickCount?.count ?? 0) > 0
+        break
+      }
+      case 'no_engagement': {
+        const afterSteps = Number(triggerConfig.afterSteps) || 2
+        if (enrollment.current_step < afterSteps) break
+        if (!tokenRow) {
+          // No token means no tracking at all - consider as no engagement
+          triggered = true
+          break
+        }
+        const engagementCount = await queryOne<{ count: number }>(
+          `SELECT COUNT(*)::integer as count FROM tracking_events 
+           WHERE token_id = ? AND event_type = 'open'`,
+          [tokenRow.id]
+        )
+        triggered = (engagementCount?.count ?? 0) === 0
+        break
+      }
+    }
+
+    if (triggered) {
+      logger.info('Branch trigger activated', {
+        service: 'sequence-processor',
+        enrollmentId: enrollment.id,
+        branchId: branch.id,
+        triggerType: branch.trigger_type
+      })
+      await switchToBranch(enrollment, branch.id)
+      return // Only switch to one branch
+    }
+  }
 }
 
 /**
@@ -233,7 +347,12 @@ async function processEnrollmentStep(enrollment: Enrollment & { sequence_name: s
     const now = Date.now()
     
     if (now >= actionTime + delayMs) {
-      await switchToBranch(enrollment)
+      // Determine branch from trigger_data (set by recordAction)
+      const triggerData = enrollment.trigger_data 
+        ? safeJsonParse(enrollment.trigger_data, {}) as Record<string, unknown>
+        : null
+      const targetBranch = (triggerData?.branchTarget as string) ?? undefined
+      await switchToBranch(enrollment, targetBranch)
       // Re-fetch enrollment after branch switch
       const updated = await queryOne<Enrollment & { sequence_name: string }>(
         `SELECT e.*, s.name as sequence_name
@@ -252,23 +371,35 @@ async function processEnrollmentStep(enrollment: Enrollment & { sequence_name: s
   const branchId = enrollment.branch_id
 
   // Get current step
-  let step: SequenceStep | null
+  let step: SequenceStep | null = null
   if (branchId) {
     step = await queryOne<SequenceStep>(
       `SELECT * FROM sequence_steps 
        WHERE sequence_id = ? AND step_order = ? AND branch_id = ?`,
       [enrollment.sequence_id, enrollment.current_step, branchId]
-    )
+    ) ?? null
   } else {
     step = await queryOne<SequenceStep>(
       `SELECT * FROM sequence_steps 
        WHERE sequence_id = ? AND step_order = ? 
        AND (branch_id IS NULL OR branch_id = '')`,
       [enrollment.sequence_id, enrollment.current_step]
-    )
+    ) ?? null
   }
 
   if (!step) {
+    // No more steps on main branch — check if we should route to default branch
+    if (!branchId && !enrollment.branch_switched_at) {
+      const defaultBranch = await queryOne<SequenceBranch>(
+        `SELECT * FROM sequence_branches WHERE sequence_id = ? AND id = ?`,
+        [enrollment.sequence_id, BRANCH_DEFAULT]
+      )
+      if (defaultBranch) {
+        await switchToBranch(enrollment, BRANCH_DEFAULT)
+        return // Will be processed on next tick
+      }
+    }
+
     // No more steps, complete the enrollment
     await execute(
       `UPDATE sequence_enrollments 
@@ -279,18 +410,19 @@ async function processEnrollmentStep(enrollment: Enrollment & { sequence_name: s
     return
   }
 
-  // Get template
-  let templateBlocks: unknown[] = []
-  if (step.template_id) {
-    const template = await queryOne<TemplateRow>('SELECT id, blocks FROM templates WHERE id = ?', [step.template_id])
-    
-    if (template) {
-      templateBlocks = safeJsonParse(template.blocks, [])
-    }
+  // Use step blocks if present, fall back to template blocks
+  let blocks: unknown[] = []
+  if (step.blocks) {
+    const parsed = typeof step.blocks === 'string' ? safeJsonParse(step.blocks, []) : step.blocks
+    blocks = Array.isArray(parsed) ? parsed : []
+  } else if (step.template_id) {
+    blocks = await loadTemplateBlocks(step.template_id) ?? []
   }
 
   // Parse recipient data
-  const recipientData = enrollment.recipient_data ? safeJsonParse(enrollment.recipient_data, {}) : {}
+  const recipientData: Record<string, string> = enrollment.recipient_data 
+    ? safeJsonParse(enrollment.recipient_data, {}) as Record<string, string>
+    : {}
   recipientData.email = enrollment.recipient_email
 
   // Get account
@@ -307,7 +439,7 @@ async function processEnrollmentStep(enrollment: Enrollment & { sequence_name: s
 
   try {
     // Compile email
-    let html = compileTemplate(templateBlocks as Parameters<typeof compileTemplate>[0], recipientData, trackingSettings.baseUrl)
+    let html = compileTemplate(blocks as Parameters<typeof compileTemplate>[0], recipientData, trackingSettings.baseUrl)
     const subject = replaceVariables(step.subject, recipientData)
 
     // Add tracking
@@ -339,8 +471,21 @@ async function processEnrollmentStep(enrollment: Enrollment & { sequence_name: s
       recipient: enrollment.recipient_email
     })
 
+    // Evaluate branch triggers after sending this step
+    await evaluateBranchTriggers(enrollment, step)
+
+    // Re-fetch enrollment in case branch trigger switched it
+    const refreshed = await queryOne<Enrollment>(
+      `SELECT * FROM sequence_enrollments WHERE id = ?`,
+      [enrollment.id]
+    )
+    if (refreshed && refreshed.branch_id !== branchId) {
+      // Branch was switched by trigger evaluation, don't advance further
+      return
+    }
+
     // Advance to next step in same branch
-    let nextStep: SequenceStep | null
+    let nextStep: SequenceStep | null = null
     if (branchId) {
       nextStep = await queryOne<SequenceStep>(
         `SELECT * FROM sequence_steps 
@@ -348,7 +493,7 @@ async function processEnrollmentStep(enrollment: Enrollment & { sequence_name: s
          ORDER BY step_order ASC 
          LIMIT 1`,
         [enrollment.sequence_id, enrollment.current_step, branchId]
-      )
+      ) ?? null
     } else {
       nextStep = await queryOne<SequenceStep>(
         `SELECT * FROM sequence_steps 
@@ -357,7 +502,7 @@ async function processEnrollmentStep(enrollment: Enrollment & { sequence_name: s
          ORDER BY step_order ASC 
          LIMIT 1`,
         [enrollment.sequence_id, enrollment.current_step]
-      )
+      ) ?? null
     }
 
     if (nextStep) {
@@ -369,7 +514,20 @@ async function processEnrollmentStep(enrollment: Enrollment & { sequence_name: s
         [nextStep.step_order, nextSendAt, enrollment.id]
       )
     } else {
-      // No more steps, complete
+      // No more steps on this branch
+      // If on main branch and no action taken, check for default branch
+      if (!branchId && !enrollment.action_clicked_at && !enrollment.branch_switched_at) {
+        const defaultBranch = await queryOne<SequenceBranch>(
+          `SELECT * FROM sequence_branches WHERE sequence_id = ? AND id = ?`,
+          [enrollment.sequence_id, BRANCH_DEFAULT]
+        )
+        if (defaultBranch) {
+          await switchToBranch(enrollment, BRANCH_DEFAULT)
+          return
+        }
+      }
+
+      // Complete
       await execute(
         `UPDATE sequence_enrollments 
          SET status = 'completed', completed_at = CURRENT_TIMESTAMP, next_send_at = NULL
