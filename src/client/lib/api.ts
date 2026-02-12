@@ -484,7 +484,7 @@ export const sequences = {
     }),
   
   createBranchPoint: (sequenceId: number, afterStep: number, delayHours: number = 0) =>
-    request<void>(`/sequences/${sequenceId}/branch-point`, {
+    request<{ success: boolean }>(`/sequences/${sequenceId}/branch-point`, {
       method: 'POST',
       body: JSON.stringify({ afterStep, delayBeforeSwitch: delayHours }),
     }),
@@ -506,7 +506,7 @@ export const sequences = {
     color?: string
     parentBranchId?: string
     triggerStepId?: number
-    triggerType: string
+    triggerType: SequenceBranch['trigger_type']
     triggerConfig?: Record<string, unknown>
   }) =>
     request<SequenceBranch>(`/sequences/${sequenceId}/branches`, {
@@ -519,7 +519,7 @@ export const sequences = {
     description?: string
     color?: string
     triggerStepId?: number
-    triggerType?: string
+    triggerType?: SequenceBranch['trigger_type']
     triggerConfig?: Record<string, unknown>
   }) =>
     request<SequenceBranch>(`/sequences/${sequenceId}/branches/${branchId}`, {

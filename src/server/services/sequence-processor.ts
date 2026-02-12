@@ -468,12 +468,15 @@ async function processEnrollmentStep(enrollment: Enrollment & { sequence_name: s
 
     // Send
     const provider = createProvider(account.providerType, account.config as unknown as Parameters<typeof createProvider>[1])
-    await provider.send({
-      to: enrollment.recipient_email,
-      subject,
-      html
-    })
-    await provider.disconnect()
+    try {
+      await provider.send({
+        to: enrollment.recipient_email,
+        subject,
+        html
+      })
+    } finally {
+      try { await provider.disconnect() } catch (e) { logger.warn('Provider disconnect failed', { service: 'sequence-processor', enrollmentId: enrollment.id }, e as Error) }
+    }
 
     await incrementSendCount(account.id)
 

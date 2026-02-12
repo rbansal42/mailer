@@ -25,7 +25,7 @@ interface SequenceFlowBuilderProps {
   onDeleteStep: (stepId: number) => void
 }
 
-export function SequenceFlowBuilder({ steps, branches, onEditStep, onDeleteStep }: SequenceFlowBuilderProps) {
+export default function SequenceFlowBuilder({ steps, branches, onEditStep, onDeleteStep }: SequenceFlowBuilderProps) {
   const { nodes, edges } = useSequenceLayout(steps, branches, onEditStep, onDeleteStep)
 
   if (steps.length === 0) {
@@ -66,3 +66,5 @@ export function SequenceFlowBuilder({ steps, branches, onEditStep, onDeleteStep 
     </div>
   )
 }
+
+export { SequenceFlowBuilder }

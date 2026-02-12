@@ -834,7 +834,7 @@ sequencesRouter.delete('/:id/branches/:branchId', async (req, res) => {
     await execute('DELETE FROM sequence_branches WHERE id = ? AND sequence_id = ?', [branchId, id])
 
     logger.info('Deleted branch', { service: 'sequences', sequenceId: id, branchId })
-    res.json({ success: true })
+    res.json({ message: 'Branch deleted' })
   } catch (error) {
     logger.error('Failed to delete branch', { service: 'sequences' }, error as Error)
     res.status(500).json({ error: 'Failed to delete branch' })

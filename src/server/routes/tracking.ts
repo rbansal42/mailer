@@ -12,7 +12,7 @@ const TRANSPARENT_GIF = Buffer.from(
 )
 
 // GET /:token/open.gif - Track email open
-trackingRouter.get('/:token/open.gif', (req, res) => {
+trackingRouter.get('/:token/open.gif', async (req, res) => {
   const { token } = req.params
   const forwarded = req.headers['x-forwarded-for']
   const ipAddress = req.ip || (Array.isArray(forwarded) ? forwarded[0] : forwarded?.split(',')[0])
@@ -20,7 +20,7 @@ trackingRouter.get('/:token/open.gif', (req, res) => {
 
   // Record the open event (fire and forget)
   try {
-    recordOpen(token, ipAddress, userAgent)
+    await recordOpen(token, ipAddress, userAgent)
     logger.debug('Recorded email open', { service: 'tracking', token, type: 'open' })
   } catch (error) {
     logger.error('Failed to record open', { service: 'tracking', token, type: 'open' }, error as Error)
@@ -49,7 +49,7 @@ function isValidRedirectUrl(url: string): boolean {
 }
 
 // GET /:token/c/:linkIndex - Track link click and redirect
-trackingRouter.get('/:token/c/:linkIndex', (req, res) => {
+trackingRouter.get('/:token/c/:linkIndex', async (req, res) => {
   const { token, linkIndex } = req.params
   const url = req.query.url as string
 
@@ -67,7 +67,7 @@ trackingRouter.get('/:token/c/:linkIndex', (req, res) => {
   // Verify token exists
   let tokenDetails
   try {
-    tokenDetails = getTokenDetails(token)
+    tokenDetails = await getTokenDetails(token)
   } catch (error) {
     logger.error('Failed to get token details', { service: 'tracking', token, type: 'click' }, error as Error)
   }
@@ -83,7 +83,7 @@ trackingRouter.get('/:token/c/:linkIndex', (req, res) => {
 
   // Record the click event
   try {
-    recordClick(token, url, parseInt(linkIndex, 10), ipAddress, userAgent)
+    await recordClick(token, url, parseInt(linkIndex, 10), ipAddress, userAgent)
     logger.debug('Recorded link click', { service: 'tracking', token, type: 'click', linkIndex: parseInt(linkIndex, 10), url })
   } catch (error) {
     logger.error('Failed to record click', { service: 'tracking', token, type: 'click', url }, error as Error)

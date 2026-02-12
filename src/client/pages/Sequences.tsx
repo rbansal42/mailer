@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, lazy, Suspense } from 'react'
 import { nanoid } from 'nanoid'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from '@/components/ui/alert-dialog'
 import { SequenceBranchBuilder } from '@/components/SequenceBranchBuilder'
-import { SequenceFlowBuilder } from '@/components/SequenceFlowBuilder'
+const SequenceFlowBuilder = lazy(() => import('@/components/SequenceFlowBuilder'))
 import { BranchConditionEditor } from '@/components/BranchConditionEditor'
 import { GenerateSequenceDialog } from '@/components/GenerateSequenceDialog'
 import { SequencePreviewModal } from '@/components/SequencePreviewModal'
@@ -635,12 +635,14 @@ function SequenceEditor({ sequence, onBack, onUpdate }: SequenceEditorProps) {
                 onDeleteBranch={handleDeleteBranch}
               />
             ) : (
-              <SequenceFlowBuilder
-                steps={sequence.steps}
-                branches={sequence.branches || []}
-                onEditStep={(step) => { setEditingStep(step); setStepDialogOpen(true) }}
-                onDeleteStep={(stepId) => setDeletingStepId(stepId)}
-              />
+              <Suspense fallback={<div className="w-full h-[600px] border rounded-lg bg-background flex items-center justify-center"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>}>
+                <SequenceFlowBuilder
+                  steps={sequence.steps}
+                  branches={sequence.branches || []}
+                  onEditStep={(step: SequenceStep) => { setEditingStep(step); setStepDialogOpen(true) }}
+                  onDeleteStep={(stepId: number) => setDeletingStepId(stepId)}
+                />
+              </Suspense>
             )}
           </div>
           <div className="lg:col-span-1">
