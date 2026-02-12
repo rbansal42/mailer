@@ -529,15 +529,9 @@ async function processEnrollmentStep(enrollment: Enrollment & { sequence_name: s
     } else {
       // No more steps on this branch
       // If on main branch and no action taken, check for default branch
-      if (!branchId && !enrollment.action_clicked_at && !enrollment.branch_switched_at) {
-        const defaultBranch = await queryOne<SequenceBranch>(
-          `SELECT * FROM sequence_branches WHERE sequence_id = ? AND id = ?`,
-          [enrollment.sequence_id, BRANCH_DEFAULT]
-        )
-        if (defaultBranch) {
-          await switchToBranch(enrollment, BRANCH_DEFAULT)
-          return
-        }
+      if (!enrollment.action_clicked_at && !enrollment.branch_switched_at
+        && await tryRouteToDefaultBranch(enrollment, enrollment.sequence_id)) {
+        return
       }
 
       // Complete

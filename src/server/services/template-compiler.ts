@@ -301,6 +301,11 @@ export function injectTracking(
   if (options.clickTracking) {
     let linkIndex = 0
     result = result.replace(/<a\s+([^>]*?)href="([^"]+)"([^>]*)>/gi, (match, before, url, after) => {
+      // Skip action buttons — they get their own tracking URL below
+      if (before.includes('data-action-button') || after.includes('data-action-button')) {
+        return match
+      }
+
       // Skip mailto:, tel:, and # links
       if (url.startsWith('mailto:') || url.startsWith('tel:') || url === '#') {
         return match
