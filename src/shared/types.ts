@@ -381,6 +381,19 @@ export interface SheetSync {
 
 // Sequences
 
+export interface SequenceBranch {
+  id: string
+  sequence_id: number
+  name: string
+  description: string | null
+  color: string
+  parent_branch_id: string | null
+  trigger_step_id: number | null
+  trigger_type: 'action_click' | 'opened' | 'clicked_any' | 'no_engagement'
+  trigger_config: Record<string, unknown>
+  created_at: string
+}
+
 export interface SequenceStep {
   id: number
   sequence_id: number
@@ -393,6 +406,7 @@ export interface SequenceStep {
   branch_id: string | null
   branch_order: number | null
   is_branch_point: boolean
+  blocks: Block[] | null
 }
 
 export interface Sequence {
@@ -402,6 +416,7 @@ export interface Sequence {
   enabled: boolean
   branch_delay_hours: number
   steps: SequenceStep[]
+  branches: SequenceBranch[]
 }
 
 export interface SequenceAction {
@@ -414,6 +429,8 @@ export interface SequenceAction {
   destination_url: string | null
   hosted_message: string | null
   button_text: string | null
+  button_id: string | null
+  branch_target: string | null
   recipient_email: string
   recipient_data: string | null
 }
@@ -427,6 +444,7 @@ export interface SequenceEnrollment {
   status: 'active' | 'paused' | 'completed' | 'cancelled'
   branch_id: string | null
   action_clicked_at: string | null
+  trigger_data: Record<string, unknown> | null
   enrolled_at: string
   next_send_at: string | null
   completed_at: string | null
@@ -442,6 +460,26 @@ export interface SequenceListItem {
   active_enrollments: number
   created_at: string
   updated_at: string
+}
+
+export interface CreateBranchRequest {
+  id: string
+  name: string
+  description?: string
+  color?: string
+  parentBranchId?: string
+  triggerStepId?: number
+  triggerType: 'action_click' | 'opened' | 'clicked_any' | 'no_engagement'
+  triggerConfig?: Record<string, unknown>
+}
+
+export interface UpdateBranchRequest {
+  name?: string
+  description?: string
+  color?: string
+  triggerStepId?: number
+  triggerType?: 'action_click' | 'opened' | 'clicked_any' | 'no_engagement'
+  triggerConfig?: Record<string, unknown>
 }
 
 export interface GenerateSequenceRequest {
