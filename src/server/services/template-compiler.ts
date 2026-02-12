@@ -140,7 +140,7 @@ function compileButton(props: Record<string, unknown>, data: Record<string, stri
           <table cellpadding="0" cellspacing="0" border="0">
             <tr>
               <td style="background-color: ${color}; border-radius: 4px;">
-                <a href="${url}"${dataAttr} target="_blank" style="display: inline-block; padding: 12px 24px; font-size: 16px; font-family: Arial, sans-serif; color: #ffffff; text-decoration: none; font-weight: bold;">
+                <a href="${url}"${dataAttr}${buttonIdAttr} target="_blank" style="display: inline-block; padding: 12px 24px; font-size: 16px; font-family: Arial, sans-serif; color: #ffffff; text-decoration: none; font-weight: bold;">
                   ${label}
                 </a>
               </td>
@@ -317,9 +317,11 @@ export function injectTracking(
   }
 
   // Handle action buttons with data attribute
-  const actionAttrRegex = /(<[^>]*data-action-button="true"[^>]*)href="[^"]*"/gi
-  result = result.replace(actionAttrRegex, (_match, prefix) => {
-    return `${prefix}href="${baseUrl}/t/${trackingToken}/action"`
+  // Preserve ?btn= query param from the {{action_url}}?btn=xxx placeholder
+  const actionAttrRegex = /(<[^>]*data-action-button="true"[^>]*)href="[^"]*?(?:\?btn=([^"&]*))?"/gi
+  result = result.replace(actionAttrRegex, (_match, prefix, buttonId) => {
+    const btnParam = buttonId ? `?btn=${buttonId}` : ''
+    return `${prefix}href="${baseUrl}/t/${trackingToken}/action${btnParam}"`
   })
 
   return result

@@ -681,3 +681,160 @@ sequencesRouter.get('/:id/actions/export', async (req, res) => {
     res.status(500).json({ error: 'Failed to export actions' })
   }
 })
+
+// ==================== Branch CRUD ====================
+
+// GET /:id/branches - List branches for a sequence
+sequencesRouter.get('/:id/branches', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10)
+    const userId = req.userId
+
+    const sequence = await queryOne('SELECT id FROM sequences WHERE id = ? AND user_id = ?', [id, userId])
+    if (!sequence) {
+      res.status(404).json({ error: 'Sequence not found' })
+      return
+    }
+
+    const branches = await queryAll<BranchRow>(
+      'SELECT * FROM sequence_branches WHERE sequence_id = ? ORDER BY created_at ASC',
+      [id]
+    )
+    res.json(branches.map(b => formatBranch(b)))
+  } catch (error) {
+    logger.error('Failed to list branches', { service: 'sequences' }, error as Error)
+    res.status(500).json({ error: 'Failed to list branches' })
+  }
+})
+
+// POST /:id/branches - Create a branch
+sequencesRouter.post('/:id/branches', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10)
+    const userId = req.userId
+
+    const sequence = await queryOne('SELECT id FROM sequences WHERE id = ? AND user_id = ?', [id, userId])
+    if (!sequence) {
+      res.status(404).json({ error: 'Sequence not found' })
+      return
+    }
+
+    const parsed = createBranchSchema.safeParse(req.body)
+    if (!parsed.success) {
+      const errors = parsed.error.issues.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')
+      res.status(400).json({ error: errors })
+      return
+    }
+
+    const { id: branchId, name, description, color, parentBranchId, triggerStepId, triggerType, triggerConfig } = parsed.data
+
+    const result = await queryOne<BranchRow>(
+      `INSERT INTO sequence_branches (id, sequence_id, name, description, color, parent_branch_id, trigger_step_id, trigger_type, trigger_config)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)
+       RETURNING *`,
+      [
+        branchId,
+        id,
+        name,
+        description ?? null,
+        color ?? '#6366f1',
+        parentBranchId ?? null,
+        triggerStepId ?? null,
+        triggerType,
+        JSON.stringify(triggerConfig ?? {}),
+      ]
+    )
+
+    if (!result) {
+      res.status(500).json({ error: 'Failed to create branch' })
+      return
+    }
+
+    logger.info('Created branch', { service: 'sequences', sequenceId: id, branchId })
+    res.status(201).json(formatBranch(result))
+  } catch (error) {
+    logger.error('Failed to create branch', { service: 'sequences' }, error as Error)
+    res.status(500).json({ error: 'Failed to create branch' })
+  }
+})
+
+// PUT /:id/branches/:branchId - Update a branch
+sequencesRouter.put('/:id/branches/:branchId', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10)
+    const { branchId } = req.params
+    const userId = req.userId
+
+    const sequence = await queryOne('SELECT id FROM sequences WHERE id = ? AND user_id = ?', [id, userId])
+    if (!sequence) {
+      res.status(404).json({ error: 'Sequence not found' })
+      return
+    }
+
+    const parsed = updateBranchSchema.safeParse(req.body)
+    if (!parsed.success) {
+      const errors = parsed.error.issues.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')
+      res.status(400).json({ error: errors })
+      return
+    }
+
+    const { name, description, color, triggerStepId, triggerType, triggerConfig } = parsed.data
+
+    const updates: string[] = []
+    const params: (string | number | null)[] = []
+
+    if (name !== undefined) { updates.push('name = ?'); params.push(name) }
+    if (description !== undefined) { updates.push('description = ?'); params.push(description ?? null) }
+    if (color !== undefined) { updates.push('color = ?'); params.push(color) }
+    if (triggerStepId !== undefined) { updates.push('trigger_step_id = ?'); params.push(triggerStepId) }
+    if (triggerType !== undefined) { updates.push('trigger_type = ?'); params.push(triggerType) }
+    if (triggerConfig !== undefined) { updates.push('trigger_config = ?::jsonb'); params.push(JSON.stringify(triggerConfig)) }
+
+    if (updates.length === 0) {
+      res.status(400).json({ error: 'No fields to update' })
+      return
+    }
+
+    params.push(branchId, id)
+    const updated = await queryOne<BranchRow>(
+      `UPDATE sequence_branches SET ${updates.join(', ')} WHERE id = ? AND sequence_id = ? RETURNING *`,
+      params
+    )
+
+    if (!updated) {
+      res.status(404).json({ error: 'Branch not found' })
+      return
+    }
+
+    logger.info('Updated branch', { service: 'sequences', sequenceId: id, branchId })
+    res.json(formatBranch(updated))
+  } catch (error) {
+    logger.error('Failed to update branch', { service: 'sequences' }, error as Error)
+    res.status(500).json({ error: 'Failed to update branch' })
+  }
+})
+
+// DELETE /:id/branches/:branchId - Delete a branch and its steps
+sequencesRouter.delete('/:id/branches/:branchId', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10)
+    const { branchId } = req.params
+    const userId = req.userId
+
+    const sequence = await queryOne('SELECT id FROM sequences WHERE id = ? AND user_id = ?', [id, userId])
+    if (!sequence) {
+      res.status(404).json({ error: 'Sequence not found' })
+      return
+    }
+
+    // Delete steps in this branch first
+    await execute('DELETE FROM sequence_steps WHERE sequence_id = ? AND branch_id = ?', [id, branchId])
+    await execute('DELETE FROM sequence_branches WHERE id = ? AND sequence_id = ?', [branchId, id])
+
+    logger.info('Deleted branch', { service: 'sequences', sequenceId: id, branchId })
+    res.json({ success: true })
+  } catch (error) {
+    logger.error('Failed to delete branch', { service: 'sequences' }, error as Error)
+    res.status(500).json({ error: 'Failed to delete branch' })
+  }
+})
