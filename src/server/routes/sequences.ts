@@ -4,7 +4,8 @@ import { queryAll, queryOne, execute, safeJsonParse } from '../db'
 import { logger } from '../lib/logger'
 import { enrollRecipient, pauseEnrollment, cancelEnrollment, resumeEnrollment } from '../services/sequence-processor'
 import { generateSequence, getLLMSettings } from '../services/llm'
-import { generateSequenceSchema, validate } from '../lib/validation'
+import { generateSequenceSchema, createBranchSchema, updateBranchSchema, validate } from '../lib/validation'
+import type { SequenceBranch } from '../../shared/types'
 
 export const sequencesRouter = Router()
 
@@ -39,7 +40,41 @@ interface SequenceStepRow {
   branch_id: string | null
   is_branch_point: boolean
   branch_order: number | null
+  blocks: string | Record<string, unknown>[] | null
   created_at: string
+}
+
+interface BranchRow {
+  id: string
+  sequence_id: number
+  name: string
+  description: string | null
+  color: string
+  parent_branch_id: string | null
+  trigger_step_id: number | null
+  trigger_type: string
+  trigger_config: string | Record<string, unknown>
+  created_at: string
+}
+
+function formatBranch(row: BranchRow): SequenceBranch {
+  let parsedConfig: Record<string, unknown> = {}
+  try {
+    parsedConfig = typeof row.trigger_config === 'string' ? JSON.parse(row.trigger_config) : row.trigger_config ?? {}
+  } catch { parsedConfig = {} }
+
+  return {
+    id: row.id,
+    sequence_id: row.sequence_id,
+    name: row.name,
+    description: row.description,
+    color: row.color,
+    parent_branch_id: row.parent_branch_id,
+    trigger_step_id: row.trigger_step_id,
+    trigger_type: row.trigger_type as SequenceBranch['trigger_type'],
+    trigger_config: parsedConfig,
+    created_at: row.created_at,
+  }
 }
 
 interface EnrollmentRow {
@@ -54,6 +89,7 @@ interface EnrollmentRow {
   enrolled_at: string
   next_send_at: string | null
   completed_at: string | null
+  trigger_data: string | null
 }
 
 // GET / - List all sequences
@@ -148,10 +184,24 @@ sequencesRouter.get('/:id', async (req, res) => {
       [id]
     )
 
+    const branches = await queryAll<BranchRow>(
+      `SELECT * FROM sequence_branches WHERE sequence_id = ? ORDER BY created_at ASC`,
+      [id]
+    )
+
     res.json({
       ...sequence,
       enabled: sequence.enabled,
-      steps
+      steps: steps.map(s => {
+        let parsedBlocks: Record<string, unknown>[] | null = null
+        if (s.blocks) {
+          try {
+            parsedBlocks = typeof s.blocks === 'string' ? JSON.parse(s.blocks) : s.blocks
+          } catch { parsedBlocks = null }
+        }
+        return { ...s, blocks: parsedBlocks }
+      }),
+      branches: branches.map(b => formatBranch(b)),
     })
   } catch (error) {
     logger.error('Failed to get sequence', { service: 'sequences' }, error as Error)
@@ -233,7 +283,7 @@ sequencesRouter.delete('/:id', async (req, res) => {
 sequencesRouter.post('/:id/steps', async (req, res) => {
   try {
     const sequenceId = parseInt(req.params.id, 10)
-    const { templateId, subject, delayDays, delayHours, sendTime, branchId } = req.body
+    const { templateId, subject, delayDays, delayHours, sendTime, branchId, blocks } = req.body
 
     // Verify ownership
     const sequence = await queryOne('SELECT id FROM sequences WHERE id = ? AND user_id = ?', [sequenceId, req.userId])
@@ -274,11 +324,11 @@ sequencesRouter.post('/:id/steps', async (req, res) => {
       nextOrder = ((maxOrder?.max_order as number) || 0) + 1
     }
 
-    // Insert with branch fields
+    // Insert with branch fields and blocks
     const result = await execute(
       `INSERT INTO sequence_steps 
-       (sequence_id, step_order, template_id, subject, delay_days, delay_hours, send_time, branch_id, branch_order)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+       (sequence_id, step_order, template_id, subject, delay_days, delay_hours, send_time, branch_id, branch_order, blocks)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb) RETURNING id`,
       [
         sequenceId,
         nextOrder,
@@ -288,7 +338,8 @@ sequencesRouter.post('/:id/steps', async (req, res) => {
         delayHours ?? 0,
         sendTime ?? null,
         branchId ?? null,
-        branchId ? nextOrder : null
+        branchId ? nextOrder : null,
+        blocks ? JSON.stringify(blocks) : null,
       ]
     )
 
@@ -307,7 +358,7 @@ sequencesRouter.put('/:id/steps/:stepId', async (req, res) => {
   try {
     const sequenceId = parseInt(req.params.id, 10)
     const stepId = parseInt(req.params.stepId, 10)
-    const { templateId, subject, delayDays, delayHours, sendTime, stepOrder } = req.body
+    const { templateId, subject, delayDays, delayHours, sendTime, stepOrder, blocks } = req.body
 
     // Verify ownership
     const sequence = await queryOne('SELECT id FROM sequences WHERE id = ? AND user_id = ?', [sequenceId, req.userId])
@@ -325,14 +376,15 @@ sequencesRouter.put('/:id/steps/:stepId', async (req, res) => {
     if (delayHours !== undefined) { updates.push('delay_hours = ?'); params.push(delayHours) }
     if (sendTime !== undefined) { updates.push('send_time = ?'); params.push(sendTime) }
     if (stepOrder !== undefined) { updates.push('step_order = ?'); params.push(stepOrder) }
+    if (blocks !== undefined) { updates.push('blocks = ?::jsonb'); params.push(blocks ? JSON.stringify(blocks) : null) }
 
     if (updates.length === 0) {
       res.status(400).json({ error: 'No fields to update' })
       return
     }
 
-    params.push(stepId)
-    await execute(`UPDATE sequence_steps SET ${updates.join(', ')} WHERE id = ?`, params)
+    params.push(stepId, sequenceId)
+    await execute(`UPDATE sequence_steps SET ${updates.join(', ')} WHERE id = ? AND sequence_id = ?`, params)
 
     logger.info('Updated step', { service: 'sequences', stepId })
     res.json({ message: 'Step updated' })
@@ -388,7 +440,8 @@ sequencesRouter.get('/:id/enrollments', async (req, res) => {
 
     res.json(enrollments.map(e => ({
       ...e,
-      recipientData: e.recipient_data ? safeJsonParse(e.recipient_data, null) : null
+      recipientData: e.recipient_data ? safeJsonParse(e.recipient_data, null) : null,
+      triggerData: e.trigger_data ? safeJsonParse(e.trigger_data, null) : null,
     })))
   } catch (error) {
     logger.error('Failed to list enrollments', { service: 'sequences' }, error as Error)
@@ -511,6 +564,21 @@ sequencesRouter.post('/:id/branch-point', async (req, res) => {
       [delayBeforeSwitch ?? 0, id]
     )
 
+    // Create default and action branches in sequence_branches table if they don't already exist
+    await execute(
+      `INSERT INTO sequence_branches (id, sequence_id, name, color, trigger_type, trigger_config)
+       VALUES ('default', ?, 'Default', '#6366f1', 'no_engagement', '{}')
+       ON CONFLICT (id, sequence_id) DO NOTHING`,
+      [id]
+    )
+
+    await execute(
+      `INSERT INTO sequence_branches (id, sequence_id, name, color, trigger_step_id, trigger_type, trigger_config)
+       VALUES ('action', ?, 'Action', '#f59e0b', ?, 'action_click', '{}')
+       ON CONFLICT (id, sequence_id) DO NOTHING`,
+      [id, (stepCheck as any).id]
+    )
+
     logger.info('Created branch point', { service: 'sequences', sequenceId: id, afterStep })
     res.json({ success: true })
   } catch (error) {
@@ -613,5 +681,162 @@ sequencesRouter.get('/:id/actions/export', async (req, res) => {
   } catch (error) {
     logger.error('Failed to export actions', { service: 'sequences' }, error as Error)
     res.status(500).json({ error: 'Failed to export actions' })
+  }
+})
+
+// ==================== Branch CRUD ====================
+
+// GET /:id/branches - List branches for a sequence
+sequencesRouter.get('/:id/branches', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10)
+    const userId = req.userId
+
+    const sequence = await queryOne('SELECT id FROM sequences WHERE id = ? AND user_id = ?', [id, userId])
+    if (!sequence) {
+      res.status(404).json({ error: 'Sequence not found' })
+      return
+    }
+
+    const branches = await queryAll<BranchRow>(
+      'SELECT * FROM sequence_branches WHERE sequence_id = ? ORDER BY created_at ASC',
+      [id]
+    )
+    res.json(branches.map(b => formatBranch(b)))
+  } catch (error) {
+    logger.error('Failed to list branches', { service: 'sequences' }, error as Error)
+    res.status(500).json({ error: 'Failed to list branches' })
+  }
+})
+
+// POST /:id/branches - Create a branch
+sequencesRouter.post('/:id/branches', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10)
+    const userId = req.userId
+
+    const sequence = await queryOne('SELECT id FROM sequences WHERE id = ? AND user_id = ?', [id, userId])
+    if (!sequence) {
+      res.status(404).json({ error: 'Sequence not found' })
+      return
+    }
+
+    const parsed = createBranchSchema.safeParse(req.body)
+    if (!parsed.success) {
+      const errors = parsed.error.issues.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')
+      res.status(400).json({ error: errors })
+      return
+    }
+
+    const { id: branchId, name, description, color, parentBranchId, triggerStepId, triggerType, triggerConfig } = parsed.data
+
+    const result = await queryOne<BranchRow>(
+      `INSERT INTO sequence_branches (id, sequence_id, name, description, color, parent_branch_id, trigger_step_id, trigger_type, trigger_config)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)
+       RETURNING *`,
+      [
+        branchId,
+        id,
+        name,
+        description ?? null,
+        color ?? '#6366f1',
+        parentBranchId ?? null,
+        triggerStepId ?? null,
+        triggerType,
+        JSON.stringify(triggerConfig ?? {}),
+      ]
+    )
+
+    if (!result) {
+      res.status(500).json({ error: 'Failed to create branch' })
+      return
+    }
+
+    logger.info('Created branch', { service: 'sequences', sequenceId: id, branchId })
+    res.status(201).json(formatBranch(result))
+  } catch (error) {
+    logger.error('Failed to create branch', { service: 'sequences' }, error as Error)
+    res.status(500).json({ error: 'Failed to create branch' })
+  }
+})
+
+// PUT /:id/branches/:branchId - Update a branch
+sequencesRouter.put('/:id/branches/:branchId', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10)
+    const { branchId } = req.params
+    const userId = req.userId
+
+    const sequence = await queryOne('SELECT id FROM sequences WHERE id = ? AND user_id = ?', [id, userId])
+    if (!sequence) {
+      res.status(404).json({ error: 'Sequence not found' })
+      return
+    }
+
+    const parsed = updateBranchSchema.safeParse(req.body)
+    if (!parsed.success) {
+      const errors = parsed.error.issues.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')
+      res.status(400).json({ error: errors })
+      return
+    }
+
+    const { name, description, color, triggerStepId, triggerType, triggerConfig } = parsed.data
+
+    const updates: string[] = []
+    const params: (string | number | null)[] = []
+
+    if (name !== undefined) { updates.push('name = ?'); params.push(name) }
+    if (description !== undefined) { updates.push('description = ?'); params.push(description ?? null) }
+    if (color !== undefined) { updates.push('color = ?'); params.push(color) }
+    if (triggerStepId !== undefined) { updates.push('trigger_step_id = ?'); params.push(triggerStepId) }
+    if (triggerType !== undefined) { updates.push('trigger_type = ?'); params.push(triggerType) }
+    if (triggerConfig !== undefined) { updates.push('trigger_config = ?::jsonb'); params.push(JSON.stringify(triggerConfig)) }
+
+    if (updates.length === 0) {
+      res.status(400).json({ error: 'No fields to update' })
+      return
+    }
+
+    params.push(branchId, id)
+    const updated = await queryOne<BranchRow>(
+      `UPDATE sequence_branches SET ${updates.join(', ')} WHERE id = ? AND sequence_id = ? RETURNING *`,
+      params
+    )
+
+    if (!updated) {
+      res.status(404).json({ error: 'Branch not found' })
+      return
+    }
+
+    logger.info('Updated branch', { service: 'sequences', sequenceId: id, branchId })
+    res.json(formatBranch(updated))
+  } catch (error) {
+    logger.error('Failed to update branch', { service: 'sequences' }, error as Error)
+    res.status(500).json({ error: 'Failed to update branch' })
+  }
+})
+
+// DELETE /:id/branches/:branchId - Delete a branch and its steps
+sequencesRouter.delete('/:id/branches/:branchId', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10)
+    const { branchId } = req.params
+    const userId = req.userId
+
+    const sequence = await queryOne('SELECT id FROM sequences WHERE id = ? AND user_id = ?', [id, userId])
+    if (!sequence) {
+      res.status(404).json({ error: 'Sequence not found' })
+      return
+    }
+
+    // Delete steps in this branch first
+    await execute('DELETE FROM sequence_steps WHERE sequence_id = ? AND branch_id = ?', [id, branchId])
+    await execute('DELETE FROM sequence_branches WHERE id = ? AND sequence_id = ?', [branchId, id])
+
+    logger.info('Deleted branch', { service: 'sequences', sequenceId: id, branchId })
+    res.json({ message: 'Branch deleted' })
+  } catch (error) {
+    logger.error('Failed to delete branch', { service: 'sequences' }, error as Error)
+    res.status(500).json({ error: 'Failed to delete branch' })
   }
 })

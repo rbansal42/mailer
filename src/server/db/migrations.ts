@@ -26,6 +26,7 @@ const VALID_TABLES = new Set([
   'sequence_steps',
   'sequence_enrollments',
   'sequence_actions',
+  'sequence_branches',
   'media',
   'contacts',
   'lists',
