@@ -125,7 +125,8 @@ function compileButton(props: Record<string, unknown>, data: Record<string, stri
   const color = isValidColor ? String(props.color) : '#0f172a'
   const label = escapeHtml(replaceVariables(String(props.label || 'Click Here'), data))
   const isActionTrigger = Boolean(props.isActionTrigger)
-  const buttonId = props.buttonId ? String(props.buttonId) : null
+  const safeButtonId = (props.buttonId as string)?.replace(/[^a-zA-Z0-9_-]/g, '') || ''
+  const buttonId = safeButtonId || null
   const rawUrl = replaceVariables(String(props.url || '#'), data)
   const actionUrlBase = '{{action_url}}'
   const actionUrl = isActionTrigger && buttonId ? `${actionUrlBase}?btn=${buttonId}` : actionUrlBase
@@ -235,7 +236,8 @@ function compileActionButton(props: Record<string, unknown>): string {
   const isValidColor = /^#[0-9A-Fa-f]{6}$/.test(String(props.color))
   const color = isValidColor ? String(props.color) : '#10b981'
   const label = escapeHtml(String(props.label || 'Click Here'))
-  const buttonId = props.buttonId ? String(props.buttonId) : null
+  const safeButtonId = (props.buttonId as string)?.replace(/[^a-zA-Z0-9_-]/g, '') || ''
+  const buttonId = safeButtonId || null
   const actionUrl = buttonId ? `{{action_url}}?btn=${buttonId}` : '{{action_url}}'
   const buttonIdAttr = buttonId ? ` data-button-id="${buttonId}"` : ''
 
