@@ -31,9 +31,7 @@ export const EmailNode = memo(({ data }: NodeProps) => {
       <div className="flex items-center gap-2 mt-1.5 text-xs text-muted-foreground">
         <Clock className="w-3 h-3" />
         <span>
-          {d.delayDays > 0 ? `${d.delayDays}d` : ''}
-          {d.delayHours > 0 ? ` ${d.delayHours}h` : ''}
-          {d.delayDays === 0 && d.delayHours === 0 ? 'Immediate' : ''}
+          {[d.delayDays > 0 && `${d.delayDays}d`, d.delayHours > 0 && `${d.delayHours}h`].filter(Boolean).join(' ') || 'Immediate'}
         </span>
         {d.blockCount > 0 && (
           <span className="ml-auto bg-muted px-1.5 py-0.5 rounded text-[10px]">

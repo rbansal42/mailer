@@ -58,6 +58,11 @@ interface BranchRow {
 }
 
 function formatBranch(row: BranchRow): SequenceBranch {
+  let parsedConfig: Record<string, unknown> = {}
+  try {
+    parsedConfig = typeof row.trigger_config === 'string' ? JSON.parse(row.trigger_config) : row.trigger_config ?? {}
+  } catch { parsedConfig = {} }
+
   return {
     id: row.id,
     sequence_id: row.sequence_id,
@@ -67,7 +72,7 @@ function formatBranch(row: BranchRow): SequenceBranch {
     parent_branch_id: row.parent_branch_id,
     trigger_step_id: row.trigger_step_id,
     trigger_type: row.trigger_type as SequenceBranch['trigger_type'],
-    trigger_config: typeof row.trigger_config === 'string' ? JSON.parse(row.trigger_config) : row.trigger_config ?? {},
+    trigger_config: parsedConfig,
     created_at: row.created_at,
   }
 }
@@ -84,6 +89,7 @@ interface EnrollmentRow {
   enrolled_at: string
   next_send_at: string | null
   completed_at: string | null
+  trigger_data: string | null
 }
 
 // GET / - List all sequences
@@ -186,10 +192,15 @@ sequencesRouter.get('/:id', async (req, res) => {
     res.json({
       ...sequence,
       enabled: sequence.enabled,
-      steps: steps.map(s => ({
-        ...s,
-        blocks: s.blocks ? (typeof s.blocks === 'string' ? JSON.parse(s.blocks) : s.blocks) : null,
-      })),
+      steps: steps.map(s => {
+        let parsedBlocks: Record<string, unknown>[] | null = null
+        if (s.blocks) {
+          try {
+            parsedBlocks = typeof s.blocks === 'string' ? JSON.parse(s.blocks) : s.blocks
+          } catch { parsedBlocks = null }
+        }
+        return { ...s, blocks: parsedBlocks }
+      }),
       branches: branches.map(b => formatBranch(b)),
     })
   } catch (error) {
@@ -372,8 +383,8 @@ sequencesRouter.put('/:id/steps/:stepId', async (req, res) => {
       return
     }
 
-    params.push(stepId)
-    await execute(`UPDATE sequence_steps SET ${updates.join(', ')} WHERE id = ?`, params)
+    params.push(stepId, sequenceId)
+    await execute(`UPDATE sequence_steps SET ${updates.join(', ')} WHERE id = ? AND sequence_id = ?`, params)
 
     logger.info('Updated step', { service: 'sequences', stepId })
     res.json({ message: 'Step updated' })
@@ -429,7 +440,8 @@ sequencesRouter.get('/:id/enrollments', async (req, res) => {
 
     res.json(enrollments.map(e => ({
       ...e,
-      recipientData: e.recipient_data ? safeJsonParse(e.recipient_data, null) : null
+      recipientData: e.recipient_data ? safeJsonParse(e.recipient_data, null) : null,
+      triggerData: e.trigger_data ? safeJsonParse(e.trigger_data, null) : null,
     })))
   } catch (error) {
     logger.error('Failed to list enrollments', { service: 'sequences' }, error as Error)
@@ -553,29 +565,19 @@ sequencesRouter.post('/:id/branch-point', async (req, res) => {
     )
 
     // Create default and action branches in sequence_branches table if they don't already exist
-    const existingDefault = await queryOne(
-      `SELECT id FROM sequence_branches WHERE sequence_id = ? AND id = 'default'`,
+    await execute(
+      `INSERT INTO sequence_branches (id, sequence_id, name, color, trigger_type, trigger_config)
+       VALUES ('default', ?, 'Default', '#6366f1', 'no_engagement', '{}')
+       ON CONFLICT (id, sequence_id) DO NOTHING`,
       [id]
     )
-    if (!existingDefault) {
-      await execute(
-        `INSERT INTO sequence_branches (id, sequence_id, name, color, trigger_type, trigger_config)
-         VALUES ('default', ?, 'Default', '#6366f1', 'no_engagement', '{}')`,
-        [id]
-      )
-    }
 
-    const existingAction = await queryOne(
-      `SELECT id FROM sequence_branches WHERE sequence_id = ? AND id = 'action'`,
-      [id]
+    await execute(
+      `INSERT INTO sequence_branches (id, sequence_id, name, color, trigger_step_id, trigger_type, trigger_config)
+       VALUES ('action', ?, 'Action', '#f59e0b', ?, 'action_click', '{}')
+       ON CONFLICT (id, sequence_id) DO NOTHING`,
+      [id, (stepCheck as any).id]
     )
-    if (!existingAction) {
-      await execute(
-        `INSERT INTO sequence_branches (id, sequence_id, name, color, trigger_step_id, trigger_type, trigger_config)
-         VALUES ('action', ?, 'Action', '#f59e0b', ?, 'action_click', '{}')`,
-        [id, (stepCheck as any).id]
-      )
-    }
 
     logger.info('Created branch point', { service: 'sequences', sequenceId: id, afterStep })
     res.json({ success: true })

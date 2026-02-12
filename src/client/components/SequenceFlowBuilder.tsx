@@ -28,6 +28,17 @@ interface SequenceFlowBuilderProps {
 export function SequenceFlowBuilder({ steps, branches, onEditStep, onDeleteStep }: SequenceFlowBuilderProps) {
   const { nodes, edges } = useSequenceLayout(steps, branches, onEditStep, onDeleteStep)
 
+  if (steps.length === 0) {
+    return (
+      <div className="w-full h-[600px] border rounded-lg bg-background flex items-center justify-center">
+        <div className="text-center text-muted-foreground">
+          <p className="text-sm">No steps yet</p>
+          <p className="text-xs mt-1">Switch to List view to add steps</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="w-full h-[600px] border rounded-lg bg-background">
       <ReactFlow

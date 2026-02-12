@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { nanoid } from 'nanoid'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -462,10 +463,8 @@ function SequenceEditor({ sequence, onBack, onUpdate }: SequenceEditorProps) {
       color: string
       description?: string
     }) => {
-      const branchId = data.name
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-|-$/g, '') || `branch-${Date.now().toString(36)}`
+      const slug = data.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+      const branchId = `${slug || 'branch'}-${nanoid(6)}`
       return sequencesApi.createBranch(sequence.id, {
         id: branchId,
         name: data.name,

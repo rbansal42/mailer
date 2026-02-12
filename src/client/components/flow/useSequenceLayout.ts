@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useRef } from 'react'
 import type { Node, Edge } from '@xyflow/react'
 import type { SequenceStep, SequenceBranch } from '../../../shared/types'
 
@@ -14,6 +14,11 @@ export function useSequenceLayout(
   onEditStep: (step: SequenceStep) => void,
   onDeleteStep: (stepId: number) => void,
 ) {
+  const onEditRef = useRef(onEditStep)
+  const onDeleteRef = useRef(onDeleteStep)
+  onEditRef.current = onEditStep
+  onDeleteRef.current = onDeleteStep
+
   return useMemo(() => {
     const nodes: Node[] = []
     const edges: Edge[] = []
@@ -44,8 +49,8 @@ export function useSequenceLayout(
           delayHours: step.delay_hours,
           blockCount: step.blocks?.length ?? 0,
           branchColor: null,
-          onEdit: () => onEditStep(step),
-          onDelete: () => onDeleteStep(step.id),
+          onEdit: () => onEditRef.current(step),
+          onDelete: () => onDeleteRef.current(step.id),
         },
       })
 
@@ -119,8 +124,8 @@ export function useSequenceLayout(
               delayHours: step.delay_hours,
               blockCount: step.blocks?.length ?? 0,
               branchColor: branch.color,
-              onEdit: () => onEditStep(step),
-              onDelete: () => onDeleteStep(step.id),
+              onEdit: () => onEditRef.current(step),
+              onDelete: () => onDeleteRef.current(step.id),
             },
           })
 
@@ -172,5 +177,5 @@ export function useSequenceLayout(
     }
 
     return { nodes, edges }
-  }, [steps, branches, onEditStep, onDeleteStep])
+  }, [steps, branches])
 }

@@ -217,17 +217,20 @@ export async function recordAction(
     [tokenDetails.id, finalIp ?? null, userAgent ?? null]
   )
 
+  // Resolve current step using branch_id to avoid ambiguity across branches
+  const branchId = enrollmentRow.branch_id
+  const stepRow = await queryOne<{ id: number }>(
+    branchId
+      ? `SELECT id FROM sequence_steps WHERE sequence_id = ? AND step_order = ? AND branch_id = ?`
+      : `SELECT id FROM sequence_steps WHERE sequence_id = ? AND step_order = ? AND (branch_id IS NULL OR branch_id = '')`,
+    branchId ? [sequenceId, enrollmentRow.current_step, branchId] : [sequenceId, enrollmentRow.current_step]
+  )
+
   // Determine branch target from the button's block configuration
   let branchTarget: string | null = null
-  if (buttonId) {
-    branchTarget = await findBranchTargetForButton(sequenceId, enrollmentRow.current_step, buttonId)
+  if (buttonId && stepRow) {
+    branchTarget = await findBranchTargetForButton(stepRow.id, buttonId)
   }
-
-  // Record in sequence_actions table
-  const stepRow = await queryOne<{ id: number }>(
-    `SELECT id FROM sequence_steps WHERE sequence_id = ? AND step_order = ?`,
-    [sequenceId, enrollmentRow.current_step]
-  )
   if (stepRow) {
     await execute(
       `INSERT INTO sequence_actions (sequence_id, step_id, enrollment_id, clicked_at, destination_type, button_id, branch_target)
