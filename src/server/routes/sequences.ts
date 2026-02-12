@@ -4,7 +4,8 @@ import { queryAll, queryOne, execute, safeJsonParse } from '../db'
 import { logger } from '../lib/logger'
 import { enrollRecipient, pauseEnrollment, cancelEnrollment, resumeEnrollment } from '../services/sequence-processor'
 import { generateSequence, getLLMSettings } from '../services/llm'
-import { generateSequenceSchema, validate } from '../lib/validation'
+import { generateSequenceSchema, createBranchSchema, updateBranchSchema, validate } from '../lib/validation'
+import type { SequenceBranch } from '../../shared/types'
 
 export const sequencesRouter = Router()
 
@@ -39,7 +40,36 @@ interface SequenceStepRow {
   branch_id: string | null
   is_branch_point: boolean
   branch_order: number | null
+  blocks: string | Record<string, unknown>[] | null
   created_at: string
+}
+
+interface BranchRow {
+  id: string
+  sequence_id: number
+  name: string
+  description: string | null
+  color: string
+  parent_branch_id: string | null
+  trigger_step_id: number | null
+  trigger_type: string
+  trigger_config: string | Record<string, unknown>
+  created_at: string
+}
+
+function formatBranch(row: BranchRow): SequenceBranch {
+  return {
+    id: row.id,
+    sequence_id: row.sequence_id,
+    name: row.name,
+    description: row.description,
+    color: row.color,
+    parent_branch_id: row.parent_branch_id,
+    trigger_step_id: row.trigger_step_id,
+    trigger_type: row.trigger_type as SequenceBranch['trigger_type'],
+    trigger_config: typeof row.trigger_config === 'string' ? JSON.parse(row.trigger_config) : row.trigger_config ?? {},
+    created_at: row.created_at,
+  }
 }
 
 interface EnrollmentRow {
@@ -148,10 +178,19 @@ sequencesRouter.get('/:id', async (req, res) => {
       [id]
     )
 
+    const branches = await queryAll<BranchRow>(
+      `SELECT * FROM sequence_branches WHERE sequence_id = ? ORDER BY created_at ASC`,
+      [id]
+    )
+
     res.json({
       ...sequence,
       enabled: sequence.enabled,
-      steps
+      steps: steps.map(s => ({
+        ...s,
+        blocks: s.blocks ? (typeof s.blocks === 'string' ? JSON.parse(s.blocks) : s.blocks) : null,
+      })),
+      branches: branches.map(b => formatBranch(b)),
     })
   } catch (error) {
     logger.error('Failed to get sequence', { service: 'sequences' }, error as Error)
@@ -233,7 +272,7 @@ sequencesRouter.delete('/:id', async (req, res) => {
 sequencesRouter.post('/:id/steps', async (req, res) => {
   try {
     const sequenceId = parseInt(req.params.id, 10)
-    const { templateId, subject, delayDays, delayHours, sendTime, branchId } = req.body
+    const { templateId, subject, delayDays, delayHours, sendTime, branchId, blocks } = req.body
 
     // Verify ownership
     const sequence = await queryOne('SELECT id FROM sequences WHERE id = ? AND user_id = ?', [sequenceId, req.userId])
@@ -274,11 +313,11 @@ sequencesRouter.post('/:id/steps', async (req, res) => {
       nextOrder = ((maxOrder?.max_order as number) || 0) + 1
     }
 
-    // Insert with branch fields
+    // Insert with branch fields and blocks
     const result = await execute(
       `INSERT INTO sequence_steps 
-       (sequence_id, step_order, template_id, subject, delay_days, delay_hours, send_time, branch_id, branch_order)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+       (sequence_id, step_order, template_id, subject, delay_days, delay_hours, send_time, branch_id, branch_order, blocks)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb) RETURNING id`,
       [
         sequenceId,
         nextOrder,
@@ -288,7 +327,8 @@ sequencesRouter.post('/:id/steps', async (req, res) => {
         delayHours ?? 0,
         sendTime ?? null,
         branchId ?? null,
-        branchId ? nextOrder : null
+        branchId ? nextOrder : null,
+        blocks ? JSON.stringify(blocks) : null,
       ]
     )
 
@@ -307,7 +347,7 @@ sequencesRouter.put('/:id/steps/:stepId', async (req, res) => {
   try {
     const sequenceId = parseInt(req.params.id, 10)
     const stepId = parseInt(req.params.stepId, 10)
-    const { templateId, subject, delayDays, delayHours, sendTime, stepOrder } = req.body
+    const { templateId, subject, delayDays, delayHours, sendTime, stepOrder, blocks } = req.body
 
     // Verify ownership
     const sequence = await queryOne('SELECT id FROM sequences WHERE id = ? AND user_id = ?', [sequenceId, req.userId])
@@ -325,6 +365,7 @@ sequencesRouter.put('/:id/steps/:stepId', async (req, res) => {
     if (delayHours !== undefined) { updates.push('delay_hours = ?'); params.push(delayHours) }
     if (sendTime !== undefined) { updates.push('send_time = ?'); params.push(sendTime) }
     if (stepOrder !== undefined) { updates.push('step_order = ?'); params.push(stepOrder) }
+    if (blocks !== undefined) { updates.push('blocks = ?::jsonb'); params.push(blocks ? JSON.stringify(blocks) : null) }
 
     if (updates.length === 0) {
       res.status(400).json({ error: 'No fields to update' })
@@ -510,6 +551,31 @@ sequencesRouter.post('/:id/branch-point', async (req, res) => {
       `UPDATE sequences SET branch_delay_hours = ? WHERE id = ?`,
       [delayBeforeSwitch ?? 0, id]
     )
+
+    // Create default and action branches in sequence_branches table if they don't already exist
+    const existingDefault = await queryOne(
+      `SELECT id FROM sequence_branches WHERE sequence_id = ? AND id = 'default'`,
+      [id]
+    )
+    if (!existingDefault) {
+      await execute(
+        `INSERT INTO sequence_branches (id, sequence_id, name, color, trigger_type, trigger_config)
+         VALUES ('default', ?, 'Default', '#6366f1', 'no_engagement', '{}')`,
+        [id]
+      )
+    }
+
+    const existingAction = await queryOne(
+      `SELECT id FROM sequence_branches WHERE sequence_id = ? AND id = 'action'`,
+      [id]
+    )
+    if (!existingAction) {
+      await execute(
+        `INSERT INTO sequence_branches (id, sequence_id, name, color, trigger_step_id, trigger_type, trigger_config)
+         VALUES ('action', ?, 'Action', '#f59e0b', ?, 'action_click', '{}')`,
+        [id, (stepCheck as any).id]
+      )
+    }
 
     logger.info('Created branch point', { service: 'sequences', sequenceId: id, afterStep })
     res.json({ success: true })
