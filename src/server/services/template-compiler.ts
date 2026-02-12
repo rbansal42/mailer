@@ -125,9 +125,14 @@ function compileButton(props: Record<string, unknown>, data: Record<string, stri
   const color = isValidColor ? String(props.color) : '#0f172a'
   const label = escapeHtml(replaceVariables(String(props.label || 'Click Here'), data))
   const isActionTrigger = Boolean(props.isActionTrigger)
+  const safeButtonId = (props.buttonId as string)?.replace(/[^a-zA-Z0-9_-]/g, '') || ''
+  const buttonId = safeButtonId || null
   const rawUrl = replaceVariables(String(props.url || '#'), data)
-  const url = isActionTrigger ? '{{action_url}}' : escapeHtml(rawUrl)
+  const actionUrlBase = '{{action_url}}'
+  const actionUrl = isActionTrigger && buttonId ? `${actionUrlBase}?btn=${buttonId}` : actionUrlBase
+  const url = isActionTrigger ? actionUrl : escapeHtml(rawUrl)
   const dataAttr = isActionTrigger ? ' data-action-button="true"' : ''
+  const buttonIdAttr = isActionTrigger && buttonId ? ` data-button-id="${buttonId}"` : ''
 
   return `
     <table width="100%" cellpadding="0" cellspacing="0" border="0">
@@ -136,7 +141,7 @@ function compileButton(props: Record<string, unknown>, data: Record<string, stri
           <table cellpadding="0" cellspacing="0" border="0">
             <tr>
               <td style="background-color: ${color}; border-radius: 4px;">
-                <a href="${url}"${dataAttr} target="_blank" style="display: inline-block; padding: 12px 24px; font-size: 16px; font-family: Arial, sans-serif; color: #ffffff; text-decoration: none; font-weight: bold;">
+                <a href="${url}"${dataAttr}${buttonIdAttr} target="_blank" style="display: inline-block; padding: 12px 24px; font-size: 16px; font-family: Arial, sans-serif; color: #ffffff; text-decoration: none; font-weight: bold;">
                   ${label}
                 </a>
               </td>
@@ -231,11 +236,15 @@ function compileActionButton(props: Record<string, unknown>): string {
   const isValidColor = /^#[0-9A-Fa-f]{6}$/.test(String(props.color))
   const color = isValidColor ? String(props.color) : '#10b981'
   const label = escapeHtml(String(props.label || 'Click Here'))
+  const safeButtonId = (props.buttonId as string)?.replace(/[^a-zA-Z0-9_-]/g, '') || ''
+  const buttonId = safeButtonId || null
+  const actionUrl = buttonId ? `{{action_url}}?btn=${buttonId}` : '{{action_url}}'
+  const buttonIdAttr = buttonId ? ` data-button-id="${buttonId}"` : ''
 
   return `
     <div style="text-align: ${align}; padding: 16px;">
-      <a href="{{action_url}}" 
-         data-action-button="true"
+      <a href="${actionUrl}" 
+         data-action-button="true"${buttonIdAttr}
          style="display: inline-block; padding: 14px 28px; background-color: ${color}; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px;">
         ${label}
       </a>
@@ -294,6 +303,11 @@ export function injectTracking(
   if (options.clickTracking) {
     let linkIndex = 0
     result = result.replace(/<a\s+([^>]*?)href="([^"]+)"([^>]*)>/gi, (match, before, url, after) => {
+      // Skip action buttons — they get their own tracking URL below
+      if (before.includes('data-action-button') || after.includes('data-action-button')) {
+        return match
+      }
+
       // Skip mailto:, tel:, and # links
       if (url.startsWith('mailto:') || url.startsWith('tel:') || url === '#') {
         return match
@@ -310,9 +324,11 @@ export function injectTracking(
   }
 
   // Handle action buttons with data attribute
-  const actionAttrRegex = /(<[^>]*data-action-button="true"[^>]*)href="[^"]*"/gi
-  result = result.replace(actionAttrRegex, (_match, prefix) => {
-    return `${prefix}href="${baseUrl}/t/${trackingToken}/action"`
+  // Preserve ?btn= query param from the {{action_url}}?btn=xxx placeholder
+  const actionAttrRegex = /(<[^>]*data-action-button="true"[^>]*)href="[^"]*?(?:\?btn=([^"&]*))?"/gi
+  result = result.replace(actionAttrRegex, (_match, prefix, buttonId) => {
+    const btnParam = buttonId ? `?btn=${buttonId}` : ''
+    return `${prefix}href="${baseUrl}/t/${trackingToken}/action${btnParam}"`
   })
 
   return result

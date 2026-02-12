@@ -1,4 +1,3 @@
-// server/src/lib/url-validation.ts
 // URL validation to prevent SSRF attacks when loading external images
 
 /**

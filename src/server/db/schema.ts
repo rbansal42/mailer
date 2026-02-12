@@ -258,6 +258,7 @@ export async function createTables() {
       delay_days INTEGER NOT NULL,
       delay_hours INTEGER DEFAULT 0,
       send_time TEXT,
+      blocks JSONB,
       created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `)
@@ -274,6 +275,7 @@ export async function createTables() {
       enrolled_at TIMESTAMPTZ DEFAULT NOW(),
       next_send_at TIMESTAMPTZ,
       completed_at TIMESTAMPTZ,
+      trigger_data JSONB,
       UNIQUE(sequence_id, recipient_email)
     )
   `)
@@ -290,10 +292,29 @@ export async function createTables() {
       destination_url TEXT,
       hosted_message TEXT,
       button_text TEXT,
+      button_id TEXT,
+      branch_target TEXT,
       created_at TIMESTAMPTZ DEFAULT NOW(),
       FOREIGN KEY (sequence_id) REFERENCES sequences(id) ON DELETE CASCADE,
       FOREIGN KEY (step_id) REFERENCES sequence_steps(id) ON DELETE CASCADE,
       FOREIGN KEY (enrollment_id) REFERENCES sequence_enrollments(id) ON DELETE CASCADE
+    )
+  `)
+
+  // Sequence branches - named branches for multi-path sequences
+  await execute(`
+    CREATE TABLE IF NOT EXISTS sequence_branches (
+      id TEXT NOT NULL,
+      sequence_id INTEGER NOT NULL REFERENCES sequences(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      description TEXT,
+      color TEXT DEFAULT '#6366f1',
+      parent_branch_id TEXT,
+      trigger_step_id INTEGER REFERENCES sequence_steps(id) ON DELETE SET NULL,
+      trigger_type TEXT NOT NULL DEFAULT 'action_click',
+      trigger_config JSONB DEFAULT '{}',
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      PRIMARY KEY (id, sequence_id)
     )
   `)
 
@@ -431,7 +452,10 @@ export async function createIndexes() {
   await execute('CREATE INDEX IF NOT EXISTS idx_google_sheets_syncs_list ON google_sheets_syncs(list_id)')
   await execute('CREATE INDEX IF NOT EXISTS idx_sequence_actions_enrollment ON sequence_actions(enrollment_id)')
   await execute('CREATE INDEX IF NOT EXISTS idx_sequence_actions_step ON sequence_actions(step_id)')
+  await execute('CREATE INDEX IF NOT EXISTS idx_sequence_actions_sequence ON sequence_actions(sequence_id)')
   await execute('CREATE INDEX IF NOT EXISTS idx_sequence_steps_branch ON sequence_steps(branch_id)')
+  await execute('CREATE INDEX IF NOT EXISTS idx_sequence_branches_sequence ON sequence_branches(sequence_id)')
+  await execute('CREATE INDEX IF NOT EXISTS idx_sequence_branches_trigger_step ON sequence_branches(trigger_step_id)')
   await execute('CREATE INDEX IF NOT EXISTS idx_users_firebase_uid ON users(firebase_uid)')
   await execute('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)')
 

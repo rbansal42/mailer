@@ -1,4 +1,3 @@
-// server/src/lib/validation.ts
 import { z } from 'zod'
 
 // Email validation (RFC 5322 simplified)
@@ -189,6 +188,20 @@ export const generateSequenceSchema = z.object({
 })
 
 export type GenerateSequenceInput = z.infer<typeof generateSequenceSchema>
+
+// Branch schemas
+export const createBranchSchema = z.object({
+  id: z.string().min(1).max(50).regex(/^[a-z0-9-]+$/),
+  name: z.string().min(1).max(100),
+  description: z.string().max(500).optional(),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  parentBranchId: z.string().optional(),
+  triggerStepId: z.number().int().positive().optional(),
+  triggerType: z.enum(['action_click', 'opened', 'clicked_any', 'no_engagement']),
+  triggerConfig: z.record(z.string(), z.unknown()).optional(),
+})
+
+export const updateBranchSchema = createBranchSchema.partial().omit({ id: true })
 
 // Validation helper
 export function validate<T>(schema: z.ZodSchema<T>, data: unknown): { success: true; data: T } | { success: false; error: string } {

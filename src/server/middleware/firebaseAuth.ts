@@ -2,23 +2,38 @@ import { Request, Response, NextFunction } from 'express'
 import { firebaseAuth, isFirebaseConfigured } from '../lib/firebase'
 import { sql } from '../db'
 
-// Extend Express Request
+/**
+ * Extends Express Request with authenticated user information.
+ * These properties are set by the firebaseAuthMiddleware after successful authentication.
+ */
 declare global {
   namespace Express {
     interface Request {
+      /** Database ID of the authenticated user */
       userId: string
+      /** Complete user object with profile information */
       user: {
+        /** Database ID */
         id: string
+        /** Firebase UID for cross-referencing with Firebase Auth */
         firebaseUid: string
+        /** User's verified email address */
         email: string
+        /** Display name */
         name: string
+        /** Whether the user has admin privileges */
         isAdmin: boolean
+        /** Optional profile picture URL */
         avatarUrl: string | null
       }
     }
   }
 }
 
+/**
+ * Database row structure for users table.
+ * @internal
+ */
 interface UserRow {
   id: string
   firebase_uid: string
@@ -28,6 +43,34 @@ interface UserRow {
   avatar_url: string | null
 }
 
+/**
+ * Express middleware for Firebase authentication.
+ * 
+ * Verifies Firebase ID tokens from the Authorization header and:
+ * 1. Validates the token and checks email verification
+ * 2. Gets or creates a local user record in the database
+ * 3. Auto-promotes the first user to admin
+ * 4. Migrates existing data to the first admin user
+ * 5. Attaches user information to the request object
+ * 
+ * @param req - Express request object (will be populated with `userId` and `user` on success)
+ * @param res - Express response object
+ * @param next - Express next function
+ * 
+ * @returns HTTP 500 if Firebase is not configured,
+ *          HTTP 401 if token is missing or invalid,
+ *          HTTP 403 if email is not verified
+ * 
+ * @example
+ * ```typescript
+ * import { firebaseAuthMiddleware } from './middleware/firebaseAuth'
+ * 
+ * app.get('/api/protected', firebaseAuthMiddleware, (req, res) => {
+ *   console.log('Authenticated user:', req.user)
+ *   res.json({ userId: req.userId })
+ * })
+ * ```
+ */
 export async function firebaseAuthMiddleware(
   req: Request,
   res: Response,
@@ -108,6 +151,24 @@ export async function firebaseAuthMiddleware(
   }
 }
 
+/**
+ * Migrates all existing orphaned data to the first admin user.
+ * 
+ * This function is called when the first user registers and is auto-promoted to admin.
+ * It assigns ownership of all records with `user_id = NULL` to the new admin,
+ * ensuring a smooth transition from single-user to multi-user mode.
+ * 
+ * Tables migrated:
+ * - sender_accounts, campaigns, mails, drafts
+ * - sequences, recurring_campaigns
+ * - certificate_configs, generated_certificates
+ * - contacts, lists
+ * - media, attachments
+ * - templates (non-system only)
+ * 
+ * @param userId - Database ID of the first admin user
+ * @internal
+ */
 async function migrateExistingData(userId: string) {
   console.log('Migrating existing data to first user:', userId)
   
@@ -134,7 +195,32 @@ async function migrateExistingData(userId: string) {
   console.log('Data migration complete')
 }
 
-// Admin-only middleware
+/**
+ * Express middleware that requires admin privileges.
+ * 
+ * Must be used after `firebaseAuthMiddleware` to ensure `req.user` is populated.
+ * Returns HTTP 403 if the authenticated user is not an admin.
+ * 
+ * @param req - Express request object (must have `user` from firebaseAuthMiddleware)
+ * @param res - Express response object
+ * @param next - Express next function
+ * 
+ * @returns HTTP 403 if user is not an admin
+ * 
+ * @example
+ * ```typescript
+ * import { firebaseAuthMiddleware, requireAdmin } from './middleware/firebaseAuth'
+ * 
+ * app.delete('/api/admin/users/:id',
+ *   firebaseAuthMiddleware,
+ *   requireAdmin,
+ *   (req, res) => {
+ *     // Only admins can reach this handler
+ *     console.log('Admin user:', req.user.email)
+ *   }
+ * )
+ * ```
+ */
 export function requireAdmin(req: Request, res: Response, next: NextFunction) {
   if (!req.user?.isAdmin) {
     return res.status(403).json({ error: 'Admin access required' })

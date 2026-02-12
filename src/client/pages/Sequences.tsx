@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { nanoid } from 'nanoid'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -8,6 +9,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from '@/components/ui/alert-dialog'
 import { SequenceBranchBuilder } from '@/components/SequenceBranchBuilder'
+import { SequenceFlowBuilder } from '@/components/SequenceFlowBuilder'
+import { BranchConditionEditor } from '@/components/BranchConditionEditor'
 import { GenerateSequenceDialog } from '@/components/GenerateSequenceDialog'
 import { SequencePreviewModal } from '@/components/SequencePreviewModal'
 import { 
@@ -21,19 +24,19 @@ import {
   Users,
   Mail,
   Download,
-  Sparkles
+  Sparkles,
+  List,
+  Workflow
 } from 'lucide-react'
 import { 
   api,
   Sequence, 
   SequenceStep,
-  SequenceEnrollment,
+  SequenceBranch,
   GenerateSequenceResponse,
-  getSequence, 
-  getSequenceEnrollments,
-  createBranchPoint,
   sequences as sequencesApi
 } from '@/lib/api'
+import { BRANCH_ACTION, BRANCH_DEFAULT } from '../../shared/constants'
 
 export default function Sequences() {
   const queryClient = useQueryClient()
@@ -62,7 +65,7 @@ export default function Sequences() {
 
   const handleEditSequence = async (id: number) => {
     try {
-      const sequence = await getSequence(id)
+      const sequence = await sequencesApi.get(id)
       setEditingSequence(sequence)
     } catch {
       toast.error('Failed to load sequence')
@@ -377,14 +380,18 @@ interface SequenceEditorProps {
 
 function SequenceEditor({ sequence, onBack, onUpdate }: SequenceEditorProps) {
   const queryClient = useQueryClient()
+  const [viewMode, setViewMode] = useState<'list' | 'flow'>('flow')
   const [stepDialogOpen, setStepDialogOpen] = useState(false)
   const [stepDialogBranch, setStepDialogBranch] = useState<string | null>(null)
   const [editingStep, setEditingStep] = useState<SequenceStep | null>(null)
   const [deletingStepId, setDeletingStepId] = useState<number | null>(null)
+  const [branchDialogOpen, setBranchDialogOpen] = useState(false)
+  const [editingBranch, setEditingBranch] = useState<SequenceBranch | null>(null)
+  const [deletingBranchId, setDeletingBranchId] = useState<string | null>(null)
 
   const refreshSequence = async () => {
     try {
-      const updated = await getSequence(sequence.id)
+      const updated = await sequencesApi.get(sequence.id)
       onUpdate(updated)
     } catch {
       toast.error('Failed to refresh sequence')
@@ -398,9 +405,9 @@ function SequenceEditor({ sequence, onBack, onUpdate }: SequenceEditorProps) {
   }
 
   const addBranchPointMutation = useMutation({
-    mutationFn: (afterStep: number) => createBranchPoint(sequence.id, afterStep, 0),
+    mutationFn: (afterStep: number) => sequencesApi.createBranchPoint(sequence.id, afterStep, 0),
     onSuccess: async () => {
-      const updated = await getSequence(sequence.id)
+      const updated = await sequencesApi.get(sequence.id)
       onUpdate(updated)
       queryClient.invalidateQueries({ queryKey: ['sequences'] })
       toast.success('Branch point added')
@@ -447,6 +454,105 @@ function SequenceEditor({ sequence, onBack, onUpdate }: SequenceEditorProps) {
     },
   })
 
+  // Branch CRUD mutations
+  const createBranchMutation = useMutation({
+    mutationFn: (data: {
+      triggerType: string
+      triggerConfig: Record<string, unknown>
+      name: string
+      color: string
+      description?: string
+    }) => {
+      const slug = data.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+      const branchId = `${slug || 'branch'}-${nanoid(6)}`
+      return sequencesApi.createBranch(sequence.id, {
+        id: branchId,
+        name: data.name,
+        description: data.description,
+        color: data.color,
+        triggerType: data.triggerType,
+        triggerConfig: data.triggerConfig,
+      })
+    },
+    onSuccess: async () => {
+      await refreshSequence()
+      setBranchDialogOpen(false)
+      setEditingBranch(null)
+      toast.success('Branch created')
+    },
+    onError: () => {
+      toast.error('Failed to create branch')
+    },
+  })
+
+  const updateBranchMutation = useMutation({
+    mutationFn: ({ branchId, data }: {
+      branchId: string
+      data: {
+        triggerType: string
+        triggerConfig: Record<string, unknown>
+        name: string
+        color: string
+        description?: string
+      }
+    }) => sequencesApi.updateBranch(sequence.id, branchId, {
+      name: data.name,
+      description: data.description,
+      color: data.color,
+      triggerType: data.triggerType,
+      triggerConfig: data.triggerConfig,
+    }),
+    onSuccess: async () => {
+      await refreshSequence()
+      setBranchDialogOpen(false)
+      setEditingBranch(null)
+      toast.success('Branch updated')
+    },
+    onError: () => {
+      toast.error('Failed to update branch')
+    },
+  })
+
+  const deleteBranchMutation = useMutation({
+    mutationFn: (branchId: string) => sequencesApi.deleteBranch(sequence.id, branchId),
+    onSuccess: async () => {
+      await refreshSequence()
+      setDeletingBranchId(null)
+      toast.success('Branch deleted')
+    },
+    onError: () => {
+      toast.error('Failed to delete branch')
+    },
+  })
+
+  const handleAddBranch = () => {
+    setEditingBranch(null)
+    setBranchDialogOpen(true)
+  }
+
+  const handleEditBranch = (branch: SequenceBranch) => {
+    setEditingBranch(branch)
+    setBranchDialogOpen(true)
+  }
+
+  const handleDeleteBranch = (branchId: string) => {
+    setDeletingBranchId(branchId)
+  }
+
+  const handleBranchSave = (data: {
+    triggerType: string
+    triggerConfig: Record<string, unknown>
+    name: string
+    color: string
+    description?: string
+  }) => {
+    if (editingBranch) {
+      updateBranchMutation.mutate({ branchId: editingBranch.id, data })
+    } else {
+      createBranchMutation.mutate(data)
+    }
+  }
+
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
@@ -492,17 +598,50 @@ function SequenceEditor({ sequence, onBack, onUpdate }: SequenceEditorProps) {
         </div>
       </div>
 
+      {/* View Toggle */}
+      <div className="px-4 pt-4 pb-0 flex items-center gap-3">
+        <div className="flex gap-1 bg-muted rounded-lg p-1">
+          <button
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md transition-colors ${viewMode === 'flow' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+            onClick={() => setViewMode('flow')}
+          >
+            <Workflow className="w-3.5 h-3.5" />
+            Flow
+          </button>
+          <button
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md transition-colors ${viewMode === 'list' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+            onClick={() => setViewMode('list')}
+          >
+            <List className="w-3.5 h-3.5" />
+            List
+          </button>
+        </div>
+      </div>
+
       {/* Main Content */}
       <div className="flex-1 p-4 overflow-auto">
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
           <div className="lg:col-span-3">
-            <SequenceBranchBuilder
-              steps={sequence.steps}
-              onAddStep={handleAddStep}
-              onAddBranchPoint={handleAddBranchPoint}
-              onEditStep={handleEditStep}
-              onDeleteStep={handleDeleteStep}
-            />
+            {viewMode === 'list' ? (
+              <SequenceBranchBuilder
+                steps={sequence.steps}
+                branches={sequence.branches || []}
+                onAddStep={handleAddStep}
+                onAddBranchPoint={handleAddBranchPoint}
+                onEditStep={handleEditStep}
+                onDeleteStep={handleDeleteStep}
+                onAddBranch={handleAddBranch}
+                onEditBranch={handleEditBranch}
+                onDeleteBranch={handleDeleteBranch}
+              />
+            ) : (
+              <SequenceFlowBuilder
+                steps={sequence.steps}
+                branches={sequence.branches || []}
+                onEditStep={(step) => { setEditingStep(step); setStepDialogOpen(true) }}
+                onDeleteStep={(stepId) => setDeletingStepId(stepId)}
+              />
+            )}
           </div>
           <div className="lg:col-span-1">
             <SequencePathStats sequenceId={sequence.id} />
@@ -520,6 +659,26 @@ function SequenceEditor({ sequence, onBack, onUpdate }: SequenceEditorProps) {
         onSaved={refreshSequence}
       />
 
+      {/* Branch Dialog */}
+      <Dialog open={branchDialogOpen} onOpenChange={(open) => { if (!open) { setBranchDialogOpen(false); setEditingBranch(null) } else { setBranchDialogOpen(true) } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingBranch ? 'Edit Branch' : 'Create Branch'}</DialogTitle>
+          </DialogHeader>
+          <BranchConditionEditor
+            key={editingBranch?.id || 'new'}
+            triggerType={editingBranch?.trigger_type || 'action_click'}
+            triggerConfig={editingBranch?.trigger_config || {}}
+            name={editingBranch?.name || ''}
+            color={editingBranch?.color || '#10b981'}
+            description={editingBranch?.description || undefined}
+            onUpdate={handleBranchSave}
+            isNew={!editingBranch}
+          />
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Step Dialog */}
       <AlertDialog open={deletingStepId !== null} onOpenChange={(open) => { if (!open) setDeletingStepId(null) }}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -534,6 +693,31 @@ function SequenceEditor({ sequence, onBack, onUpdate }: SequenceEditorProps) {
               onClick={() => {
                 if (deletingStepId !== null) {
                   deleteStepMutation.mutate(deletingStepId)
+                }
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Branch Dialog */}
+      <AlertDialog open={deletingBranchId !== null} onOpenChange={(open) => { if (!open) setDeletingBranchId(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Branch</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this branch? All steps in this branch will also be deleted. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (deletingBranchId !== null) {
+                  deleteBranchMutation.mutate(deletingBranchId)
                 }
               }}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
@@ -663,14 +847,14 @@ function StepDialog({ open, onOpenChange, sequenceId, branchId, step, onSaved }:
 function SequencePathStats({ sequenceId }: { sequenceId: number }) {
   const { data: enrollments } = useQuery({
     queryKey: ['sequence-enrollments', sequenceId],
-    queryFn: () => getSequenceEnrollments(sequenceId)
+    queryFn: () => sequencesApi.getEnrollments(sequenceId)
   })
 
   if (!enrollments || enrollments.length === 0) return null
 
   const total = enrollments.length
-  const onDefault = enrollments.filter((e) => !e.branch_id || e.branch_id === 'default').length
-  const onAction = enrollments.filter((e) => e.branch_id === 'action').length
+  const onDefault = enrollments.filter((e) => !e.branch_id || e.branch_id === BRANCH_DEFAULT).length
+  const onAction = enrollments.filter((e) => e.branch_id === BRANCH_ACTION).length
   const completed = enrollments.filter((e) => e.status === 'completed').length
   const actionClicked = enrollments.filter((e) => e.action_clicked_at).length
 

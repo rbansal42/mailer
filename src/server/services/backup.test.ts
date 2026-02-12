@@ -1,4 +1,3 @@
-// server/src/services/backup.test.ts
 import { describe, test, expect, mock, beforeEach } from 'bun:test'
 
 // Mock fs module

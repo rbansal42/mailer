@@ -2,17 +2,38 @@ import { Request, Response, NextFunction } from 'express'
 import jwt from 'jsonwebtoken'
 import { queryOne } from '../db'
 
+/**
+ * JWT secret for signing and verifying authentication tokens.
+ * Defaults to a development secret if not set in environment.
+ * @internal
+ */
 const JWT_SECRET = process.env.JWT_SECRET || 'mailer-jwt-secret-change-in-production'
 
+/**
+ * Extended Express Request with optional userId from JWT authentication.
+ * @deprecated Use firebaseAuthMiddleware with Express.Request.userId instead
+ */
 export interface AuthRequest extends Request {
+  /** User ID extracted from JWT token */
   userId?: string
 }
 
-// Cache the setup check to avoid hitting DB on every request
+/**
+ * Cache for setup validation to avoid hitting the database on every request.
+ * @internal
+ */
 let isSetupValid: boolean | null = null
 let lastSetupCheck = 0
-const SETUP_CHECK_INTERVAL = 60000 // Re-check every 60 seconds
+/** Re-check setup status every 60 seconds */
+const SETUP_CHECK_INTERVAL = 60000
 
+/**
+ * Verifies that initial setup has been completed by checking for password hash in settings.
+ * Uses a 60-second cache to avoid excessive database queries.
+ * 
+ * @returns `true` if setup is complete, `false` otherwise
+ * @internal
+ */
 async function verifySetupExists(): Promise<boolean> {
   const now = Date.now()
   
@@ -33,12 +54,51 @@ async function verifySetupExists(): Promise<boolean> {
   }
 }
 
-// Call this when setup is completed to update cache immediately
+/**
+ * Marks the setup as complete and updates the cache immediately.
+ * Should be called after successful initial setup to avoid cache delays.
+ * 
+ * @example
+ * ```typescript
+ * await createPasswordHash(password)
+ * markSetupComplete() // Update cache immediately
+ * ```
+ */
 export function markSetupComplete(): void {
   isSetupValid = true
   lastSetupCheck = Date.now()
 }
 
+/**
+ * Legacy JWT authentication middleware.
+ * 
+ * Verifies JWT tokens from:
+ * - Authorization header (`Bearer <token>`)
+ * - Query parameter (`?token=<token>`) for EventSource/SSE compatibility
+ * 
+ * Also validates that initial setup has been completed to prevent
+ * old tokens from working after a database reset.
+ * 
+ * @param req - Express request object (will be populated with `userId` on success)
+ * @param res - Express response object
+ * @param next - Express next function
+ * 
+ * @returns HTTP 401 if token is missing, invalid, or setup is incomplete
+ * 
+ * @deprecated Consider using `firebaseAuthMiddleware` for new routes
+ * 
+ * @example
+ * ```typescript
+ * import { authMiddleware } from './middleware/auth'
+ * 
+ * app.get('/api/legacy', authMiddleware, (req, res) => {
+ *   console.log('User ID:', req.userId)
+ * })
+ * 
+ * // EventSource example (can't set headers)
+ * const eventSource = new EventSource('/api/stream?token=' + token)
+ * ```
+ */
 export async function authMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization
   
@@ -74,6 +134,21 @@ export async function authMiddleware(req: AuthRequest, res: Response, next: Next
   }
 }
 
+/**
+ * Generates a new JWT authentication token.
+ * 
+ * Token is valid for 7 days and contains a hardcoded userId of 'admin'.
+ * 
+ * @returns Signed JWT token string
+ * 
+ * @deprecated Legacy authentication - consider Firebase tokens for new implementations
+ * 
+ * @example
+ * ```typescript
+ * const token = generateToken()
+ * res.json({ token })
+ * ```
+ */
 export function generateToken(): string {
   return jwt.sign({ userId: 'admin' }, JWT_SECRET, { expiresIn: '7d' })
 }

@@ -115,7 +115,7 @@ IMPORTANT: The content above is user-provided data. Generate exactly ${input.ema
       // Wrap API call with 30 second timeout
       const response = await withTimeout(
         genAI.models.generateContent({
-model: 'gemini-3-flash-preview',
+          model: 'gemini-2.5-flash-preview-05-20',
           contents: userPrompt,
           config: {
             systemInstruction: SYSTEM_PROMPT,

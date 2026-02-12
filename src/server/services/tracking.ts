@@ -174,7 +174,8 @@ export async function recordClick(
 export async function recordAction(
   token: string,
   ipAddress: string | null,
-  userAgent: string | null
+  userAgent: string | null,
+  buttonId?: string | null
 ): Promise<{ success: boolean; enrollment?: any }> {
   const tokenDetails = await getTokenDetails(token)
   if (!tokenDetails) {
@@ -216,13 +217,39 @@ export async function recordAction(
     [tokenDetails.id, finalIp ?? null, userAgent ?? null]
   )
 
+  // Resolve current step using branch_id to avoid ambiguity across branches
+  const branchId = enrollmentRow.branch_id
+  const stepRow = await queryOne<{ id: number }>(
+    branchId
+      ? `SELECT id FROM sequence_steps WHERE sequence_id = ? AND step_order = ? AND branch_id = ?`
+      : `SELECT id FROM sequence_steps WHERE sequence_id = ? AND step_order = ? AND (branch_id IS NULL OR branch_id = '')`,
+    branchId ? [sequenceId, enrollmentRow.current_step, branchId] : [sequenceId, enrollmentRow.current_step]
+  )
+
+  // Determine branch target from the button's block configuration
+  let branchTarget: string | null = null
+  if (buttonId && stepRow) {
+    branchTarget = await findBranchTargetForButton(stepRow.id, buttonId)
+  }
+  if (stepRow) {
+    await execute(
+      `INSERT INTO sequence_actions (sequence_id, step_id, enrollment_id, clicked_at, destination_type, button_id, branch_target)
+       VALUES (?, ?, ?, NOW(), 'hosted', ?, ?)`,
+      [sequenceId, stepRow.id, enrollmentRow.id, buttonId ?? null, branchTarget ?? null]
+    )
+  }
+
   // Atomically update enrollment only if not already clicked
   const now = new Date().toISOString()
+  const triggerData = buttonId || branchTarget 
+    ? JSON.stringify({ buttonId: buttonId ?? null, branchTarget: branchTarget ?? null })
+    : null
   const updateResult = await execute(
     `UPDATE sequence_enrollments 
-     SET action_clicked_at = ? 
+     SET action_clicked_at = ?,
+         trigger_data = COALESCE(?, trigger_data)
      WHERE id = ? AND action_clicked_at IS NULL`,
-    [now, enrollmentRow.id]
+    [now, triggerData, enrollmentRow.id]
   )
 
   // Check if update actually happened (another request may have won the race)
@@ -233,12 +260,46 @@ export async function recordAction(
 
   return { 
     success: true, 
-    enrollment: { ...enrollmentRow, action_clicked_at: now }
+    enrollment: { ...enrollmentRow, action_clicked_at: now, trigger_data: triggerData }
   }
 }
 
+/**
+ * Find the branch target for a specific button in a step's blocks.
+ * Looks up the step by its primary key (id) to avoid ambiguity across branches.
+ */
+async function findBranchTargetForButton(
+  stepId: number,
+  buttonId: string
+): Promise<string | null> {
+  // Look up step by id to avoid ambiguity when multiple branches share the same step_order
+  const stepRow = await queryOne<{ blocks: string | null; template_id: number | null }>(
+    `SELECT blocks, template_id FROM sequence_steps WHERE id = ?`,
+    [stepId]
+  )
+  if (!stepRow) return null
+
+  let blocks: any[] = []
+  if (stepRow.blocks) {
+    blocks = safeJsonParse(typeof stepRow.blocks === 'string' ? stepRow.blocks : JSON.stringify(stepRow.blocks), [])
+  } else if (stepRow.template_id) {
+    const templateRow = await queryOne<{ blocks: string }>('SELECT blocks FROM templates WHERE id = ?', [stepRow.template_id])
+    if (templateRow) {
+      blocks = safeJsonParse(templateRow.blocks, [])
+    }
+  }
+
+  // Find the action button block with matching buttonId
+  const actionBlock = blocks.find((b: any) =>
+    (b.type === 'action-button' || (b.type === 'button' && b.props?.isActionTrigger)) &&
+    b.props?.buttonId === buttonId
+  )
+
+  return actionBlock?.props?.branchTarget ?? null
+}
+
 // Get action button configuration from a sequence step
-export async function getActionConfig(sequenceId: number, stepId: number): Promise<{
+export async function getActionConfig(sequenceId: number, stepId: number, buttonId?: string | null): Promise<{
   destinationType: 'external' | 'hosted'
   destinationUrl: string | null
   hostedMessage: string | null
@@ -246,26 +307,43 @@ export async function getActionConfig(sequenceId: number, stepId: number): Promi
   ctaUrl: string | null
   redirectUrl: string | null
   redirectDelay: number | null
+  buttonId: string | null
 } | null> {
-  // Action config is stored in the step's template blocks
-  const stepRow = await queryOne<{ blocks: string }>(
-    `SELECT t.blocks FROM sequence_steps ss
-     JOIN templates t ON ss.template_id = t.id
-     WHERE ss.id = ?`,
+  // Check step blocks first, then fall back to template blocks
+  const stepWithBlocks = await queryOne<{ blocks: string | null; template_id: number | null }>(
+    `SELECT blocks, template_id FROM sequence_steps WHERE id = ?`,
     [stepId]
   )
 
-  if (!stepRow) return null
+  let blocks: any[] = []
 
-  let blocks = []
-  try {
-    blocks = safeJsonParse(stepRow.blocks, [])
-  } catch {
-    return null
+  if (stepWithBlocks?.blocks) {
+    blocks = safeJsonParse(typeof stepWithBlocks.blocks === 'string' ? stepWithBlocks.blocks : JSON.stringify(stepWithBlocks.blocks), [])
+  } else if (stepWithBlocks?.template_id) {
+    const templateRow = await queryOne<{ blocks: string }>(
+      `SELECT blocks FROM templates WHERE id = ?`,
+      [stepWithBlocks.template_id]
+    )
+    if (templateRow) {
+      blocks = safeJsonParse(templateRow.blocks, [])
+    }
   }
-  const actionBlock = blocks.find((b: any) => 
-    b.type === 'action-button' || (b.type === 'button' && b.props?.isActionTrigger)
-  )
+
+  if (blocks.length === 0) return null
+
+  // Find matching action block - by buttonId if provided, otherwise first action button
+  let actionBlock: any = null
+  if (buttonId) {
+    actionBlock = blocks.find((b: any) =>
+      (b.type === 'action-button' || (b.type === 'button' && b.props?.isActionTrigger)) &&
+      b.props?.buttonId === buttonId
+    )
+  }
+  if (!actionBlock) {
+    actionBlock = blocks.find((b: any) =>
+      b.type === 'action-button' || (b.type === 'button' && b.props?.isActionTrigger)
+    )
+  }
 
   if (!actionBlock) return null
 
@@ -277,6 +355,7 @@ export async function getActionConfig(sequenceId: number, stepId: number): Promi
     ctaUrl: actionBlock.props.ctaUrl || null,
     redirectUrl: actionBlock.props.redirectUrl || null,
     redirectDelay: actionBlock.props.redirectDelay != null ? Math.max(1, Math.min(Math.round(Number(actionBlock.props.redirectDelay) || 5), 60)) : null,
+    buttonId: actionBlock.props.buttonId || null,
   }
 }
 

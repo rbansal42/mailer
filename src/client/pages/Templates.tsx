@@ -24,6 +24,7 @@ import { cn } from '../lib/utils'
 import { RichTextEditor } from '../components/ui/rich-text-editor'
 import { ImageCropModal } from '../components/ui/image-crop-modal'
 import DOMPurify from 'isomorphic-dompurify'
+import { nanoid } from 'nanoid'
 import { useBlockHistory } from '../stores/history'
 import { useKeyboardShortcuts, createSaveShortcut, createUndoShortcut, createRedoShortcut } from '../hooks/useKeyboardShortcuts'
 
@@ -356,10 +357,14 @@ export function TemplateEditor({ template, onBack, isMail, onSaveAsTemplate }: E
     if (blockIndex === -1) return
 
     const blockToCopy = blocks[blockIndex]
+    const newProps = { ...blockToCopy.props }
+    if (blockToCopy.type === 'action-button') {
+      newProps.buttonId = nanoid(8)
+    }
     const newBlock: Block = {
       ...blockToCopy,
       id: `block_${Date.now()}`,
-      props: { ...blockToCopy.props },
+      props: newProps,
     }
 
     const newBlocks = [
@@ -902,8 +907,15 @@ function BlockPreview({ block, darkMode: _darkMode }: { block: Block; darkMode?:
           >
             {String(props.label) || 'Click Here'}
           </a>
-          <div style={{ marginTop: '8px', fontSize: '12px', color: '#9ca3af' }}>
-            Action tracked for automation
+          {props.buttonId && (
+            <div className="text-[10px] text-muted-foreground text-center mt-1 font-mono opacity-50">
+              id: {String(props.buttonId)}
+            </div>
+          )}
+          <div className="text-[10px] text-muted-foreground text-center mt-1">
+            {props.branchTarget 
+              ? `Routes to: ${String(props.branchTarget)}` 
+              : 'Action tracked for automation'}
           </div>
         </div>
       )
@@ -1263,6 +1275,42 @@ function BlockProperties({ block, onChange, onOpenMediaLibrary, onOpenCropModal 
               </SelectContent>
             </Select>
           </div>
+          {props.buttonId && (
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Button ID</Label>
+              <p className="text-xs font-mono text-muted-foreground">{String(props.buttonId)}</p>
+            </div>
+          )}
+          <div className="space-y-2">
+            <Label className="text-xs">Branch Target</Label>
+            <Select
+              value={(() => {
+                const bt = props.branchTarget
+                if (bt === null || bt === undefined || bt === 'none') return 'none'
+                return 'custom'
+              })()}
+              onValueChange={(v) => onChange({ branchTarget: v === 'none' ? null : '' })}
+            >
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue placeholder="Same branch (track only)" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Same branch (track preference only)</SelectItem>
+                <SelectItem value="custom">Custom branch ID...</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {props.branchTarget !== null && props.branchTarget !== undefined && String(props.branchTarget) !== 'none' && (
+            <div className="space-y-2">
+              <Label className="text-xs">Branch ID</Label>
+              <Input
+                value={String(props.branchTarget || '')}
+                onChange={(e) => onChange({ branchTarget: e.target.value })}
+                placeholder="e.g. interested, not-interested"
+                className="h-8 text-xs"
+              />
+            </div>
+          )}
           <hr className="my-4 border-border" />
           <div className="space-y-2">
             <Label className="text-xs">When Clicked</Label>
@@ -1326,9 +1374,11 @@ function getDefaultProps(type: Block['type']): Record<string, unknown> {
       return { text: '© 2026 Company Name · Unsubscribe' }
     case 'action-button':
       return { 
+        buttonId: nanoid(8),
         label: 'Yes, I\'m interested', 
         color: DEFAULT_ACTION_BUTTON_COLOR, 
         align: 'center',
+        branchTarget: null,
         destinationType: 'hosted',
         destinationUrl: '',
         hostedMessage: 'Thank you for your response! We\'ll be in touch soon.'

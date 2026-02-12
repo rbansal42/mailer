@@ -9,7 +9,7 @@ import type {
   Media, MediaUsage, SuppressionItem,
   Contact, ContactList, PaginatedResponse,
   GoogleSheetsStatus, GoogleSheetsCredentials, SpreadsheetMetadata, SpreadsheetPreview, SyncConfig, SyncResult, SheetSync,
-  SequenceStep, Sequence, SequenceAction, SequenceEnrollment, SequenceListItem, GenerateSequenceRequest, GenerateSequenceResponse,
+  SequenceBranch, SequenceStep, Sequence, SequenceAction, SequenceEnrollment, SequenceListItem, GenerateSequenceRequest, GenerateSequenceResponse,
   LLMProviderId, LLMProviderInfo, LLMSettings,
   User, AdminUser, UsersListResponse, AnalyticsOverview,
 } from '../../shared/types'
@@ -23,7 +23,7 @@ export type {
   Media, MediaUsage, SuppressionItem,
   Contact, ContactList, PaginatedResponse,
   GoogleSheetsStatus, GoogleSheetsCredentials, SpreadsheetMetadata, SpreadsheetPreview, SyncConfig, SyncResult, SheetSync,
-  SequenceStep, Sequence, SequenceAction, SequenceEnrollment, SequenceListItem, GenerateSequenceRequest, GenerateSequenceResponse,
+  SequenceBranch, SequenceStep, Sequence, SequenceAction, SequenceEnrollment, SequenceListItem, GenerateSequenceRequest, GenerateSequenceResponse,
   LLMProviderId, LLMProviderInfo, LLMSettings,
   User, AdminUser, UsersListResponse, AnalyticsOverview,
 } from '../../shared/types'
@@ -426,34 +426,7 @@ export const googleSheetsApi = {
     }),
 }
 
-// Sequence API functions
-export function getSequence(id: number): Promise<Sequence> {
-  return request<Sequence>(`/sequences/${id}`)
-}
-
-export function addSequenceStep(sequenceId: number, step: Partial<SequenceStep>): Promise<SequenceStep> {
-  return request<SequenceStep>(`/sequences/${sequenceId}/steps`, {
-    method: 'POST',
-    body: JSON.stringify(step)
-  })
-}
-
-export function createBranchPoint(sequenceId: number, afterStep: number, delayHours: number = 0): Promise<void> {
-  return request<void>(`/sequences/${sequenceId}/branch-point`, {
-    method: 'POST',
-    body: JSON.stringify({ afterStep, delayBeforeSwitch: delayHours })
-  })
-}
-
-export function getSequenceActions(sequenceId: number): Promise<SequenceAction[]> {
-  return request<SequenceAction[]>(`/sequences/${sequenceId}/actions`)
-}
-
-export function getSequenceEnrollments(sequenceId: number): Promise<SequenceEnrollment[]> {
-  return request<SequenceEnrollment[]>(`/sequences/${sequenceId}/enrollments`)
-}
-
-// Full sequences API
+// Sequences API
 export const sequences = {
   list: () => request<SequenceListItem[]>('/sequences'),
   
@@ -481,6 +454,7 @@ export const sequences = {
     delayHours?: number
     sendTime?: string
     branchId?: string | null
+    blocks?: Array<{ id: string; type: string; props: Record<string, unknown> }>
   }) =>
     request<{ id: number; stepOrder: number; message: string }>(`/sequences/${sequenceId}/steps`, {
       method: 'POST',
@@ -493,6 +467,7 @@ export const sequences = {
     delayDays?: number
     delayHours?: number
     sendTime?: string
+    blocks?: Array<{ id: string; type: string; props: Record<string, unknown> }> | null
   }) =>
     request<{ message: string }>(`/sequences/${sequenceId}/steps/${stepId}`, {
       method: 'PUT',
@@ -507,6 +482,53 @@ export const sequences = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+  
+  createBranchPoint: (sequenceId: number, afterStep: number, delayHours: number = 0) =>
+    request<void>(`/sequences/${sequenceId}/branch-point`, {
+      method: 'POST',
+      body: JSON.stringify({ afterStep, delayBeforeSwitch: delayHours }),
+    }),
+  
+  getActions: (sequenceId: number) =>
+    request<SequenceAction[]>(`/sequences/${sequenceId}/actions`),
+  
+  getEnrollments: (sequenceId: number) =>
+    request<SequenceEnrollment[]>(`/sequences/${sequenceId}/enrollments`),
+
+  // Branch CRUD
+  listBranches: (sequenceId: number) =>
+    request<SequenceBranch[]>(`/sequences/${sequenceId}/branches`),
+
+  createBranch: (sequenceId: number, data: {
+    id: string
+    name: string
+    description?: string
+    color?: string
+    parentBranchId?: string
+    triggerStepId?: number
+    triggerType: string
+    triggerConfig?: Record<string, unknown>
+  }) =>
+    request<SequenceBranch>(`/sequences/${sequenceId}/branches`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updateBranch: (sequenceId: number, branchId: string, data: {
+    name?: string
+    description?: string
+    color?: string
+    triggerStepId?: number
+    triggerType?: string
+    triggerConfig?: Record<string, unknown>
+  }) =>
+    request<SequenceBranch>(`/sequences/${sequenceId}/branches/${branchId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  deleteBranch: (sequenceId: number, branchId: string) =>
+    request<{ message: string }>(`/sequences/${sequenceId}/branches/${branchId}`, { method: 'DELETE' }),
 }
 
 // Admin API functions
