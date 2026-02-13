@@ -9,6 +9,7 @@ import '@xyflow/react/dist/style.css'
 import { EmailNode } from './flow/EmailNode'
 import { BranchNode } from './flow/BranchNode'
 import { EndNode } from './flow/EndNode'
+import { AddNode } from './flow/AddNode'
 import { useSequenceLayout } from './flow/useSequenceLayout'
 import type { SequenceStep, SequenceBranch } from '../../shared/types'
 
@@ -16,6 +17,7 @@ const nodeTypes = {
   emailNode: EmailNode,
   branchNode: BranchNode,
   endNode: EndNode,
+  addNode: AddNode,
 }
 
 interface SequenceFlowBuilderProps {
@@ -23,17 +25,18 @@ interface SequenceFlowBuilderProps {
   branches: SequenceBranch[]
   onEditStep: (step: SequenceStep) => void
   onDeleteStep: (stepId: number) => void
+  onAddStep?: (afterStepOrder: number, branchId: string | null) => void
 }
 
-export default function SequenceFlowBuilder({ steps, branches, onEditStep, onDeleteStep }: SequenceFlowBuilderProps) {
-  const { nodes, edges } = useSequenceLayout(steps, branches, onEditStep, onDeleteStep)
+export default function SequenceFlowBuilder({ steps, branches, onEditStep, onDeleteStep, onAddStep }: SequenceFlowBuilderProps) {
+  const { nodes, edges } = useSequenceLayout(steps, branches, onEditStep, onDeleteStep, onAddStep)
 
   if (steps.length === 0) {
     return (
       <div className="w-full h-[600px] border rounded-lg bg-background flex items-center justify-center">
         <div className="text-center text-muted-foreground">
           <p className="text-sm">No steps yet</p>
-          <p className="text-xs mt-1">Switch to List view to add steps</p>
+          <p className="text-xs mt-1">Use the List view or click <span className="inline-flex items-center justify-center w-5 h-5 bg-primary/10 border border-dashed border-primary/40 rounded-full align-middle mx-0.5"><span className="text-primary/60 text-[10px] font-bold">+</span></span> buttons to add steps</p>
         </div>
       </div>
     )
