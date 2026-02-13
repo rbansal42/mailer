@@ -4,6 +4,7 @@ export interface SendOptions {
   bcc?: string[]
   subject: string
   html: string
+  replyTo?: string
   attachments?: Array<{
     filename: string
     path: string

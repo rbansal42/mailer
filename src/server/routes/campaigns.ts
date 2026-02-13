@@ -1,5 +1,6 @@
 import { Router } from 'express'
-import { queryAll, queryOne, execute } from '../db'
+import { queryAll, queryOne, execute, sql } from '../db'
+import { bulkIdsSchema, validate } from '../lib/validation'
 import { logger } from '../lib/logger'
 import { getUniqueDraftName } from './drafts'
 
@@ -142,6 +143,101 @@ campaignsRouter.post('/:id/duplicate', async (req, res) => {
   } catch (error) {
     logger.error('Failed to duplicate campaign', { service: 'campaigns' }, error as Error)
     res.status(500).json({ error: 'Failed to duplicate campaign' })
+  }
+})
+
+// Bulk delete campaigns
+campaignsRouter.delete('/bulk', async (req, res) => {
+  const v = validate(bulkIdsSchema, req.body)
+  if (!v.success) {
+    return res.status(400).json({ error: v.error })
+  }
+
+  const { ids } = v.data
+
+  try {
+    const result = await sql.begin(async (tx: any) => {
+      const placeholders = ids.map((_: number, i: number) => `$${i + 1}`).join(', ')
+      // Delete send logs first (foreign key)
+      await tx.unsafe(
+        `DELETE FROM send_logs WHERE campaign_id IN (${placeholders})`,
+        ids
+      )
+      const rows = await tx.unsafe(
+        `DELETE FROM campaigns WHERE id IN (${placeholders}) AND user_id = $${ids.length + 1} RETURNING id`,
+        [...ids, req.userId]
+      )
+      return rows.length
+    })
+
+    logger.info('Bulk campaigns deleted', { deleted: result, ids })
+    res.json({ deleted: result })
+  } catch (error) {
+    logger.error('Failed to bulk delete campaigns', {}, error as Error)
+    res.status(500).json({ error: 'Failed to bulk delete campaigns' })
+  }
+})
+
+// Bulk duplicate campaigns (creates new drafts)
+campaignsRouter.post('/bulk-duplicate', async (req, res) => {
+  const v = validate(bulkIdsSchema, req.body)
+  if (!v.success) {
+    return res.status(400).json({ error: v.error })
+  }
+
+  const { ids } = v.data
+
+  try {
+    const created = await sql.begin(async (tx: any) => {
+      let count = 0
+      for (const id of ids) {
+        const rows = await tx.unsafe(
+          `SELECT * FROM campaigns WHERE id = $1 AND user_id = $2`,
+          [id, req.userId]
+        )
+        const campaign = rows[0] as CampaignRow | undefined
+        if (!campaign) continue
+
+        const newName = await getUniqueDraftName(`Copy of ${campaign.name || 'Untitled'}`, req.userId)
+
+        let templateId: number | null = null
+        let mailId: number | null = null
+
+        if (campaign.template_id) {
+          const tRows = await tx.unsafe(
+            `SELECT id FROM templates WHERE id = $1 AND (user_id = $2 OR is_system = true)`,
+            [campaign.template_id, req.userId]
+          )
+          if (tRows.length > 0) {
+            templateId = campaign.template_id
+          } else {
+            mailId = campaign.template_id
+          }
+        }
+
+        await tx.unsafe(
+          `INSERT INTO drafts (name, template_id, mail_id, subject, cc, bcc, user_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            newName,
+            templateId,
+            mailId,
+            campaign.subject ?? null,
+            campaign.cc ? JSON.stringify(campaign.cc) : null,
+            campaign.bcc ? JSON.stringify(campaign.bcc) : null,
+            req.userId,
+          ]
+        )
+        count++
+      }
+      return count
+    })
+
+    logger.info('Bulk campaigns duplicated', { created, ids })
+    res.json({ created })
+  } catch (error) {
+    logger.error('Failed to bulk duplicate campaigns', {}, error as Error)
+    res.status(500).json({ error: 'Failed to bulk duplicate campaigns' })
   }
 })
 

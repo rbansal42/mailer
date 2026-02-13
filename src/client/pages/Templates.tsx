@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, Template, Block, mails } from '../lib/api'
+import { useUnsavedChanges } from '../hooks/useUnsavedChanges'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
@@ -246,6 +247,15 @@ export function TemplateEditor({ template, onBack, isMail, onSaveAsTemplate }: E
   
   const { set: recordHistory, undo, redo, canUndo, canRedo, clear: clearHistory } = useBlockHistory()
 
+  // Unsaved changes detection
+  const savedName = useRef(template?.name || 'Untitled Template')
+  const savedBlocks = useRef(JSON.stringify(template?.blocks || []))
+  const isDirty = useMemo(
+    () => name !== savedName.current || JSON.stringify(blocks) !== savedBlocks.current,
+    [name, blocks]
+  )
+  useUnsavedChanges(isDirty)
+
   const selectedBlock = blocks.find((b) => b.id === selectedBlockId)
   
   // Clear history when switching templates
@@ -430,12 +440,19 @@ export function TemplateEditor({ template, onBack, isMail, onSaveAsTemplate }: E
     }
   }
 
+  const handleBack = () => {
+    if (isDirty && !window.confirm('You have unsaved changes. Are you sure you want to leave?')) {
+      return
+    }
+    onBack()
+  }
+
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
       <div className="p-3 border-b flex items-center justify-between bg-card">
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={onBack}>
+          <Button variant="ghost" size="sm" onClick={handleBack}>
             <ChevronLeft className="h-4 w-4" />
           </Button>
           <Input

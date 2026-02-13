@@ -141,6 +141,8 @@ export interface SenderAccount {
 export interface GmailConfig {
   email: string
   appPassword: string
+  fromName?: string
+  replyTo?: string
 }
 
 export interface SmtpConfig {
@@ -151,6 +153,7 @@ export interface SmtpConfig {
   pass: string
   fromEmail: string
   fromName: string
+  replyTo?: string
 }
 
 // Queue

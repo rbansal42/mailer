@@ -11,6 +11,8 @@ export { SmtpProvider } from './smtp'
 interface GmailConfig {
   email: string
   appPassword: string
+  fromName?: string
+  replyTo?: string
 }
 
 interface SmtpConfig {
@@ -21,6 +23,7 @@ interface SmtpConfig {
   pass: string
   fromEmail: string
   fromName: string
+  replyTo?: string
 }
 
 export function createProvider(type: 'gmail', config: GmailConfig): EmailProvider

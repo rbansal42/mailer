@@ -229,6 +229,8 @@ function AccountEditor({ account, onClose }: { account: SenderAccount | null; on
   // Gmail config
   const [email, setEmail] = useState((account?.config as GmailConfig)?.email || '')
   const [appPassword, setAppPassword] = useState((account?.config as GmailConfig)?.appPassword || '')
+  const [gmailFromName, setGmailFromName] = useState((account?.config as GmailConfig)?.fromName || '')
+  const [gmailReplyTo, setGmailReplyTo] = useState((account?.config as GmailConfig)?.replyTo || '')
 
   // SMTP config
   const [host, setHost] = useState((account?.config as SmtpConfig)?.host || '')
@@ -238,6 +240,7 @@ function AccountEditor({ account, onClose }: { account: SenderAccount | null; on
   const [pass, setPass] = useState((account?.config as SmtpConfig)?.pass || '')
   const [fromEmail, setFromEmail] = useState((account?.config as SmtpConfig)?.fromEmail || '')
   const [fromName, setFromName] = useState((account?.config as SmtpConfig)?.fromName || '')
+  const [smtpReplyTo, setSmtpReplyTo] = useState((account?.config as SmtpConfig)?.replyTo || '')
 
   const saveMutation = useMutation({
     mutationFn: (data: Partial<SenderAccount>) => account
@@ -264,8 +267,8 @@ function AccountEditor({ account, onClose }: { account: SenderAccount | null; on
 
   const handleSave = () => {
     const config = providerType === 'gmail'
-      ? { email, appPassword }
-      : { host, port, secure, user, pass, fromEmail, fromName }
+      ? { email, appPassword, fromName: gmailFromName || undefined, replyTo: gmailReplyTo || undefined }
+      : { host, port, secure, user, pass, fromEmail, fromName, replyTo: smtpReplyTo || undefined }
 
     saveMutation.mutate({
       name,
@@ -396,6 +399,27 @@ function AccountEditor({ account, onClose }: { account: SenderAccount | null; on
                   </button>
                 </div>
               </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label className="text-xs">From Name</Label>
+                  <Input
+                    value={gmailFromName}
+                    onChange={(e) => setGmailFromName(e.target.value)}
+                    placeholder="Your Name"
+                    className="h-8 text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Reply-To</Label>
+                  <Input
+                    type="email"
+                    value={gmailReplyTo}
+                    onChange={(e) => setGmailReplyTo(e.target.value)}
+                    placeholder="replies@example.com"
+                    className="h-8 text-sm"
+                  />
+                </div>
+              </div>
             </>
           ) : (
             <>
@@ -458,6 +482,16 @@ function AccountEditor({ account, onClose }: { account: SenderAccount | null; on
                     className="h-8 text-sm"
                   />
                 </div>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Reply-To</Label>
+                <Input
+                  type="email"
+                  value={smtpReplyTo}
+                  onChange={(e) => setSmtpReplyTo(e.target.value)}
+                  placeholder="replies@example.com"
+                  className="h-8 text-sm"
+                />
               </div>
               <label className="flex items-center gap-2 text-sm">
                 <input

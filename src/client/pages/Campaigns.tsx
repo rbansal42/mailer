@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, Template, Draft, Mail, mails as mailsApi, listsApi, ContactList } from '../lib/api'
+import { useUnsavedChanges } from '../hooks/useUnsavedChanges'
 import { useAuthStore } from '../hooks/useAuthStore'
 
 // Get token with fallback to localStorage (handles Zustand hydration race)
@@ -25,8 +26,19 @@ import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
 import { Card, CardContent, CardHeader } from '../components/ui/card'
+import { Checkbox } from '../components/ui/checkbox'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '../components/ui/alert-dialog'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog'
-import { Plus, Send, Save, ChevronLeft, ChevronRight, AlertCircle, CheckCircle2, Loader2, Search, Copy, Clock, Eye, Sun, Moon } from 'lucide-react'
+import { Plus, Send, Save, ChevronLeft, ChevronRight, AlertCircle, CheckCircle2, Loader2, Search, Copy, Clock, Eye, Sun, Moon, Trash2, X } from 'lucide-react'
 import type { Recipient } from '../lib/api'
 import { getTimezoneAbbreviation } from '../lib/utils'
 
@@ -35,6 +47,8 @@ export default function Campaigns() {
   const [isComposing, setIsComposing] = useState(false)
   const [selectedDraft, setSelectedDraft] = useState<Draft | null>(null)
   const [search, setSearch] = useState('')
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   
   const { data: drafts, isLoading: loadingDrafts } = useQuery({
     queryKey: ['drafts'],
@@ -49,6 +63,30 @@ export default function Campaigns() {
     },
     onError: () => {
       toast.error('Failed to duplicate draft')
+    },
+  })
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: (ids: number[]) => api.bulkDeleteDrafts(ids),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['drafts'] })
+      setSelectedIds(new Set())
+      toast.success(`${data.deleted} draft${data.deleted !== 1 ? 's' : ''} deleted`)
+    },
+    onError: () => {
+      toast.error('Failed to delete drafts')
+    },
+  })
+
+  const bulkDuplicateMutation = useMutation({
+    mutationFn: (ids: number[]) => api.bulkDuplicateDrafts(ids),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['drafts'] })
+      setSelectedIds(new Set())
+      toast.success(`${data.created} draft${data.created !== 1 ? 's' : ''} duplicated`)
+    },
+    onError: () => {
+      toast.error('Failed to duplicate drafts')
     },
   })
 
@@ -67,6 +105,29 @@ export default function Campaigns() {
       draft.name?.toLowerCase().includes(search.toLowerCase()) ||
       draft.subject?.toLowerCase().includes(search.toLowerCase())
   ) ?? []
+
+  const isSelecting = selectedIds.size > 0
+  const allFilteredSelected = filteredDrafts.length > 0 && filteredDrafts.every(d => selectedIds.has(d.id))
+
+  const toggleSelection = (id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }
+
+  const toggleSelectAll = () => {
+    if (allFilteredSelected) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(filteredDrafts.map(d => d.id)))
+    }
+  }
 
   if (isComposing || selectedDraft) {
     return (
@@ -102,6 +163,53 @@ export default function Campaigns() {
         />
       </div>
 
+      {/* Bulk Action Bar */}
+      {isSelecting && (
+        <div className="sticky top-0 z-10 mb-3 flex items-center gap-3 rounded-lg border bg-card p-2 shadow-sm">
+          <span className="text-sm font-medium pl-1">
+            {selectedIds.size} selected
+          </span>
+          <Button variant="outline" size="sm" onClick={toggleSelectAll}>
+            {allFilteredSelected ? 'Deselect All' : 'Select All'}
+          </Button>
+          <div className="flex-1" />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => bulkDuplicateMutation.mutate(Array.from(selectedIds))}
+            disabled={bulkDuplicateMutation.isPending}
+          >
+            {bulkDuplicateMutation.isPending ? (
+              <Loader2 className="h-3 w-3 animate-spin mr-1" />
+            ) : (
+              <Copy className="h-3 w-3 mr-1" />
+            )}
+            Duplicate
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => setShowDeleteConfirm(true)}
+            disabled={bulkDeleteMutation.isPending}
+          >
+            {bulkDeleteMutation.isPending ? (
+              <Loader2 className="h-3 w-3 animate-spin mr-1" />
+            ) : (
+              <Trash2 className="h-3 w-3 mr-1" />
+            )}
+            Delete
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={() => setSelectedIds(new Set())}
+          >
+            <X className="h-3 w-3" />
+          </Button>
+        </div>
+      )}
+
       {loadingDrafts ? (
         <div className="flex justify-center py-8">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -112,12 +220,30 @@ export default function Campaigns() {
           {filteredDrafts.map((draft) => (
             <Card
               key={draft.id}
-              className="cursor-pointer hover:border-primary/50 transition-colors"
-              onClick={() => setSelectedDraft(draft)}
+              className={`cursor-pointer hover:border-primary/50 transition-colors ${selectedIds.has(draft.id) ? 'border-primary bg-primary/5' : ''}`}
+              onClick={() => {
+                if (isSelecting) {
+                  toggleSelection(draft.id)
+                } else {
+                  setSelectedDraft(draft)
+                }
+              }}
             >
-              <CardContent className="p-3 flex items-center justify-between">
-                <div>
-                  <p className="font-medium">{draft.name}</p>
+              <CardContent className="p-3 flex items-center gap-3">
+                <div
+                  className="flex items-center"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    toggleSelection(draft.id)
+                  }}
+                >
+                  <Checkbox
+                    checked={selectedIds.has(draft.id)}
+                    onCheckedChange={() => toggleSelection(draft.id)}
+                  />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium truncate">{draft.name}</p>
                   <p className="text-sm text-muted-foreground">
                     {draft.recipients?.length || 0} recipients
                   </p>
@@ -155,6 +281,30 @@ export default function Campaigns() {
           </CardContent>
         </Card>
       )}
+
+      {/* Bulk Delete Confirmation */}
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {selectedIds.size} draft{selectedIds.size !== 1 ? 's' : ''}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. The selected drafts will be permanently deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                bulkDeleteMutation.mutate(Array.from(selectedIds))
+                setShowDeleteConfirm(false)
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
@@ -201,6 +351,26 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
   const [previewHtml, setPreviewHtml] = useState('')
   const [previewLoading, setPreviewLoading] = useState(false)
   const [darkModePreview, setDarkModePreview] = useState(false)
+
+  // Unsaved changes detection
+  const savedState = useRef(JSON.stringify({
+    name: draft?.name || '',
+    subject: draft?.subject || '',
+    contentSource: draft?.mailId ? 'mail' : (draft?.templateId ? 'template' : 'mail'),
+    mailId: draft?.mailId || null,
+    templateId: draft?.templateId || null,
+    recipientsText: draft?.recipientsText || '',
+    testEmails: draft?.testEmail || '',
+    listId: draft?.listId || null,
+  }))
+  const isDirty = useMemo(() => {
+    const current = JSON.stringify({
+      name, subject, contentSource, mailId, templateId,
+      recipientsText, testEmails, listId: selectedListId,
+    })
+    return current !== savedState.current
+  }, [name, subject, contentSource, mailId, templateId, recipientsText, testEmails, selectedListId])
+  useUnsavedChanges(isDirty)
 
   const selectedMail = mails.find((m) => m.id === mailId)
   const selectedTemplate = templates.find((t) => t.id === templateId)
@@ -350,6 +520,11 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
       : api.createDraft(data as Omit<Draft, 'id' | 'createdAt' | 'updatedAt'>),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['drafts'] })
+      // Reset dirty state after successful save
+      savedState.current = JSON.stringify({
+        name, subject, contentSource, mailId, templateId,
+        recipientsText, testEmails, listId: selectedListId,
+      })
     },
   })
 
@@ -442,12 +617,19 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
 
   const currentRecipient = recipients[previewIndex] || {}
 
+  const handleBack = () => {
+    if (isDirty && !window.confirm('You have unsaved changes. Are you sure you want to leave?')) {
+      return
+    }
+    onBack()
+  }
+
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
       <div className="p-3 border-b flex items-center justify-between bg-card">
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={onBack}>
+          <Button variant="ghost" size="sm" onClick={handleBack}>
             <ChevronLeft className="h-4 w-4" />
           </Button>
           <h1 className="font-semibold">{draft ? 'Edit Draft' : 'New Campaign'}</h1>
