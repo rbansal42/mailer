@@ -1,0 +1,1 @@
+ALTER TABLE sequence_branches ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();

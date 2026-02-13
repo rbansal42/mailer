@@ -22,4 +22,16 @@ export const TRIGGER_OPENED = 'opened' as const
 export const TRIGGER_CLICKED_ANY = 'clicked_any' as const
 export const TRIGGER_NO_ENGAGEMENT = 'no_engagement' as const
 
-export type TriggerType = typeof TRIGGER_ACTION_CLICK | typeof TRIGGER_OPENED | typeof TRIGGER_CLICKED_ANY | typeof TRIGGER_NO_ENGAGEMENT
+export const TRIGGER_TYPES = [TRIGGER_ACTION_CLICK, TRIGGER_OPENED, TRIGGER_CLICKED_ANY, TRIGGER_NO_ENGAGEMENT] as const
+export type TriggerType = (typeof TRIGGER_TYPES)[number]
+
+/**
+ * Human-readable labels and descriptions for each trigger type.
+ * Used in UI components for branch condition editors and badge displays.
+ */
+export const TRIGGER_LABELS: Record<TriggerType, { label: string; description: string }> = {
+  action_click: { label: 'Action Button Click', description: 'Recipient clicked a specific action button' },
+  opened: { label: 'Opened Emails', description: 'Recipient opened a minimum number of emails' },
+  clicked_any: { label: 'Clicked Any Link', description: 'Recipient clicked any link in an email' },
+  no_engagement: { label: 'No Engagement', description: 'Recipient has not engaged after N steps' },
+}

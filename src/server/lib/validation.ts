@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { TRIGGER_TYPES } from '../../shared/constants'
 
 // Email validation (RFC 5322 simplified)
 export const emailSchema = z.string().email({ message: 'Invalid email format' })
@@ -197,7 +198,7 @@ export const createBranchSchema = z.object({
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   parentBranchId: z.string().optional(),
   triggerStepId: z.number().int().positive().optional(),
-  triggerType: z.enum(['action_click', 'opened', 'clicked_any', 'no_engagement']),
+  triggerType: z.enum(TRIGGER_TYPES),
   triggerConfig: z.record(z.string(), z.unknown()).optional(),
 })
 

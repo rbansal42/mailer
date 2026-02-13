@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import rateLimit from 'express-rate-limit'
-import { queryAll, queryOne, execute, safeJsonParse } from '../db'
+import { sql, queryAll, queryOne, execute, safeJsonParse } from '../db'
 import { logger } from '../lib/logger'
 import { enrollRecipient, pauseEnrollment, cancelEnrollment, resumeEnrollment } from '../services/sequence-processor'
 import { generateSequence, getLLMSettings } from '../services/llm'
@@ -55,6 +55,7 @@ interface BranchRow {
   trigger_type: string
   trigger_config: string | Record<string, unknown>
   created_at: string
+  updated_at: string
 }
 
 function formatBranch(row: BranchRow): SequenceBranch {
@@ -74,6 +75,7 @@ function formatBranch(row: BranchRow): SequenceBranch {
     trigger_type: row.trigger_type as SequenceBranch['trigger_type'],
     trigger_config: parsedConfig,
     created_at: row.created_at,
+    updated_at: row.updated_at,
   }
 }
 
@@ -86,10 +88,13 @@ interface EnrollmentRow {
   status: string
   branch_id: string | null
   action_clicked_at: string | null
+  branch_switched_at: string | null
   enrolled_at: string
   next_send_at: string | null
   completed_at: string | null
   trigger_data: string | null
+  retry_count: number
+  last_error: string | null
 }
 
 // GET / - List all sequences
@@ -551,33 +556,35 @@ sequencesRouter.post('/:id/branch-point', async (req, res) => {
       return
     }
 
-    // Mark that step as a branch point and store delay config
-    // Note: These two UPDATEs are not atomic, but the risk of partial failure is minimal
-    // since both are simple UPDATE operations. If needed, a transaction could wrap both UPDATEs.
-    await execute(
-      `UPDATE sequence_steps SET is_branch_point = true WHERE sequence_id = ? AND step_order = ?`,
-      [id, afterStep]
-    )
+    // Wrap all writes in a transaction to avoid inconsistent state on partial failure
+    await sql.begin(async (tx) => {
+      // Mark step as a branch point
+      await tx.unsafe(
+        `UPDATE sequence_steps SET is_branch_point = true WHERE sequence_id = $1 AND step_order = $2`,
+        [id, afterStep]
+      )
 
-    await execute(
-      `UPDATE sequences SET branch_delay_hours = ? WHERE id = ?`,
-      [delayBeforeSwitch ?? 0, id]
-    )
+      // Store delay config on the sequence
+      await tx.unsafe(
+        `UPDATE sequences SET branch_delay_hours = $1 WHERE id = $2`,
+        [delayBeforeSwitch ?? 0, id]
+      )
 
-    // Create default and action branches in sequence_branches table if they don't already exist
-    await execute(
-      `INSERT INTO sequence_branches (id, sequence_id, name, color, trigger_type, trigger_config)
-       VALUES ('default', ?, 'Default', '#6366f1', 'no_engagement', '{}')
-       ON CONFLICT (id, sequence_id) DO NOTHING`,
-      [id]
-    )
+      // Create default and action branches if they don't already exist
+      await tx.unsafe(
+        `INSERT INTO sequence_branches (id, sequence_id, name, color, trigger_type, trigger_config)
+         VALUES ('default', $1, 'Default', '#6366f1', 'no_engagement', '{}')
+         ON CONFLICT (id, sequence_id) DO NOTHING`,
+        [id]
+      )
 
-    await execute(
-      `INSERT INTO sequence_branches (id, sequence_id, name, color, trigger_step_id, trigger_type, trigger_config)
-       VALUES ('action', ?, 'Action', '#f59e0b', ?, 'action_click', '{}')
-       ON CONFLICT (id, sequence_id) DO NOTHING`,
-      [id, (stepCheck as any).id]
-    )
+      await tx.unsafe(
+        `INSERT INTO sequence_branches (id, sequence_id, name, color, trigger_step_id, trigger_type, trigger_config)
+         VALUES ('action', $1, 'Action', '#f59e0b', $2, 'action_click', '{}')
+         ON CONFLICT (id, sequence_id) DO NOTHING`,
+        [id, (stepCheck as any).id]
+      )
+    })
 
     logger.info('Created branch point', { service: 'sequences', sequenceId: id, afterStep })
     res.json({ success: true })
@@ -797,6 +804,7 @@ sequencesRouter.put('/:id/branches/:branchId', async (req, res) => {
       return
     }
 
+    updates.push('updated_at = NOW()')
     params.push(branchId, id)
     const updated = await queryOne<BranchRow>(
       `UPDATE sequence_branches SET ${updates.join(', ')} WHERE id = ? AND sequence_id = ? RETURNING *`,
@@ -829,12 +837,30 @@ sequencesRouter.delete('/:id/branches/:branchId', async (req, res) => {
       return
     }
 
-    // Delete steps in this branch first
-    await execute('DELETE FROM sequence_steps WHERE sequence_id = ? AND branch_id = ?', [id, branchId])
-    await execute('DELETE FROM sequence_branches WHERE id = ? AND sequence_id = ?', [branchId, id])
+    // Check for active enrollments on this branch
+    const activeEnrollments = await queryAll<{ count: number }>(
+      `SELECT COUNT(*) as count FROM sequence_enrollments WHERE sequence_id = ? AND branch_id = ? AND status = 'active'`,
+      [id, branchId]
+    )
+    const count = Number(activeEnrollments[0]?.count || 0)
 
-    logger.info('Deleted branch', { service: 'sequences', sequenceId: id, branchId })
-    res.json({ message: 'Branch deleted' })
+    // Wrap enrollment reset + deletes in a transaction to avoid orphaned data
+    await sql.begin(async (tx) => {
+      if (count > 0) {
+        // Reset active enrollments to main path instead of leaving orphans
+        await tx.unsafe(
+          `UPDATE sequence_enrollments SET branch_id = NULL, current_step = 0, next_send_at = NULL, branch_switched_at = NULL WHERE sequence_id = $1 AND branch_id = $2 AND status = 'active'`,
+          [id, branchId]
+        )
+      }
+
+      // Delete steps in this branch first, then the branch itself
+      await tx.unsafe('DELETE FROM sequence_steps WHERE sequence_id = $1 AND branch_id = $2', [id, branchId])
+      await tx.unsafe('DELETE FROM sequence_branches WHERE id = $1 AND sequence_id = $2', [branchId, id])
+    })
+
+    logger.info('Deleted branch', { service: 'sequences', sequenceId: id, branchId, enrollmentsReset: count })
+    res.json({ message: 'Branch deleted', enrollments_reset: count })
   } catch (error) {
     logger.error('Failed to delete branch', { service: 'sequences' }, error as Error)
     res.status(500).json({ error: 'Failed to delete branch' })

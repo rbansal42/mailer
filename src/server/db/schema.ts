@@ -242,6 +242,7 @@ export async function createTables() {
       name TEXT NOT NULL,
       description TEXT,
       enabled BOOLEAN DEFAULT true,
+      branch_delay_hours INTEGER DEFAULT 0,
       created_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW()
     )
@@ -259,6 +260,9 @@ export async function createTables() {
       delay_hours INTEGER DEFAULT 0,
       send_time TEXT,
       blocks JSONB,
+      branch_id TEXT,
+      is_branch_point BOOLEAN DEFAULT false,
+      branch_order INTEGER,
       created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `)
@@ -272,10 +276,15 @@ export async function createTables() {
       recipient_data JSONB,
       current_step INTEGER DEFAULT 0,
       status TEXT DEFAULT 'active',
+      branch_id TEXT,
+      action_clicked_at TIMESTAMPTZ,
+      branch_switched_at TIMESTAMPTZ,
       enrolled_at TIMESTAMPTZ DEFAULT NOW(),
       next_send_at TIMESTAMPTZ,
       completed_at TIMESTAMPTZ,
       trigger_data JSONB,
+      retry_count INTEGER DEFAULT 0,
+      last_error TEXT,
       UNIQUE(sequence_id, recipient_email)
     )
   `)
@@ -314,6 +323,7 @@ export async function createTables() {
       trigger_type TEXT NOT NULL DEFAULT 'action_click',
       trigger_config JSONB DEFAULT '{}',
       created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW(),
       PRIMARY KEY (id, sequence_id)
     )
   `)
