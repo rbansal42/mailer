@@ -18,18 +18,17 @@ const ONBOARDING_KEY = 'mailer_onboarding_completed'
 export default function OnboardingDialog() {
   const navigate = useNavigate()
   const [step, setStep] = useState(0)
+  const [open, setOpen] = useState(() => !localStorage.getItem(ONBOARDING_KEY))
 
   const { data: accounts, isLoading } = useQuery({
     queryKey: ['accounts'],
     queryFn: api.getAccounts,
     staleTime: 5 * 60 * 1000,
+    enabled: open, // only fetch if not already dismissed
   })
 
-  // Show when: not completed before AND has no sender accounts (new user)
-  const completed = localStorage.getItem(ONBOARDING_KEY)
-  const shouldShow = !completed && !isLoading && accounts !== undefined && accounts.length === 0
-
-  const [open, setOpen] = useState(true)
+  // Show when: dialog is open AND not loading AND user has no sender accounts (new user)
+  const shouldShow = open && !isLoading && accounts !== undefined && accounts.length === 0
 
   const handleComplete = () => {
     localStorage.setItem(ONBOARDING_KEY, 'true')

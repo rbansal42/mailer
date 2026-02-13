@@ -36,7 +36,7 @@ export class GmailProvider extends EmailProvider {
   async send(options: SendOptions): Promise<void> {
     const replyTo = options.replyTo || this.replyTo
     const mailOptions = {
-      from: this.fromName ? `"${this.fromName}" <${this.email}>` : this.email,
+      from: this.fromName ? `"${this.fromName.replace(/"/g, '')}" <${this.email}>` : this.email,
       to: options.to,
       cc: options.cc?.join(', ') || undefined,
       bcc: options.bcc?.join(', ') || undefined,

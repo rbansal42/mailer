@@ -345,6 +345,7 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
   // Send confirmation dialog state
   const [showSendConfirm, setShowSendConfirm] = useState(false)
   const [testSentThisSession, setTestSentThisSession] = useState(false)
+  const eventSourceRef = useRef<EventSource | null>(null)
 
   // Scheduling state
   const [showScheduler, setShowScheduler] = useState(false)
@@ -355,6 +356,11 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
   const [previewHtml, setPreviewHtml] = useState('')
   const [previewLoading, setPreviewLoading] = useState(false)
   const [darkModePreview, setDarkModePreview] = useState(false)
+
+  // Cleanup EventSource on unmount to prevent state updates on unmounted component
+  useEffect(() => {
+    return () => { eventSourceRef.current?.close() }
+  }, [])
 
   // Unsaved changes detection
   const savedState = useRef(JSON.stringify({
@@ -576,7 +582,10 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
         url += `&scheduledFor=${encodeURIComponent(scheduledFor)}`
       }
       
+      // Close any existing EventSource before creating a new one
+      eventSourceRef.current?.close()
       const eventSource = new EventSource(url)
+      eventSourceRef.current = eventSource
 
       eventSource.onmessage = (event) => {
         const data = JSON.parse(event.data)
@@ -588,6 +597,7 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
           }))
         } else if (data.type === 'complete') {
           eventSource.close()
+          eventSourceRef.current = null
           setSending(false)
           if (scheduledFor) {
             toast.success('Campaign scheduled successfully')
@@ -596,12 +606,14 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
           queryClient.invalidateQueries({ queryKey: ['drafts'] })
         } else if (data.type === 'error') {
           eventSource.close()
+          eventSourceRef.current = null
           setSending(false)
         }
       }
 
       eventSource.onerror = () => {
         eventSource.close()
+        eventSourceRef.current = null
         setSending(false)
       }
     } catch (error) {
@@ -1119,6 +1131,7 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
                   setNewListName('')
                 } catch (error) {
                   console.error('Failed to save list:', error)
+                  toast.error('Failed to save list')
                 }
               }}
             >

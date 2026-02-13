@@ -158,15 +158,20 @@ campaignsRouter.delete('/bulk', async (req, res) => {
   try {
     const result = await sql.begin(async (tx: any) => {
       const placeholders = ids.map((_: number, i: number) => `$${i + 1}`).join(', ')
-      // Delete send logs first (foreign key)
-      await tx.unsafe(
-        `DELETE FROM send_logs WHERE campaign_id IN (${placeholders})`,
-        ids
-      )
+      // Delete campaigns first with user_id check, get their IDs
       const rows = await tx.unsafe(
         `DELETE FROM campaigns WHERE id IN (${placeholders}) AND user_id = $${ids.length + 1} RETURNING id`,
         [...ids, req.userId]
       )
+      // Only delete send_logs for campaigns that were actually owned by this user
+      if (rows.length > 0) {
+        const deletedIds = rows.map((r: { id: number }) => r.id)
+        const logPlaceholders = deletedIds.map((_: number, i: number) => `$${i + 1}`).join(', ')
+        await tx.unsafe(
+          `DELETE FROM send_logs WHERE campaign_id IN (${logPlaceholders})`,
+          deletedIds
+        )
+      }
       return rows.length
     })
 

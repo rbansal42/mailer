@@ -42,7 +42,7 @@ export class SmtpProvider extends EmailProvider {
   async send(options: SendOptions): Promise<void> {
     const replyTo = options.replyTo || this.replyTo
     const mailOptions = {
-      from: `"${this.fromName}" <${this.fromEmail}>`,
+      from: `"${(this.fromName || '').replace(/"/g, '')}" <${this.fromEmail}>`,
       to: options.to,
       cc: options.cc?.join(', ') || undefined,
       bcc: options.bcc?.join(', ') || undefined,
