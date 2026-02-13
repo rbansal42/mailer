@@ -6,6 +6,8 @@
  * to import from a single source of truth.
  */
 
+import type { TriggerType } from './constants'
+
 // Templates & Mails
 
 export interface Template {
@@ -389,7 +391,7 @@ export interface SequenceBranch {
   color: string
   parent_branch_id: string | null
   trigger_step_id: number | null
-  trigger_type: 'action_click' | 'opened' | 'clicked_any' | 'no_engagement'
+  trigger_type: TriggerType
   trigger_config: Record<string, unknown>
   created_at: string
 }
@@ -469,7 +471,7 @@ export interface CreateBranchRequest {
   color?: string
   parentBranchId?: string
   triggerStepId?: number
-  triggerType: 'action_click' | 'opened' | 'clicked_any' | 'no_engagement'
+  triggerType: TriggerType
   triggerConfig?: Record<string, unknown>
 }
 
@@ -478,7 +480,7 @@ export interface UpdateBranchRequest {
   description?: string
   color?: string
   triggerStepId?: number
-  triggerType?: 'action_click' | 'opened' | 'clicked_any' | 'no_engagement'
+  triggerType?: TriggerType
   triggerConfig?: Record<string, unknown>
 }
 

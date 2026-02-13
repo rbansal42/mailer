@@ -55,6 +55,7 @@ interface BranchRow {
   trigger_type: string
   trigger_config: string | Record<string, unknown>
   created_at: string
+  updated_at: string
 }
 
 function formatBranch(row: BranchRow): SequenceBranch {
@@ -74,6 +75,7 @@ function formatBranch(row: BranchRow): SequenceBranch {
     trigger_type: row.trigger_type as SequenceBranch['trigger_type'],
     trigger_config: parsedConfig,
     created_at: row.created_at,
+    updated_at: row.updated_at,
   }
 }
 
@@ -797,6 +799,7 @@ sequencesRouter.put('/:id/branches/:branchId', async (req, res) => {
       return
     }
 
+    updates.push('updated_at = NOW()')
     params.push(branchId, id)
     const updated = await queryOne<BranchRow>(
       `UPDATE sequence_branches SET ${updates.join(', ')} WHERE id = ? AND sequence_id = ? RETURNING *`,

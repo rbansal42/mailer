@@ -3,6 +3,7 @@ import { Label } from './ui/label'
 import { Input } from './ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
 import { Button } from './ui/button'
+import { TRIGGER_LABELS } from '../../shared/constants'
 
 interface BranchConditionEditorProps {
   triggerType: string
@@ -18,13 +19,6 @@ interface BranchConditionEditorProps {
     description?: string
   }) => void
   isNew?: boolean
-}
-
-const TRIGGER_LABELS: Record<string, { label: string; description: string }> = {
-  action_click: { label: 'Action Button Click', description: 'Recipient clicked a specific action button' },
-  opened: { label: 'Opened Emails', description: 'Recipient opened a minimum number of emails' },
-  clicked_any: { label: 'Clicked Any Link', description: 'Recipient clicked any link in an email' },
-  no_engagement: { label: 'No Engagement', description: 'Recipient has not engaged after N steps' },
 }
 
 const BRANCH_COLORS = [
