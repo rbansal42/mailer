@@ -28,6 +28,7 @@ import { Card, CardContent, CardHeader } from '../components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog'
 import { Plus, Send, Save, ChevronLeft, ChevronRight, AlertCircle, CheckCircle2, Loader2, Search, Copy, Clock, Eye, Sun, Moon } from 'lucide-react'
 import type { Recipient } from '../lib/api'
+import { getTimezoneAbbreviation } from '../lib/utils'
 
 export default function Campaigns() {
   const queryClient = useQueryClient()
@@ -942,12 +943,18 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
             </p>
             <div className="space-y-2">
               <Label>Send at</Label>
-              <Input
-                type="datetime-local"
-                min={getMinDateTime()}
-                value={scheduledDateTime}
-                onChange={(e) => setScheduledDateTime(e.target.value)}
-              />
+              <div className="flex items-center gap-2">
+                <Input
+                  type="datetime-local"
+                  min={getMinDateTime()}
+                  value={scheduledDateTime}
+                  onChange={(e) => setScheduledDateTime(e.target.value)}
+                  className="flex-1"
+                />
+                <span className="text-xs text-muted-foreground whitespace-nowrap">
+                  {getTimezoneAbbreviation()}
+                </span>
+              </div>
               <p className="text-xs text-muted-foreground">
                 Must be at least 5 minutes in the future
               </p>

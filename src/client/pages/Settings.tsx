@@ -9,11 +9,22 @@ import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '../components/ui/alert-dialog'
+import {
   Plus, GripVertical, Trash2, Check, Eye, EyeOff,
   Loader2, AlertCircle, CheckCircle2, Sun, Moon,
   ExternalLink, Link2Off, Sheet, Sparkles
 } from 'lucide-react'
-import { cn } from '../lib/utils'
+import { cn, getTimezoneAbbreviation } from '../lib/utils'
 import { toast } from 'sonner'
 
 export default function Settings() {
@@ -275,14 +286,34 @@ function AccountEditor({ account, onClose }: { account: SenderAccount | null; on
         </h2>
         <div className="flex items-center gap-2">
           {account && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-destructive"
-              onClick={() => deleteMutation.mutate()}
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete sender account?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will permanently delete "{account.name}". This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => deleteMutation.mutate()}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  >
+                    Delete
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           )}
           <Button variant="outline" size="sm" onClick={onClose}>
             Cancel
@@ -456,7 +487,7 @@ function AccountEditor({ account, onClose }: { account: SenderAccount | null; on
                   className="h-8 text-sm"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Max emails per day (resets at midnight)
+                  Max emails per day (resets at midnight {getTimezoneAbbreviation()})
                 </p>
               </div>
               <div className="space-y-1">
@@ -575,7 +606,7 @@ function QueueSettings() {
         <div>
           <p className="font-medium">{pendingCount} emails queued</p>
           <p className="text-sm text-muted-foreground">
-            Auto-processes daily at midnight
+            Auto-processes daily at midnight <span className="text-xs">({getTimezoneAbbreviation()})</span>
           </p>
         </div>
         <Button
@@ -605,7 +636,9 @@ function QueueSettings() {
                 {queue.slice(0, 20).map((item) => (
                   <tr key={item.id} className="border-t">
                     <td className="p-2">{item.recipientEmail}</td>
-                    <td className="p-2 text-muted-foreground">{item.scheduledFor}</td>
+                    <td className="p-2 text-muted-foreground">
+                      {item.scheduledFor} <span className="text-xs">{getTimezoneAbbreviation()}</span>
+                    </td>
                     <td className="p-2">
                       <span className={cn(
                         'text-xs px-1.5 py-0.5 rounded',

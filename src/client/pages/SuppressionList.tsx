@@ -6,6 +6,17 @@ import { Input } from '../components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '../components/ui/alert-dialog'
 import { Textarea } from '../components/ui/textarea'
 import { toast } from 'sonner'
 import { Search, Plus, Upload, Download, Trash2, Loader2, Ban } from 'lucide-react'
@@ -179,14 +190,34 @@ export default function SuppressionList() {
                     {new Date(item.createdAt).toLocaleDateString()}
                   </TableCell>
                   <TableCell>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-destructive"
-                      onClick={() => deleteMutation.mutate(item.id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Remove from suppression list?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This will remove "{item.email}" from the suppression list. They will be eligible to receive emails again.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => deleteMutation.mutate(item.id)}
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          >
+                            Remove
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </TableCell>
                 </TableRow>
               ))
