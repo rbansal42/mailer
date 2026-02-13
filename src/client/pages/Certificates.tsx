@@ -1,5 +1,6 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useUnsavedChanges } from '../hooks/useUnsavedChanges'
 import { toast } from 'sonner'
 import Papa from 'papaparse'
 import { Button } from '../components/ui/button'
@@ -257,6 +258,26 @@ function CertificateEditor({ config, templates, onBack }: EditorProps) {
 
   const selectedTemplate = templates.find(t => t.id === selectedTemplateId)
 
+  // Unsaved changes detection
+  const savedState = useRef(JSON.stringify({
+    configName: config?.name || 'Untitled Certificate',
+    selectedTemplateId: config?.templateId || firstTemplate?.id || '',
+    titleText: config?.titleText || 'CERTIFICATE',
+    subtitleText: config?.subtitleText || 'of Participation',
+    descriptionTemplate: config?.descriptionTemplate || 'This is to certify that {{name}} has successfully completed the {{title}} on {{date}}.',
+    colors: config?.colors || firstTemplate?.defaultColors || { primary: '#1e40af', secondary: '#3b82f6', accent: '#fbbf24' },
+    logos: config?.logos || [],
+    signatories: config?.signatories || [],
+  }))
+  const isDirty = useMemo(() => {
+    const current = JSON.stringify({
+      configName, selectedTemplateId, titleText, subtitleText,
+      descriptionTemplate, colors, logos, signatories,
+    })
+    return current !== savedState.current
+  }, [configName, selectedTemplateId, titleText, subtitleText, descriptionTemplate, colors, logos, signatories])
+  useUnsavedChanges(isDirty)
+
   // Update template ID when templates load
   useEffect(() => {
     if (!selectedTemplateId && firstTemplate) {
@@ -273,6 +294,11 @@ function CertificateEditor({ config, templates, onBack }: EditorProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['certificateConfigs'] })
       toast.success('Configuration saved successfully')
+      // Reset dirty state after successful save
+      savedState.current = JSON.stringify({
+        configName, selectedTemplateId, titleText, subtitleText,
+        descriptionTemplate, colors, logos, signatories,
+      })
     },
     onError: (error) => {
       setSaveError(error instanceof Error ? error.message : 'Failed to save configuration')
@@ -364,13 +390,20 @@ function CertificateEditor({ config, templates, onBack }: EditorProps) {
     return () => clearTimeout(timer)
   }, [loadPreview])
 
+  const handleBack = () => {
+    if (isDirty && !window.confirm('You have unsaved changes. Are you sure you want to leave?')) {
+      return
+    }
+    onBack()
+  }
+
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
       <div className="p-3 border-b flex flex-col gap-2 bg-card">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={onBack}>
+            <Button variant="ghost" size="sm" onClick={handleBack}>
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <Input

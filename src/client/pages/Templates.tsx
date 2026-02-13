@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, Template, Block, mails } from '../lib/api'
+import { useUnsavedChanges } from '../hooks/useUnsavedChanges'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
@@ -27,6 +28,9 @@ import DOMPurify from 'isomorphic-dompurify'
 import { nanoid } from 'nanoid'
 import { useBlockHistory } from '../stores/history'
 import { useKeyboardShortcuts, createSaveShortcut, createUndoShortcut, createRedoShortcut } from '../hooks/useKeyboardShortcuts'
+import { DndContext, closestCenter, DragEndEvent, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
+import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 
 const DEFAULT_ACTION_BUTTON_COLOR = '#10b981'
 
@@ -41,6 +45,22 @@ const BLOCK_TYPES = [
   { type: 'columns', label: 'Columns', icon: Columns },
   { type: 'footer', label: 'Footer', icon: FileText },
 ] as const
+
+function SortableBlock({ id, children }: { id: string; children: (dragHandleProps: Record<string, unknown>) => React.ReactNode }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 10 : undefined,
+    position: 'relative' as const,
+  }
+  return (
+    <div ref={setNodeRef} style={style} {...attributes}>
+      {children({ ...listeners })}
+    </div>
+  )
+}
 
 export default function Templates() {
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null)
@@ -246,6 +266,15 @@ export function TemplateEditor({ template, onBack, isMail, onSaveAsTemplate }: E
   
   const { set: recordHistory, undo, redo, canUndo, canRedo, clear: clearHistory } = useBlockHistory()
 
+  // Unsaved changes detection
+  const savedName = useRef(template?.name || 'Untitled Template')
+  const savedBlocks = useRef(JSON.stringify(template?.blocks || []))
+  const isDirty = useMemo(
+    () => name !== savedName.current || JSON.stringify(blocks) !== savedBlocks.current,
+    [name, blocks]
+  )
+  useUnsavedChanges(isDirty)
+
   const selectedBlock = blocks.find((b) => b.id === selectedBlockId)
   
   // Clear history when switching templates
@@ -401,6 +430,21 @@ export function TemplateEditor({ template, onBack, isMail, onSaveAsTemplate }: E
     },
   ])
 
+  // Drag-and-drop sensors with activation distance to avoid accidental drags
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+  )
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+    if (over && active.id !== over.id) {
+      const oldIndex = blocks.findIndex(b => b.id === active.id)
+      const newIndex = blocks.findIndex(b => b.id === over.id)
+      const newBlocks = arrayMove(blocks, oldIndex, newIndex)
+      updateBlocks(newBlocks)
+    }
+  }
+
   const moveBlock = (id: string, direction: 'up' | 'down') => {
     const index = blocks.findIndex((b) => b.id === id)
     if (direction === 'up' && index > 0) {
@@ -430,12 +474,19 @@ export function TemplateEditor({ template, onBack, isMail, onSaveAsTemplate }: E
     }
   }
 
+  const handleBack = () => {
+    if (isDirty && !window.confirm('You have unsaved changes. Are you sure you want to leave?')) {
+      return
+    }
+    onBack()
+  }
+
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
       <div className="p-3 border-b flex items-center justify-between bg-card">
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={onBack}>
+          <Button variant="ghost" size="sm" onClick={handleBack}>
             <ChevronLeft className="h-4 w-4" />
           </Button>
           <Input
@@ -586,36 +637,53 @@ export function TemplateEditor({ template, onBack, isMail, onSaveAsTemplate }: E
                 <p>Add blocks from the left panel</p>
               </div>
             ) : (
-              <div className="p-4 space-y-2">
-                {blocks.map((block) => (
-                  <div
-                    key={block.id}
-                    onClick={() => setSelectedBlockId(block.id)}
-                    className={cn(
-                      'relative group rounded border-2 border-transparent transition-colors cursor-pointer',
-                      selectedBlockId === block.id && 'border-primary'
-                    )}
-                  >
-                    {/* Block controls */}
-                    <div className="absolute -left-8 top-0 bottom-0 flex flex-col justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab" />
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          duplicateBlock(block.id)
-                        }}
-                        className="p-0.5 rounded hover:bg-accent"
-                        title="Duplicate (Ctrl+D)"
-                      >
-                        <Copy className="h-3 w-3 text-muted-foreground" />
-                      </button>
-                    </div>
-                    
-                    {/* Block content */}
-                    <BlockPreview block={block} darkMode={darkMode} />
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
+              >
+                <SortableContext items={blocks.map(b => b.id)} strategy={verticalListSortingStrategy}>
+                  <div className="p-4 space-y-2">
+                    {blocks.map((block) => (
+                      <SortableBlock key={block.id} id={block.id}>
+                        {(dragHandleProps) => (
+                          <div
+                            onClick={() => setSelectedBlockId(block.id)}
+                            className={cn(
+                              'relative group rounded border-2 border-transparent transition-colors cursor-pointer',
+                              selectedBlockId === block.id && 'border-primary'
+                            )}
+                          >
+                            {/* Block controls */}
+                            <div className="absolute -left-8 top-0 bottom-0 flex flex-col justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button
+                                {...dragHandleProps}
+                                className="p-0.5 rounded hover:bg-accent cursor-grab active:cursor-grabbing"
+                                title="Drag to reorder"
+                              >
+                                <GripVertical className="h-4 w-4 text-muted-foreground" />
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  duplicateBlock(block.id)
+                                }}
+                                className="p-0.5 rounded hover:bg-accent"
+                                title="Duplicate (Ctrl+D)"
+                              >
+                                <Copy className="h-3 w-3 text-muted-foreground" />
+                              </button>
+                            </div>
+                            
+                            {/* Block content */}
+                            <BlockPreview block={block} darkMode={darkMode} />
+                          </div>
+                        )}
+                      </SortableBlock>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </SortableContext>
+              </DndContext>
             )}
           </div>
         </div>

@@ -9,11 +9,22 @@ import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '../components/ui/alert-dialog'
+import {
   Plus, GripVertical, Trash2, Check, Eye, EyeOff,
   Loader2, AlertCircle, CheckCircle2, Sun, Moon,
   ExternalLink, Link2Off, Sheet, Sparkles
 } from 'lucide-react'
-import { cn } from '../lib/utils'
+import { cn, getTimezoneAbbreviation } from '../lib/utils'
 import { toast } from 'sonner'
 
 export default function Settings() {
@@ -218,6 +229,8 @@ function AccountEditor({ account, onClose }: { account: SenderAccount | null; on
   // Gmail config
   const [email, setEmail] = useState((account?.config as GmailConfig)?.email || '')
   const [appPassword, setAppPassword] = useState((account?.config as GmailConfig)?.appPassword || '')
+  const [gmailFromName, setGmailFromName] = useState((account?.config as GmailConfig)?.fromName || '')
+  const [gmailReplyTo, setGmailReplyTo] = useState((account?.config as GmailConfig)?.replyTo || '')
 
   // SMTP config
   const [host, setHost] = useState((account?.config as SmtpConfig)?.host || '')
@@ -227,6 +240,7 @@ function AccountEditor({ account, onClose }: { account: SenderAccount | null; on
   const [pass, setPass] = useState((account?.config as SmtpConfig)?.pass || '')
   const [fromEmail, setFromEmail] = useState((account?.config as SmtpConfig)?.fromEmail || '')
   const [fromName, setFromName] = useState((account?.config as SmtpConfig)?.fromName || '')
+  const [smtpReplyTo, setSmtpReplyTo] = useState((account?.config as SmtpConfig)?.replyTo || '')
 
   const saveMutation = useMutation({
     mutationFn: (data: Partial<SenderAccount>) => account
@@ -253,8 +267,8 @@ function AccountEditor({ account, onClose }: { account: SenderAccount | null; on
 
   const handleSave = () => {
     const config = providerType === 'gmail'
-      ? { email, appPassword }
-      : { host, port, secure, user, pass, fromEmail, fromName }
+      ? { email, appPassword, fromName: gmailFromName || undefined, replyTo: gmailReplyTo || undefined }
+      : { host, port, secure, user, pass, fromEmail, fromName, replyTo: smtpReplyTo || undefined }
 
     saveMutation.mutate({
       name,
@@ -275,14 +289,34 @@ function AccountEditor({ account, onClose }: { account: SenderAccount | null; on
         </h2>
         <div className="flex items-center gap-2">
           {account && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-destructive"
-              onClick={() => deleteMutation.mutate()}
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete sender account?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will permanently delete "{account.name}". This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => deleteMutation.mutate()}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  >
+                    Delete
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           )}
           <Button variant="outline" size="sm" onClick={onClose}>
             Cancel
@@ -365,6 +399,27 @@ function AccountEditor({ account, onClose }: { account: SenderAccount | null; on
                   </button>
                 </div>
               </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label className="text-xs">From Name</Label>
+                  <Input
+                    value={gmailFromName}
+                    onChange={(e) => setGmailFromName(e.target.value)}
+                    placeholder="Your Name"
+                    className="h-8 text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Reply-To</Label>
+                  <Input
+                    type="email"
+                    value={gmailReplyTo}
+                    onChange={(e) => setGmailReplyTo(e.target.value)}
+                    placeholder="replies@example.com"
+                    className="h-8 text-sm"
+                  />
+                </div>
+              </div>
             </>
           ) : (
             <>
@@ -428,6 +483,16 @@ function AccountEditor({ account, onClose }: { account: SenderAccount | null; on
                   />
                 </div>
               </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Reply-To</Label>
+                <Input
+                  type="email"
+                  value={smtpReplyTo}
+                  onChange={(e) => setSmtpReplyTo(e.target.value)}
+                  placeholder="replies@example.com"
+                  className="h-8 text-sm"
+                />
+              </div>
               <label className="flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"
@@ -456,7 +521,7 @@ function AccountEditor({ account, onClose }: { account: SenderAccount | null; on
                   className="h-8 text-sm"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Max emails per day (resets at midnight)
+                  Max emails per day (resets at midnight {getTimezoneAbbreviation()})
                 </p>
               </div>
               <div className="space-y-1">
@@ -575,7 +640,7 @@ function QueueSettings() {
         <div>
           <p className="font-medium">{pendingCount} emails queued</p>
           <p className="text-sm text-muted-foreground">
-            Auto-processes daily at midnight
+            Auto-processes daily at midnight <span className="text-xs">({getTimezoneAbbreviation()})</span>
           </p>
         </div>
         <Button
@@ -605,7 +670,9 @@ function QueueSettings() {
                 {queue.slice(0, 20).map((item) => (
                   <tr key={item.id} className="border-t">
                     <td className="p-2">{item.recipientEmail}</td>
-                    <td className="p-2 text-muted-foreground">{item.scheduledFor}</td>
+                    <td className="p-2 text-muted-foreground">
+                      {item.scheduledFor} <span className="text-xs">{getTimezoneAbbreviation()}</span>
+                    </td>
                     <td className="p-2">
                       <span className={cn(
                         'text-xs px-1.5 py-0.5 rounded',

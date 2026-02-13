@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, Template, Draft, Mail, mails as mailsApi, listsApi, ContactList } from '../lib/api'
+import { useUnsavedChanges } from '../hooks/useUnsavedChanges'
 import { useAuthStore } from '../hooks/useAuthStore'
 
 // Get token with fallback to localStorage (handles Zustand hydration race)
@@ -25,15 +26,29 @@ import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
 import { Card, CardContent, CardHeader } from '../components/ui/card'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog'
-import { Plus, Send, Save, ChevronLeft, ChevronRight, AlertCircle, CheckCircle2, Loader2, Search, Copy, Clock, Eye, Sun, Moon } from 'lucide-react'
+import { Checkbox } from '../components/ui/checkbox'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '../components/ui/alert-dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../components/ui/dialog'
+import { Plus, Send, Save, ChevronLeft, ChevronRight, AlertCircle, CheckCircle2, Loader2, Search, Copy, Clock, Eye, Sun, Moon, Trash2, X, Mail as MailIcon, Users, TriangleAlert } from 'lucide-react'
 import type { Recipient } from '../lib/api'
+import { getTimezoneAbbreviation } from '../lib/utils'
 
 export default function Campaigns() {
   const queryClient = useQueryClient()
   const [isComposing, setIsComposing] = useState(false)
   const [selectedDraft, setSelectedDraft] = useState<Draft | null>(null)
   const [search, setSearch] = useState('')
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   
   const { data: drafts, isLoading: loadingDrafts } = useQuery({
     queryKey: ['drafts'],
@@ -48,6 +63,30 @@ export default function Campaigns() {
     },
     onError: () => {
       toast.error('Failed to duplicate draft')
+    },
+  })
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: (ids: number[]) => api.bulkDeleteDrafts(ids),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['drafts'] })
+      setSelectedIds(new Set())
+      toast.success(`${data.deleted} draft${data.deleted !== 1 ? 's' : ''} deleted`)
+    },
+    onError: () => {
+      toast.error('Failed to delete drafts')
+    },
+  })
+
+  const bulkDuplicateMutation = useMutation({
+    mutationFn: (ids: number[]) => api.bulkDuplicateDrafts(ids),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['drafts'] })
+      setSelectedIds(new Set())
+      toast.success(`${data.created} draft${data.created !== 1 ? 's' : ''} duplicated`)
+    },
+    onError: () => {
+      toast.error('Failed to duplicate drafts')
     },
   })
 
@@ -66,6 +105,29 @@ export default function Campaigns() {
       draft.name?.toLowerCase().includes(search.toLowerCase()) ||
       draft.subject?.toLowerCase().includes(search.toLowerCase())
   ) ?? []
+
+  const isSelecting = selectedIds.size > 0
+  const allFilteredSelected = filteredDrafts.length > 0 && filteredDrafts.every(d => selectedIds.has(d.id))
+
+  const toggleSelection = (id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }
+
+  const toggleSelectAll = () => {
+    if (allFilteredSelected) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(filteredDrafts.map(d => d.id)))
+    }
+  }
 
   if (isComposing || selectedDraft) {
     return (
@@ -101,6 +163,53 @@ export default function Campaigns() {
         />
       </div>
 
+      {/* Bulk Action Bar */}
+      {isSelecting && (
+        <div className="sticky top-0 z-10 mb-3 flex items-center gap-3 rounded-lg border bg-card p-2 shadow-sm">
+          <span className="text-sm font-medium pl-1">
+            {selectedIds.size} selected
+          </span>
+          <Button variant="outline" size="sm" onClick={toggleSelectAll}>
+            {allFilteredSelected ? 'Deselect All' : 'Select All'}
+          </Button>
+          <div className="flex-1" />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => bulkDuplicateMutation.mutate(Array.from(selectedIds))}
+            disabled={bulkDuplicateMutation.isPending}
+          >
+            {bulkDuplicateMutation.isPending ? (
+              <Loader2 className="h-3 w-3 animate-spin mr-1" />
+            ) : (
+              <Copy className="h-3 w-3 mr-1" />
+            )}
+            Duplicate
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => setShowDeleteConfirm(true)}
+            disabled={bulkDeleteMutation.isPending}
+          >
+            {bulkDeleteMutation.isPending ? (
+              <Loader2 className="h-3 w-3 animate-spin mr-1" />
+            ) : (
+              <Trash2 className="h-3 w-3 mr-1" />
+            )}
+            Delete
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={() => setSelectedIds(new Set())}
+          >
+            <X className="h-3 w-3" />
+          </Button>
+        </div>
+      )}
+
       {loadingDrafts ? (
         <div className="flex justify-center py-8">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -111,12 +220,30 @@ export default function Campaigns() {
           {filteredDrafts.map((draft) => (
             <Card
               key={draft.id}
-              className="cursor-pointer hover:border-primary/50 transition-colors"
-              onClick={() => setSelectedDraft(draft)}
+              className={`cursor-pointer hover:border-primary/50 transition-colors ${selectedIds.has(draft.id) ? 'border-primary bg-primary/5' : ''}`}
+              onClick={() => {
+                if (isSelecting) {
+                  toggleSelection(draft.id)
+                } else {
+                  setSelectedDraft(draft)
+                }
+              }}
             >
-              <CardContent className="p-3 flex items-center justify-between">
-                <div>
-                  <p className="font-medium">{draft.name}</p>
+              <CardContent className="p-3 flex items-center gap-3">
+                <div
+                  className="flex items-center"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    toggleSelection(draft.id)
+                  }}
+                >
+                  <Checkbox
+                    checked={selectedIds.has(draft.id)}
+                    onCheckedChange={() => toggleSelection(draft.id)}
+                  />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium truncate">{draft.name}</p>
                   <p className="text-sm text-muted-foreground">
                     {draft.recipients?.length || 0} recipients
                   </p>
@@ -154,6 +281,30 @@ export default function Campaigns() {
           </CardContent>
         </Card>
       )}
+
+      {/* Bulk Delete Confirmation */}
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {selectedIds.size} draft{selectedIds.size !== 1 ? 's' : ''}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. The selected drafts will be permanently deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                bulkDeleteMutation.mutate(Array.from(selectedIds))
+                setShowDeleteConfirm(false)
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
@@ -191,6 +342,11 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
   const [saveListOpen, setSaveListOpen] = useState(false)
   const [newListName, setNewListName] = useState('')
   
+  // Send confirmation dialog state
+  const [showSendConfirm, setShowSendConfirm] = useState(false)
+  const [testSentThisSession, setTestSentThisSession] = useState(false)
+  const eventSourceRef = useRef<EventSource | null>(null)
+
   // Scheduling state
   const [showScheduler, setShowScheduler] = useState(false)
   const [scheduledDateTime, setScheduledDateTime] = useState('')
@@ -200,6 +356,31 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
   const [previewHtml, setPreviewHtml] = useState('')
   const [previewLoading, setPreviewLoading] = useState(false)
   const [darkModePreview, setDarkModePreview] = useState(false)
+
+  // Cleanup EventSource on unmount to prevent state updates on unmounted component
+  useEffect(() => {
+    return () => { eventSourceRef.current?.close() }
+  }, [])
+
+  // Unsaved changes detection
+  const savedState = useRef(JSON.stringify({
+    name: draft?.name || '',
+    subject: draft?.subject || '',
+    contentSource: draft?.mailId ? 'mail' : (draft?.templateId ? 'template' : 'mail'),
+    mailId: draft?.mailId || null,
+    templateId: draft?.templateId || null,
+    recipientsText: draft?.recipientsText || '',
+    testEmails: draft?.testEmail || '',
+    listId: draft?.listId || null,
+  }))
+  const isDirty = useMemo(() => {
+    const current = JSON.stringify({
+      name, subject, contentSource, mailId, templateId,
+      recipientsText, testEmails, listId: selectedListId,
+    })
+    return current !== savedState.current
+  }, [name, subject, contentSource, mailId, templateId, recipientsText, testEmails, selectedListId])
+  useUnsavedChanges(isDirty)
 
   const selectedMail = mails.find((m) => m.id === mailId)
   const selectedTemplate = templates.find((t) => t.id === templateId)
@@ -231,6 +412,16 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
       fetchPreview()
     }
   }, [showRenderedPreview, fetchPreview])
+
+  // Fetch sender accounts for the confirmation dialog
+  const { data: senderAccounts } = useQuery({
+    queryKey: ['accounts'],
+    queryFn: api.getAccounts,
+    enabled: showSendConfirm, // only fetch when dialog is open
+  })
+  const primarySender = senderAccounts
+    ?.filter(a => a.enabled)
+    .sort((a, b) => a.priority - b.priority)[0] ?? null
 
   // Load lists on mount
   useEffect(() => {
@@ -332,6 +523,7 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
 
       if (response.ok) {
         setTestResult({ success: true, message: `Test sent to ${parsedTestEmails.length} address(es)` })
+        setTestSentThisSession(true)
       } else {
         const data = await response.json()
         setTestResult({ success: false, message: data.error || 'Failed to send test' })
@@ -349,6 +541,11 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
       : api.createDraft(data as Omit<Draft, 'id' | 'createdAt' | 'updatedAt'>),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['drafts'] })
+      // Reset dirty state after successful save
+      savedState.current = JSON.stringify({
+        name, subject, contentSource, mailId, templateId,
+        recipientsText, testEmails, listId: selectedListId,
+      })
     },
   })
 
@@ -385,7 +582,10 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
         url += `&scheduledFor=${encodeURIComponent(scheduledFor)}`
       }
       
+      // Close any existing EventSource before creating a new one
+      eventSourceRef.current?.close()
       const eventSource = new EventSource(url)
+      eventSourceRef.current = eventSource
 
       eventSource.onmessage = (event) => {
         const data = JSON.parse(event.data)
@@ -397,6 +597,7 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
           }))
         } else if (data.type === 'complete') {
           eventSource.close()
+          eventSourceRef.current = null
           setSending(false)
           if (scheduledFor) {
             toast.success('Campaign scheduled successfully')
@@ -405,12 +606,14 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
           queryClient.invalidateQueries({ queryKey: ['drafts'] })
         } else if (data.type === 'error') {
           eventSource.close()
+          eventSourceRef.current = null
           setSending(false)
         }
       }
 
       eventSource.onerror = () => {
         eventSource.close()
+        eventSourceRef.current = null
         setSending(false)
       }
     } catch (error) {
@@ -441,12 +644,19 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
 
   const currentRecipient = recipients[previewIndex] || {}
 
+  const handleBack = () => {
+    if (isDirty && !window.confirm('You have unsaved changes. Are you sure you want to leave?')) {
+      return
+    }
+    onBack()
+  }
+
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
       <div className="p-3 border-b flex items-center justify-between bg-card">
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={onBack}>
+          <Button variant="ghost" size="sm" onClick={handleBack}>
             <ChevronLeft className="h-4 w-4" />
           </Button>
           <h1 className="font-semibold">{draft ? 'Edit Draft' : 'New Campaign'}</h1>
@@ -477,7 +687,7 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
             <Clock className="h-4 w-4 mr-1" />
             Schedule
           </Button>
-          <Button size="sm" onClick={() => handleSend()} disabled={!canSend || sending}>
+          <Button size="sm" onClick={() => setShowSendConfirm(true)} disabled={!canSend || sending}>
             <Send className="h-4 w-4 mr-1" />
             Send Now
           </Button>
@@ -921,6 +1131,7 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
                   setNewListName('')
                 } catch (error) {
                   console.error('Failed to save list:', error)
+                  toast.error('Failed to save list')
                 }
               }}
             >
@@ -942,12 +1153,18 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
             </p>
             <div className="space-y-2">
               <Label>Send at</Label>
-              <Input
-                type="datetime-local"
-                min={getMinDateTime()}
-                value={scheduledDateTime}
-                onChange={(e) => setScheduledDateTime(e.target.value)}
-              />
+              <div className="flex items-center gap-2">
+                <Input
+                  type="datetime-local"
+                  min={getMinDateTime()}
+                  value={scheduledDateTime}
+                  onChange={(e) => setScheduledDateTime(e.target.value)}
+                  className="flex-1"
+                />
+                <span className="text-xs text-muted-foreground whitespace-nowrap">
+                  {getTimezoneAbbreviation()}
+                </span>
+              </div>
               <p className="text-xs text-muted-foreground">
                 Must be at least 5 minutes in the future
               </p>
@@ -958,6 +1175,128 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
             <Button onClick={handleScheduledSend} disabled={!scheduledDateTime}>
               <Clock className="h-4 w-4 mr-1" />
               Schedule
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Send Confirmation Dialog */}
+      <Dialog open={showSendConfirm} onOpenChange={setShowSendConfirm}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Confirm Send</DialogTitle>
+            <DialogDescription>Review before sending</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            {/* Subject */}
+            <div className="flex items-start gap-3 rounded-lg border p-3">
+              <MailIcon className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground">Subject</p>
+                <p className="text-sm font-medium truncate">
+                  {replaceVariables(subject, recipients[0] || {})}
+                </p>
+              </div>
+            </div>
+
+            {/* From account */}
+            <div className="flex items-start gap-3 rounded-lg border p-3">
+              <Send className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground">From</p>
+                {primarySender ? (
+                  <p className="text-sm font-medium">
+                    {primarySender.name}
+                    <span className="text-muted-foreground font-normal">
+                      {' '}({primarySender.providerType === 'gmail'
+                        ? (primarySender.config as { email: string }).email
+                        : (primarySender.config as { fromEmail: string }).fromEmail})
+                    </span>
+                  </p>
+                ) : senderAccounts === undefined ? (
+                  <p className="text-sm text-muted-foreground">Loading...</p>
+                ) : (
+                  <p className="text-sm text-destructive">No enabled sender accounts</p>
+                )}
+              </div>
+            </div>
+
+            {/* Recipients */}
+            <div className="flex items-start gap-3 rounded-lg border p-3">
+              <Users className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground">Recipients</p>
+                <p className="text-sm font-medium">
+                  Sending to {recipients.length} recipient{recipients.length !== 1 ? 's' : ''}
+                </p>
+              </div>
+            </div>
+
+            {/* Warnings */}
+            {(validation.invalidEmails.length > 0 || validation.duplicates.length > 0 || !testSentThisSession) && (
+              <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/5 p-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <TriangleAlert className="h-4 w-4 text-yellow-600 shrink-0" />
+                  <p className="text-xs font-medium text-yellow-600">Warnings</p>
+                </div>
+                <div className="space-y-1 pl-6">
+                  {validation.invalidEmails.length > 0 && (
+                    <p className="text-xs text-yellow-700">
+                      {validation.invalidEmails.length} invalid email{validation.invalidEmails.length !== 1 ? 's' : ''} will be skipped
+                    </p>
+                  )}
+                  {validation.duplicates.length > 0 && (
+                    <p className="text-xs text-yellow-700">
+                      {validation.duplicates.length} duplicate email{validation.duplicates.length !== 1 ? 's' : ''} will be skipped
+                    </p>
+                  )}
+                  {!testSentThisSession && (
+                    <p className="text-xs text-yellow-700">
+                      No test email sent this session
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Send timing */}
+            <div className="flex items-start gap-3 rounded-lg border p-3">
+              <Clock className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground">Timing</p>
+                <p className="text-sm font-medium">Send immediately</p>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="flex-col gap-2 sm:flex-row">
+            <Button variant="outline" onClick={() => setShowSendConfirm(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="secondary"
+              disabled={!canSendTest || sendingTest}
+              onClick={() => {
+                handleSendTest()
+              }}
+            >
+              {sendingTest ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-1" />
+              ) : (
+                <Send className="h-3 w-3 mr-1" />
+              )}
+              Send Test First
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                setShowSendConfirm(false)
+                handleSend()
+              }}
+            >
+              <Send className="h-3 w-3 mr-1" />
+              Send to {recipients.length} Recipient{recipients.length !== 1 ? 's' : ''}
             </Button>
           </DialogFooter>
         </DialogContent>

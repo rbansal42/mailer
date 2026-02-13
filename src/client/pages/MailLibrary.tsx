@@ -20,6 +20,7 @@ type Tab = 'mails' | 'templates'
 export default function MailLibrary() {
   const [activeTab, setActiveTab] = useState<Tab>('mails')
   const [search, setSearch] = useState('')
+  const [templateSearch, setTemplateSearch] = useState('')
   const [editingMail, setEditingMail] = useState<Mail | null>(null)
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null)
   const [isCreatingMail, setIsCreatingMail] = useState(false)
@@ -68,6 +69,11 @@ export default function MailLibrary() {
     (mail) =>
       mail.name?.toLowerCase().includes(search.toLowerCase()) ||
       mail.description?.toLowerCase().includes(search.toLowerCase())
+  ) ?? []
+
+  const filteredTemplates = templates?.filter(
+    (template) =>
+      template.name?.toLowerCase().includes(templateSearch.toLowerCase())
   ) ?? []
 
   // Show editor for mails
@@ -213,13 +219,22 @@ export default function MailLibrary() {
       {/* Templates Tab */}
       {activeTab === 'templates' && (
         <>
+          <div className="relative mb-4">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search templates..."
+              value={templateSearch}
+              onChange={(e) => setTemplateSearch(e.target.value)}
+              className="pl-9"
+            />
+          </div>
           {templatesLoading ? (
             <div className="flex justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
-          ) : templates && templates.length > 0 ? (
+          ) : filteredTemplates.length > 0 ? (
             <div className="grid grid-cols-2 gap-3">
-              {templates.map((template) => (
+              {filteredTemplates.map((template) => (
                 <Card
                   key={template.id}
                   className="cursor-pointer hover:border-primary/50 transition-colors"
@@ -245,7 +260,7 @@ export default function MailLibrary() {
           ) : (
             <Card className="border-dashed">
               <CardContent className="py-8 text-center">
-                <p className="text-muted-foreground mb-4">No templates yet</p>
+                <p className="text-muted-foreground mb-4">{templates?.length ? 'No templates match your search' : 'No templates yet'}</p>
                 <Button size="sm" onClick={() => setIsCreatingTemplate(true)}>
                   <Plus className="h-4 w-4 mr-1" />
                   Create Template
