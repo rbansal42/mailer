@@ -394,6 +394,7 @@ export interface SequenceBranch {
   trigger_type: TriggerType
   trigger_config: Record<string, unknown>
   created_at: string
+  updated_at: string
 }
 
 export interface SequenceStep {
