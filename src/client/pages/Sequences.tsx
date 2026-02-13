@@ -36,7 +36,7 @@ import {
   GenerateSequenceResponse,
   sequences as sequencesApi
 } from '@/lib/api'
-import { BRANCH_ACTION, BRANCH_DEFAULT } from '../../shared/constants'
+
 
 export default function Sequences() {
   const queryClient = useQueryClient()
@@ -646,7 +646,7 @@ function SequenceEditor({ sequence, onBack, onUpdate }: SequenceEditorProps) {
             )}
           </div>
           <div className="lg:col-span-1">
-            <SequencePathStats sequenceId={sequence.id} />
+            <SequencePathStats sequenceId={sequence.id} branches={sequence.branches || []} />
           </div>
         </div>
       </div>
@@ -846,7 +846,7 @@ function StepDialog({ open, onOpenChange, sequenceId, branchId, step, onSaved }:
 }
 
 // Sequence path stats component
-function SequencePathStats({ sequenceId }: { sequenceId: number }) {
+function SequencePathStats({ sequenceId, branches }: { sequenceId: number; branches: SequenceBranch[] }) {
   const { data: enrollments } = useQuery({
     queryKey: ['sequence-enrollments', sequenceId],
     queryFn: () => sequencesApi.getEnrollments(sequenceId)
@@ -855,39 +855,59 @@ function SequencePathStats({ sequenceId }: { sequenceId: number }) {
   if (!enrollments || enrollments.length === 0) return null
 
   const total = enrollments.length
-  const onDefault = enrollments.filter((e) => !e.branch_id || e.branch_id === BRANCH_DEFAULT).length
-  const onAction = enrollments.filter((e) => e.branch_id === BRANCH_ACTION).length
+  const active = enrollments.filter((e) => e.status === 'active').length
   const completed = enrollments.filter((e) => e.status === 'completed').length
-  const actionClicked = enrollments.filter((e) => e.action_clicked_at).length
+  const failed = enrollments.filter((e) => e.status === 'failed').length
+  const mainPath = enrollments.filter((e) => !e.branch_id && e.status === 'active').length
+
+  const branchCounts = branches.map(branch => ({
+    ...branch,
+    count: enrollments.filter(e => e.branch_id === branch.id && e.status === 'active').length,
+  }))
+
+  const pct = (n: number) => total > 0 ? ((n / total) * 100).toFixed(0) : '0'
 
   return (
     <Card>
       <CardHeader className="p-3 pb-2">
-        <CardTitle className="text-sm">Enrollments by Path</CardTitle>
+        <CardTitle className="text-sm">Enrollment Stats</CardTitle>
       </CardHeader>
       <CardContent className="p-3 pt-0 space-y-2">
         <div className="flex justify-between text-sm">
-          <span className="text-muted-foreground">Total enrolled</span>
+          <span className="text-muted-foreground">Total</span>
           <span className="font-medium">{total}</span>
         </div>
         <div className="flex justify-between text-sm">
-          <span className="text-muted-foreground">On default path</span>
-          <span className="font-medium">{onDefault} ({total > 0 ? ((onDefault/total)*100).toFixed(0) : 0}%)</span>
-        </div>
-        <div className="flex justify-between text-sm">
-          <span className="text-muted-foreground">On action path</span>
-          <span className="font-medium">{onAction} ({total > 0 ? ((onAction/total)*100).toFixed(0) : 0}%)</span>
+          <span className="text-muted-foreground">Active</span>
+          <span className="font-medium">{active} ({pct(active)}%)</span>
         </div>
         <div className="flex justify-between text-sm">
           <span className="text-muted-foreground">Completed</span>
-          <span className="font-medium">{completed} ({total > 0 ? ((completed/total)*100).toFixed(0) : 0}%)</span>
+          <span className="font-medium">{completed} ({pct(completed)}%)</span>
         </div>
-        {actionClicked > 0 && (
-          <div className="flex justify-between text-sm border-t pt-2 mt-2">
-            <span className="text-muted-foreground">Action button clicked</span>
-            <span className="font-medium text-orange-600">{actionClicked} ({total > 0 ? ((actionClicked/total)*100).toFixed(0) : 0}%)</span>
+        {failed > 0 && (
+          <div className="flex justify-between text-sm">
+            <span className="text-red-500">Failed</span>
+            <span className="font-medium text-red-500">{failed} ({pct(failed)}%)</span>
           </div>
         )}
+
+        <div className="border-t pt-2 space-y-1.5">
+          <p className="text-xs font-medium text-muted-foreground">Active by Path</p>
+          <div className="flex justify-between text-sm">
+            <span className="text-muted-foreground">Main Path</span>
+            <span className="font-medium">{mainPath}</span>
+          </div>
+          {branchCounts.map(b => (
+            <div key={b.id} className="flex justify-between text-sm">
+              <span className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: b.color }} />
+                <span className="text-muted-foreground">{b.name}</span>
+              </span>
+              <span className="font-medium">{b.count}</span>
+            </div>
+          ))}
+        </div>
       </CardContent>
     </Card>
   )

@@ -5,6 +5,10 @@ import { getNextAvailableAccount, incrementSendCount } from './account-manager'
 import { createProvider } from '../providers'
 import { getOrCreateToken, getTrackingSettings } from './tracking'
 import { BRANCH_ACTION, BRANCH_DEFAULT } from '../../shared/constants'
+import type { Account } from './account-manager'
+import type { TrackingSettings } from './tracking'
+
+const MAX_RETRIES = 5
 
 interface Sequence {
   id: number
@@ -38,6 +42,8 @@ interface Enrollment {
   action_clicked_at: string | null
   branch_switched_at: string | null
   trigger_data: string | null
+  retry_count: number
+  last_error: string | null
 }
 
 interface SequenceBranch {
@@ -166,17 +172,45 @@ export async function processSequenceSteps(): Promise<number> {
     return 0
   }
 
+  // Cache data that's invariant across all enrollments in this cycle
+  const trackingSettings = await getTrackingSettings()
+  const availableAccount = await getNextAvailableAccount()
+
   let processed = 0
 
   for (const enrollment of dueEnrollments) {
     try {
-      await processEnrollmentStep(enrollment)
+      await processEnrollmentStep(enrollment, trackingSettings, availableAccount)
       processed++
     } catch (error) {
-      logger.error('Failed to process sequence step', {
-        service: 'sequence-processor',
-        enrollmentId: enrollment.id
-      }, error as Error)
+      // Retry logic with exponential backoff
+      const retryCount = (enrollment.retry_count ?? 0) + 1
+      const backoffMinutes = Math.min(Math.pow(2, retryCount) * 5, 1440) // 5, 10, 20, 40, 80... max 24 hours
+
+      if (retryCount >= MAX_RETRIES) {
+        // Mark as permanently failed
+        await execute(
+          `UPDATE sequence_enrollments SET status = 'failed', retry_count = ?, last_error = ?, next_send_at = NULL WHERE id = ?`,
+          [retryCount, String(error), enrollment.id]
+        )
+        logger.error('Enrollment permanently failed after max retries', {
+          service: 'sequence-processor',
+          enrollmentId: enrollment.id,
+          retryCount
+        }, error as Error)
+      } else {
+        // Schedule retry with exponential backoff
+        await execute(
+          `UPDATE sequence_enrollments SET retry_count = ?, last_error = ?, next_send_at = NOW() + make_interval(mins => ?) WHERE id = ?`,
+          [retryCount, String(error), backoffMinutes, enrollment.id]
+        )
+        logger.warn('Enrollment retry scheduled with backoff', {
+          service: 'sequence-processor',
+          enrollmentId: enrollment.id,
+          retryCount,
+          backoffMinutes
+        })
+      }
     }
   }
 
@@ -352,7 +386,11 @@ async function evaluateBranchTriggers(
 /**
  * Process a single enrollment step
  */
-async function processEnrollmentStep(enrollment: Enrollment & { sequence_name: string }): Promise<void> {
+async function processEnrollmentStep(
+  enrollment: Enrollment & { sequence_name: string },
+  cachedTrackingSettings: TrackingSettings,
+  cachedAccount: Account | null
+): Promise<void> {
   // Check if action was clicked and we need to switch branches
   if (enrollment.action_clicked_at && !enrollment.branch_switched_at) {
     // Check branch delay

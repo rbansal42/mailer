@@ -283,6 +283,8 @@ export async function createTables() {
       next_send_at TIMESTAMPTZ,
       completed_at TIMESTAMPTZ,
       trigger_data JSONB,
+      retry_count INTEGER DEFAULT 0,
+      last_error TEXT,
       UNIQUE(sequence_id, recipient_email)
     )
   `)

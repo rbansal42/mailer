@@ -1,6 +1,6 @@
 import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
-import { Mail, Clock } from 'lucide-react'
+import { Mail, Clock, Trash2 } from 'lucide-react'
 
 interface EmailNodeData {
   label: string
