@@ -13,6 +13,8 @@ import {
 } from './ui/dropdown-menu'
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar'
 import { Button } from './ui/button'
+import SetupBanner from './SetupBanner'
+import OnboardingDialog from './OnboardingDialog'
 
 const navItems = [
   { to: '/campaigns', label: 'Campaigns', icon: Mail },
@@ -178,6 +180,9 @@ export default function Layout() {
           </div>
         </header>
 
+        {/* Setup banner for incomplete configuration */}
+        <SetupBanner />
+
         {/* Main content */}
         <main
           id="main-content"
@@ -189,6 +194,9 @@ export default function Layout() {
           <Outlet />
         </main>
       </div>
+
+      {/* First-run onboarding dialog */}
+      <OnboardingDialog />
     </div>
   )
 }
