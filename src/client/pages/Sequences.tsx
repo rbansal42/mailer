@@ -641,7 +641,7 @@ function SequenceEditor({ sequence, onBack, onUpdate }: SequenceEditorProps) {
                   branches={sequence.branches || []}
                   onEditStep={(step: SequenceStep) => { setEditingStep(step); setStepDialogOpen(true) }}
                   onDeleteStep={(stepId: number) => setDeletingStepId(stepId)}
-                  onAddStep={(_afterStepOrder: number, branchId: string | null) => {
+                  onAddStep={(_order: number, branchId: string | null) => {
                     setEditingStep(null)
                     setStepDialogBranch(branchId)
                     setStepDialogOpen(true)

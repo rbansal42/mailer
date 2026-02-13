@@ -29,7 +29,7 @@ export type TriggerType = (typeof TRIGGER_TYPES)[number]
  * Human-readable labels and descriptions for each trigger type.
  * Used in UI components for branch condition editors and badge displays.
  */
-export const TRIGGER_LABELS: Record<string, { label: string; description: string }> = {
+export const TRIGGER_LABELS: Record<TriggerType, { label: string; description: string }> = {
   action_click: { label: 'Action Button Click', description: 'Recipient clicked a specific action button' },
   opened: { label: 'Opened Emails', description: 'Recipient opened a minimum number of emails' },
   clicked_any: { label: 'Clicked Any Link', description: 'Recipient clicked any link in an email' },

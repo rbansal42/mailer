@@ -4,11 +4,13 @@ import { compileTemplate, replaceVariables, injectTracking } from './template-co
 import { getNextAvailableAccount, incrementSendCount } from './account-manager'
 import { createProvider } from '../providers'
 import { getOrCreateToken, getTrackingSettings } from './tracking'
-import { BRANCH_ACTION, BRANCH_DEFAULT } from '../../shared/constants'
+import { BRANCH_ACTION, BRANCH_DEFAULT, type TriggerType } from '../../shared/constants'
 import type { Account } from './account-manager'
+import { getTodayCount } from './account-manager'
 import type { TrackingSettings } from './tracking'
 
 const MAX_RETRIES = 5
+let processing = false
 
 interface Sequence {
   id: number
@@ -51,7 +53,7 @@ interface SequenceBranch {
   sequence_id: number
   name: string
   trigger_step_id: number | null
-  trigger_type: string
+  trigger_type: TriggerType
   trigger_config: string | null
 }
 
@@ -146,7 +148,7 @@ export async function cancelEnrollment(enrollmentId: number): Promise<void> {
  */
 export async function resumeEnrollment(enrollmentId: number): Promise<void> {
   await execute(
-    `UPDATE sequence_enrollments SET status = 'active' WHERE id = ?`,
+    `UPDATE sequence_enrollments SET status = 'active', retry_count = 0, last_error = NULL, next_send_at = NOW() WHERE id = ?`,
     [enrollmentId]
   )
 }
@@ -155,66 +157,89 @@ export async function resumeEnrollment(enrollmentId: number): Promise<void> {
  * Process all due sequence emails
  */
 export async function processSequenceSteps(): Promise<number> {
-  const now = new Date().toISOString()
+  if (processing) return 0
+  processing = true
 
-  // Find due enrollments
-  const dueEnrollments = await queryAll<Enrollment & { sequence_name: string }>(
-    `SELECT e.*, s.name as sequence_name
-     FROM sequence_enrollments e
-     JOIN sequences s ON e.sequence_id = s.id
-     WHERE e.status = 'active' 
-       AND e.next_send_at <= ?
-        AND s.enabled = true`,
-    [now]
-  )
+  try {
+    const now = new Date().toISOString()
 
-  if (dueEnrollments.length === 0) {
-    return 0
-  }
+    // Find due enrollments
+    const dueEnrollments = await queryAll<Enrollment & { sequence_name: string }>(
+      `SELECT e.*, s.name as sequence_name
+       FROM sequence_enrollments e
+       JOIN sequences s ON e.sequence_id = s.id
+       WHERE e.status = 'active' 
+         AND e.next_send_at <= ?
+          AND s.enabled = true`,
+      [now]
+    )
 
-  // Cache data that's invariant across all enrollments in this cycle
-  const trackingSettings = await getTrackingSettings()
-  const availableAccount = await getNextAvailableAccount()
+    if (dueEnrollments.length === 0) {
+      return 0
+    }
 
-  let processed = 0
+    // Cache data that's invariant across all enrollments in this cycle
+    const trackingSettings = await getTrackingSettings()
+    let availableAccount = await getNextAvailableAccount()
 
-  for (const enrollment of dueEnrollments) {
-    try {
-      await processEnrollmentStep(enrollment, trackingSettings, availableAccount)
-      processed++
-    } catch (error) {
-      // Retry logic with exponential backoff
-      const retryCount = (enrollment.retry_count ?? 0) + 1
-      const backoffMinutes = Math.min(Math.pow(2, retryCount) * 5, 1440) // 5, 10, 20, 40, 80... max 24 hours
+    // Track local send count against account daily cap
+    let localSendCount = 0
+    let remainingCap = 0
+    if (availableAccount) {
+      const currentCount = await getTodayCount(availableAccount.id)
+      remainingCap = availableAccount.dailyCap - currentCount
+    }
 
-      if (retryCount >= MAX_RETRIES) {
-        // Mark as permanently failed
-        await execute(
-          `UPDATE sequence_enrollments SET status = 'failed', retry_count = ?, last_error = ?, next_send_at = NULL WHERE id = ?`,
-          [retryCount, String(error), enrollment.id]
-        )
-        logger.error('Enrollment permanently failed after max retries', {
-          service: 'sequence-processor',
-          enrollmentId: enrollment.id,
-          retryCount
-        }, error as Error)
-      } else {
-        // Schedule retry with exponential backoff
-        await execute(
-          `UPDATE sequence_enrollments SET retry_count = ?, last_error = ?, next_send_at = NOW() + make_interval(mins => ?) WHERE id = ?`,
-          [retryCount, String(error), backoffMinutes, enrollment.id]
-        )
-        logger.warn('Enrollment retry scheduled with backoff', {
-          service: 'sequence-processor',
-          enrollmentId: enrollment.id,
-          retryCount,
-          backoffMinutes
-        })
+    let processed = 0
+
+    for (const enrollment of dueEnrollments) {
+      // Check if we've exhausted the account's daily cap locally
+      if (availableAccount && localSendCount >= remainingCap) {
+        availableAccount = null
+      }
+
+      try {
+        await processEnrollmentStep(enrollment, trackingSettings, availableAccount)
+        processed++
+        localSendCount++
+      } catch (error) {
+        // Retry logic with exponential backoff
+        const retryCount = (enrollment.retry_count ?? 0) + 1
+        const backoffMinutes = Math.min(Math.pow(2, retryCount - 1) * 5, 1440) // 5, 10, 20, 40, 80... max 24 hours
+
+        const errorMessage = error instanceof Error ? error.message : String(error)
+
+        if (retryCount >= MAX_RETRIES) {
+          // Mark as permanently failed
+          await execute(
+            `UPDATE sequence_enrollments SET status = 'failed', retry_count = ?, last_error = ?, next_send_at = NULL WHERE id = ?`,
+            [retryCount, errorMessage, enrollment.id]
+          )
+          logger.error('Enrollment permanently failed after max retries', {
+            service: 'sequence-processor',
+            enrollmentId: enrollment.id,
+            retryCount
+          }, error as Error)
+        } else {
+          // Schedule retry with exponential backoff
+          await execute(
+            `UPDATE sequence_enrollments SET retry_count = ?, last_error = ?, next_send_at = NOW() + make_interval(mins => ?) WHERE id = ?`,
+            [retryCount, errorMessage, backoffMinutes, enrollment.id]
+          )
+          logger.warn('Enrollment retry scheduled with backoff', {
+            service: 'sequence-processor',
+            enrollmentId: enrollment.id,
+            retryCount,
+            backoffMinutes
+          })
+        }
       }
     }
-  }
 
-  return processed
+    return processed
+  } finally {
+    processing = false
+  }
 }
 
 /**
@@ -481,7 +506,7 @@ async function processEnrollmentStep(
   if (!account) {
     // Delay 5 minutes instead of leaving next_send_at in the past (hot loop)
     await execute(
-      `UPDATE sequence_enrollments SET next_send_at = NOW() + INTERVAL '5 minutes' WHERE id = ?`,
+      `UPDATE sequence_enrollments SET next_send_at = NOW() + INTERVAL '5 minutes', retry_count = retry_count + 1, last_error = 'No sender account available' WHERE id = ?`,
       [enrollment.id]
     )
     logger.warn('No sender account available, delaying enrollment', {
@@ -589,10 +614,6 @@ async function processEnrollmentStep(
       )
     }
   } catch (error) {
-    logger.error('Failed to send sequence step', {
-      service: 'sequence-processor',
-      enrollmentId: enrollment.id
-    }, error as Error)
     throw error
   }
 }

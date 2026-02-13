@@ -88,6 +88,7 @@ interface EnrollmentRow {
   status: string
   branch_id: string | null
   action_clicked_at: string | null
+  branch_switched_at: string | null
   enrolled_at: string
   next_send_at: string | null
   completed_at: string | null
@@ -848,7 +849,7 @@ sequencesRouter.delete('/:id/branches/:branchId', async (req, res) => {
       if (count > 0) {
         // Reset active enrollments to main path instead of leaving orphans
         await tx.unsafe(
-          `UPDATE sequence_enrollments SET branch_id = NULL, current_step = 0, next_send_at = NULL WHERE sequence_id = $1 AND branch_id = $2 AND status = 'active'`,
+          `UPDATE sequence_enrollments SET branch_id = NULL, current_step = 0, next_send_at = NULL, branch_switched_at = NULL WHERE sequence_id = $1 AND branch_id = $2 AND status = 'active'`,
           [id, branchId]
         )
       }

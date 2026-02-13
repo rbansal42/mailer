@@ -40,35 +40,17 @@ export function useSequenceLayout(
     const branchPointStep = steps.find(s => s.is_branch_point)
     const addNodeXOffset = (NODE_WIDTH - ADD_NODE_SIZE) / 2
 
-    // Add main path steps (with add nodes between them)
+    // Add main path steps
     mainSteps.forEach((step, idx) => {
-      // Insert add node before each step (except the first)
+      // Edge from previous step to this step
       if (idx > 0) {
-        const addId = `add-main-${mainSteps[idx - 1].id}-${step.id}`
-        const prevStepOrder = mainSteps[idx - 1].step_order
-        nodes.push({
-          id: addId,
-          type: 'addNode',
-          position: { x: addNodeXOffset, y },
-          data: {
-            onClick: () => onAddStepRef.current?.(prevStepOrder, null),
-          },
-        })
         edges.push({
-          id: `edge-${mainSteps[idx - 1].id}-to-add-${step.id}`,
+          id: `edge-${mainSteps[idx - 1].id}-to-${step.id}`,
           source: `step-${mainSteps[idx - 1].id}`,
-          target: addId,
-          animated: true,
-          style: { stroke: '#6366f1' },
-        })
-        edges.push({
-          id: `edge-add-${mainSteps[idx - 1].id}-to-${step.id}`,
-          source: addId,
           target: `step-${step.id}`,
           animated: true,
           style: { stroke: '#6366f1' },
         })
-        y += ADD_NODE_SIZE + VERTICAL_GAP / 2
       }
 
       const nodeId = `step-${step.id}`
@@ -134,35 +116,17 @@ export function useSequenceLayout(
           labelStyle: { fill: branch.color, fontWeight: 500, fontSize: 11 },
         })
 
-        // Add branch steps (with add nodes between them)
+        // Add branch steps
         bSteps.forEach((step, sIdx) => {
-          // Insert add node before each step (except the first)
+          // Edge from previous branch step to this step
           if (sIdx > 0) {
-            const addId = `add-branch-${branch.id}-${bSteps[sIdx - 1].id}-${step.id}`
-            const prevOrder = bSteps[sIdx - 1].branch_order ?? bSteps[sIdx - 1].step_order
-            nodes.push({
-              id: addId,
-              type: 'addNode',
-              position: { x: branchX + addNodeXOffset, y: branchY },
-              data: {
-                onClick: () => onAddStepRef.current?.(prevOrder, branch.id),
-              },
-            })
             edges.push({
-              id: `edge-${bSteps[sIdx - 1].id}-to-add-${step.id}`,
+              id: `edge-${bSteps[sIdx - 1].id}-to-${step.id}`,
               source: `step-${bSteps[sIdx - 1].id}`,
-              target: addId,
-              animated: true,
-              style: { stroke: branch.color },
-            })
-            edges.push({
-              id: `edge-add-${bSteps[sIdx - 1].id}-to-${step.id}`,
-              source: addId,
               target: `step-${step.id}`,
               animated: true,
               style: { stroke: branch.color },
             })
-            branchY += ADD_NODE_SIZE + VERTICAL_GAP / 2
           }
 
           const nodeId = `step-${step.id}`

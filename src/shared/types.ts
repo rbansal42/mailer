@@ -447,6 +447,7 @@ export interface SequenceEnrollment {
   status: 'active' | 'paused' | 'completed' | 'cancelled' | 'failed'
   branch_id: string | null
   action_clicked_at: string | null
+  branch_switched_at: string | null
   trigger_data: Record<string, unknown> | null
   enrolled_at: string
   next_send_at: string | null
