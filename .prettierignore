@@ -1,0 +1,6 @@
+dist/
+node_modules/
+.worktrees/
+assets/
+data/
+*.md

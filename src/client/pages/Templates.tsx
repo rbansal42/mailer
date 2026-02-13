@@ -6,7 +6,7 @@ import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
-import { Textarea } from '../components/ui/textarea'
+
 import { Checkbox } from '../components/ui/checkbox'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import {
@@ -24,6 +24,7 @@ import { MediaLibrarySidebar } from '@/components/media-library'
 import { cn } from '../lib/utils'
 import { RichTextEditor } from '../components/ui/rich-text-editor'
 import { ImageCropModal } from '../components/ui/image-crop-modal'
+import { ActionTriggerFields } from '../components/ActionTriggerFields'
 import DOMPurify from 'isomorphic-dompurify'
 import { nanoid } from 'nanoid'
 import { useBlockHistory } from '../stores/history'
@@ -1208,43 +1209,13 @@ function BlockProperties({ block, onChange, onOpenMediaLibrary, onOpenCropModal 
           </div>
           
           {props.isActionTrigger && (
-            <>
-              <div className="space-y-1">
-                <Label className="text-xs">When Clicked</Label>
-                <Select 
-                  value={String(props.destinationType || 'hosted')} 
-                  onValueChange={(v) => onChange({ destinationType: v })}
-                >
-                  <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="hosted">Show Thank You Page</SelectItem>
-                    <SelectItem value="external">Redirect to URL</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              {props.destinationType === 'external' ? (
-                <div className="space-y-1">
-                  <Label className="text-xs">Destination URL</Label>
-                  <Input
-                    value={String(props.destinationUrl || '')}
-                    onChange={(e) => onChange({ destinationUrl: e.target.value })}
-                    placeholder="https://..."
-                    className="h-8 text-xs"
-                  />
-                </div>
-              ) : (
-                <div className="space-y-1">
-                  <Label className="text-xs">Thank You Message</Label>
-                  <Textarea
-                    value={String(props.hostedMessage || '')}
-                    onChange={(e) => onChange({ hostedMessage: e.target.value })}
-                    placeholder="Thank you for your response!"
-                    rows={3}
-                    className="text-xs"
-                  />
-                </div>
-              )}
-            </>
+            <ActionTriggerFields
+              destinationType={String(props.destinationType || 'hosted')}
+              destinationUrl={String(props.destinationUrl || '')}
+              hostedMessage={String(props.hostedMessage || '')}
+              onChange={onChange}
+              spacing="compact"
+            />
           )}
         </div>
       )
@@ -1380,41 +1351,12 @@ function BlockProperties({ block, onChange, onOpenMediaLibrary, onOpenCropModal 
             </div>
           )}
           <hr className="my-4 border-border" />
-          <div className="space-y-2">
-            <Label className="text-xs">When Clicked</Label>
-            <Select 
-              value={String(props.destinationType || 'hosted')} 
-              onValueChange={(v) => onChange({ destinationType: v })}
-            >
-              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="hosted">Show Thank You Page</SelectItem>
-                <SelectItem value="external">Redirect to URL</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          {props.destinationType === 'external' ? (
-            <div className="space-y-2">
-              <Label className="text-xs">Destination URL</Label>
-              <Input
-                value={String(props.destinationUrl || '')}
-                onChange={(e) => onChange({ destinationUrl: e.target.value })}
-                placeholder="https://..."
-                className="h-8 text-xs"
-              />
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <Label className="text-xs">Thank You Message</Label>
-              <Textarea
-                value={String(props.hostedMessage || '')}
-                onChange={(e) => onChange({ hostedMessage: e.target.value })}
-                placeholder="Thank you for your response!"
-                rows={3}
-                className="text-xs"
-              />
-            </div>
-          )}
+          <ActionTriggerFields
+            destinationType={String(props.destinationType || 'hosted')}
+            destinationUrl={String(props.destinationUrl || '')}
+            hostedMessage={String(props.hostedMessage || '')}
+            onChange={onChange}
+          />
         </>
       )
     default:

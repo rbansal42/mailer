@@ -1,4 +1,9 @@
 import './env' // Must be first — loads .env before other modules evaluate
+import { validateEnv } from './lib/env'
+
+// Validate environment variables before any other initialization
+validateEnv()
+
 import { join } from 'path'
 import { existsSync } from 'fs'
 
