@@ -476,17 +476,22 @@ async function processEnrollmentStep(
     : {}
   recipientData.email = enrollment.recipient_email
 
-  // Get account
-  const account = await getNextAvailableAccount()
+  // Use cached account
+  const account = cachedAccount
   if (!account) {
-    logger.warn('No available account for sequence step', {
+    // Delay 5 minutes instead of leaving next_send_at in the past (hot loop)
+    await execute(
+      `UPDATE sequence_enrollments SET next_send_at = NOW() + INTERVAL '5 minutes' WHERE id = ?`,
+      [enrollment.id]
+    )
+    logger.warn('No sender account available, delaying enrollment', {
       service: 'sequence-processor',
       enrollmentId: enrollment.id
     })
     return
   }
 
-  const trackingSettings = await getTrackingSettings()
+  const trackingSettings = cachedTrackingSettings
 
   try {
     // Compile email
@@ -563,7 +568,7 @@ async function processEnrollmentStep(
       const nextSendAt = calculateNextSendAt(nextStep)
       await execute(
         `UPDATE sequence_enrollments 
-         SET current_step = ?, next_send_at = ?
+         SET current_step = ?, next_send_at = ?, retry_count = 0, last_error = NULL
          WHERE id = ?`,
         [nextStep.step_order, nextSendAt, enrollment.id]
       )
@@ -578,7 +583,7 @@ async function processEnrollmentStep(
       // Complete
       await execute(
         `UPDATE sequence_enrollments 
-         SET status = 'completed', completed_at = CURRENT_TIMESTAMP, next_send_at = NULL
+         SET status = 'completed', completed_at = CURRENT_TIMESTAMP, next_send_at = NULL, retry_count = 0, last_error = NULL
          WHERE id = ?`,
         [enrollment.id]
       )

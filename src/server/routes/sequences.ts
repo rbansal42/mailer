@@ -92,6 +92,8 @@ interface EnrollmentRow {
   next_send_at: string | null
   completed_at: string | null
   trigger_data: string | null
+  retry_count: number
+  last_error: string | null
 }
 
 // GET / - List all sequences
