@@ -6,6 +6,8 @@
  * to import from a single source of truth.
  */
 
+import type { TriggerType } from './constants'
+
 // Templates & Mails
 
 export interface Template {
@@ -389,9 +391,10 @@ export interface SequenceBranch {
   color: string
   parent_branch_id: string | null
   trigger_step_id: number | null
-  trigger_type: 'action_click' | 'opened' | 'clicked_any' | 'no_engagement'
+  trigger_type: TriggerType
   trigger_config: Record<string, unknown>
   created_at: string
+  updated_at: string
 }
 
 export interface SequenceStep {
@@ -441,13 +444,16 @@ export interface SequenceEnrollment {
   recipient_email: string
   recipientData: Record<string, string> | null
   current_step: number
-  status: 'active' | 'paused' | 'completed' | 'cancelled'
+  status: 'active' | 'paused' | 'completed' | 'cancelled' | 'failed'
   branch_id: string | null
   action_clicked_at: string | null
+  branch_switched_at: string | null
   trigger_data: Record<string, unknown> | null
   enrolled_at: string
   next_send_at: string | null
   completed_at: string | null
+  retry_count: number
+  last_error: string | null
 }
 
 export interface SequenceListItem {
@@ -469,7 +475,7 @@ export interface CreateBranchRequest {
   color?: string
   parentBranchId?: string
   triggerStepId?: number
-  triggerType: 'action_click' | 'opened' | 'clicked_any' | 'no_engagement'
+  triggerType: TriggerType
   triggerConfig?: Record<string, unknown>
 }
 
@@ -478,7 +484,7 @@ export interface UpdateBranchRequest {
   description?: string
   color?: string
   triggerStepId?: number
-  triggerType?: 'action_click' | 'opened' | 'clicked_any' | 'no_engagement'
+  triggerType?: TriggerType
   triggerConfig?: Record<string, unknown>
 }
 

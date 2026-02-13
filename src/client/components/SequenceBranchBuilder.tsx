@@ -2,17 +2,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Plus, GitBranch, Clock, Pencil, Trash2 } from 'lucide-react'
 import type { SequenceStep, SequenceBranch } from '@/lib/api'
-import { BRANCH_ACTION, BRANCH_DEFAULT } from '../../shared/constants'
-
-const TRIGGER_BADGES: Record<string, string> = {
-  action_click: 'On Click',
-  opened: 'Opens',
-  clicked_any: 'Any Click',
-  no_engagement: 'No Engagement',
-}
+import { BRANCH_ACTION, BRANCH_DEFAULT, TRIGGER_LABELS } from '../../shared/constants'
 
 function getTriggerBadgeText(branch: SequenceBranch): string {
-  const base = TRIGGER_BADGES[branch.trigger_type] || branch.trigger_type
+  const base = TRIGGER_LABELS[branch.trigger_type]?.label || branch.trigger_type
   if (branch.trigger_type === 'opened' && branch.trigger_config?.minOpens) {
     return `Opens >= ${branch.trigger_config.minOpens}`
   }

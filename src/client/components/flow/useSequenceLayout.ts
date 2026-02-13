@@ -5,6 +5,7 @@ import type { SequenceStep, SequenceBranch } from '../../../shared/types'
 const NODE_WIDTH = 260
 const NODE_HEIGHT = 90
 const BRANCH_NODE_HEIGHT = 50
+const ADD_NODE_SIZE = 28
 const VERTICAL_GAP = 60
 const HORIZONTAL_GAP = 40
 
@@ -13,11 +14,14 @@ export function useSequenceLayout(
   branches: SequenceBranch[],
   onEditStep: (step: SequenceStep) => void,
   onDeleteStep: (stepId: number) => void,
+  onAddStep?: (afterStepOrder: number, branchId: string | null) => void,
 ) {
   const onEditRef = useRef(onEditStep)
   const onDeleteRef = useRef(onDeleteStep)
+  const onAddStepRef = useRef(onAddStep)
   onEditRef.current = onEditStep
   onDeleteRef.current = onDeleteStep
+  onAddStepRef.current = onAddStep
 
   return useMemo(() => {
     const nodes: Node[] = []
@@ -34,9 +38,21 @@ export function useSequenceLayout(
 
     let y = 0
     const branchPointStep = steps.find(s => s.is_branch_point)
+    const addNodeXOffset = (NODE_WIDTH - ADD_NODE_SIZE) / 2
 
     // Add main path steps
     mainSteps.forEach((step, idx) => {
+      // Edge from previous step to this step
+      if (idx > 0) {
+        edges.push({
+          id: `edge-${mainSteps[idx - 1].id}-to-${step.id}`,
+          source: `step-${mainSteps[idx - 1].id}`,
+          target: `step-${step.id}`,
+          animated: true,
+          style: { stroke: '#6366f1' },
+        })
+      }
+
       const nodeId = `step-${step.id}`
       nodes.push({
         id: nodeId,
@@ -53,16 +69,6 @@ export function useSequenceLayout(
           onDelete: () => onDeleteRef.current(step.id),
         },
       })
-
-      if (idx > 0) {
-        edges.push({
-          id: `edge-${mainSteps[idx - 1].id}-${step.id}`,
-          source: `step-${mainSteps[idx - 1].id}`,
-          target: nodeId,
-          animated: true,
-          style: { stroke: '#6366f1' },
-        })
-      }
 
       y += NODE_HEIGHT + VERTICAL_GAP
     })
@@ -98,12 +104,12 @@ export function useSequenceLayout(
         let branchY = y
         const bSteps = branchSteps[branch.id] || []
 
-        // Edge from branch point to first step (or end node)
-        const firstStepId = bSteps.length > 0 ? `step-${bSteps[0].id}` : `end-${branch.id}`
+        // Edge from branch point to first step (or add node if branch is empty)
+        const firstTargetId = bSteps.length > 0 ? `step-${bSteps[0].id}` : `add-before-end-${branch.id}`
         edges.push({
           id: `edge-branch-${branch.id}`,
           source: `branch-${branchPointStep.id}`,
-          target: firstStepId,
+          target: firstTargetId,
           label: branch.name,
           animated: true,
           style: { stroke: branch.color },
@@ -112,6 +118,17 @@ export function useSequenceLayout(
 
         // Add branch steps
         bSteps.forEach((step, sIdx) => {
+          // Edge from previous branch step to this step
+          if (sIdx > 0) {
+            edges.push({
+              id: `edge-${bSteps[sIdx - 1].id}-to-${step.id}`,
+              source: `step-${bSteps[sIdx - 1].id}`,
+              target: `step-${step.id}`,
+              animated: true,
+              style: { stroke: branch.color },
+            })
+          }
+
           const nodeId = `step-${step.id}`
           nodes.push({
             id: nodeId,
@@ -129,18 +146,34 @@ export function useSequenceLayout(
             },
           })
 
-          if (sIdx > 0) {
-            edges.push({
-              id: `edge-${bSteps[sIdx - 1].id}-${step.id}`,
-              source: `step-${bSteps[sIdx - 1].id}`,
-              target: nodeId,
-              animated: true,
-              style: { stroke: branch.color },
-            })
-          }
-
           branchY += NODE_HEIGHT + VERTICAL_GAP
         })
+
+        // Add "add step" node before end node
+        const lastBranchStep = bSteps[bSteps.length - 1]
+        const addBeforeEndId = `add-before-end-${branch.id}`
+        const lastBranchOrder = lastBranchStep
+          ? (lastBranchStep.branch_order ?? lastBranchStep.step_order)
+          : 0
+        nodes.push({
+          id: addBeforeEndId,
+          type: 'addNode',
+          position: { x: branchX + addNodeXOffset, y: branchY },
+          data: {
+            onClick: () => onAddStepRef.current?.(lastBranchOrder, branch.id),
+          },
+        })
+        if (bSteps.length > 0) {
+          edges.push({
+            id: `edge-last-to-add-end-${branch.id}`,
+            source: `step-${lastBranchStep.id}`,
+            target: addBeforeEndId,
+            style: { stroke: branch.color },
+          })
+        }
+        // When branch is empty, the edge from branch point to add-before-end
+        // is already created above via firstTargetId
+        branchY += ADD_NODE_SIZE + VERTICAL_GAP / 2
 
         // Add end node
         const endNodeId = `end-${branch.id}`
@@ -151,17 +184,32 @@ export function useSequenceLayout(
           data: {},
         })
 
-        if (bSteps.length > 0) {
-          edges.push({
-            id: `edge-to-end-${branch.id}`,
-            source: `step-${bSteps[bSteps.length - 1].id}`,
-            target: endNodeId,
-            style: { stroke: branch.color },
-          })
-        }
+        edges.push({
+          id: `edge-add-to-end-${branch.id}`,
+          source: addBeforeEndId,
+          target: endNodeId,
+          style: { stroke: branch.color },
+        })
       })
     } else if (mainSteps.length > 0) {
-      // No branches - add single end node
+      // No branches - add "add step" node then end node
+      const lastMainStep = mainSteps[mainSteps.length - 1]
+      const addBeforeEndMainId = 'add-before-end-main'
+      nodes.push({
+        id: addBeforeEndMainId,
+        type: 'addNode',
+        position: { x: addNodeXOffset, y },
+        data: {
+          onClick: () => onAddStepRef.current?.(lastMainStep.step_order, null),
+        },
+      })
+      edges.push({
+        id: 'edge-last-to-add-end-main',
+        source: `step-${lastMainStep.id}`,
+        target: addBeforeEndMainId,
+      })
+      y += ADD_NODE_SIZE + VERTICAL_GAP / 2
+
       const endNodeId = 'end-main'
       nodes.push({
         id: endNodeId,
@@ -170,8 +218,8 @@ export function useSequenceLayout(
         data: {},
       })
       edges.push({
-        id: 'edge-to-end-main',
-        source: `step-${mainSteps[mainSteps.length - 1].id}`,
+        id: 'edge-add-to-end-main',
+        source: addBeforeEndMainId,
         target: endNodeId,
       })
     }
