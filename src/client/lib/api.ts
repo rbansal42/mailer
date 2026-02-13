@@ -17,7 +17,7 @@ import type {
 export type {
   Template, Mail, Block, Draft,
   Campaign, CampaignDetail, CampaignAnalytics,
-  SenderAccount,
+  SenderAccount, GmailConfig, SmtpConfig,
   QueueItem, AppSettings,
   CertificateTemplate, LogoConfig, SignatoryConfig, CertificateConfig, CertificateData, GenerateResponse,
   Media, MediaUsage, SuppressionItem,
@@ -118,6 +118,10 @@ export const api = {
     request<void>(`/drafts/${id}`, { method: 'DELETE' }),
   duplicateDraft: (id: number) =>
     request<{ id: number; name: string }>(`/drafts/${id}/duplicate`, { method: 'POST' }),
+  bulkDeleteDrafts: (ids: number[]) =>
+    request<{ deleted: number }>('/drafts/bulk', { method: 'DELETE', body: JSON.stringify({ ids }) }),
+  bulkDuplicateDrafts: (ids: number[]) =>
+    request<{ created: number }>('/drafts/bulk-duplicate', { method: 'POST', body: JSON.stringify({ ids }) }),
 
   // Campaigns (History)
   getCampaigns: () => request<Campaign[]>('/campaigns'),
@@ -127,6 +131,10 @@ export const api = {
     request<void>(`/campaigns/${id}`, { method: 'DELETE' }),
   duplicateCampaign: (id: number) =>
     request<{ id: number; name: string }>(`/campaigns/${id}/duplicate`, { method: 'POST' }),
+  bulkDeleteCampaigns: (ids: number[]) =>
+    request<{ deleted: number }>('/campaigns/bulk', { method: 'DELETE', body: JSON.stringify({ ids }) }),
+  bulkDuplicateCampaigns: (ids: number[]) =>
+    request<{ created: number }>('/campaigns/bulk-duplicate', { method: 'POST', body: JSON.stringify({ ids }) }),
 
   // Accounts
   getAccounts: () => request<SenderAccount[]>('/accounts'),
@@ -463,7 +471,7 @@ export const sequences = {
   
   updateStep: (sequenceId: number, stepId: number, data: {
     subject?: string
-    templateId?: number
+    templateId?: number | null
     delayDays?: number
     delayHours?: number
     sendTime?: string

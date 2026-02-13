@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { ChevronLeft, Download, RefreshCw, Trash2, CheckCircle2, XCircle, Clock, Loader2, Eye, MousePointer, Mail, Search, Copy, CalendarClock } from 'lucide-react'
 import { Input } from '../components/ui/input'
 import { toast } from 'sonner'
+import { getTimezoneAbbreviation } from '../lib/utils'
 
 
 export default function History() {
@@ -71,7 +72,9 @@ export default function History() {
                 >
                   <td className="p-3 font-medium">{campaign.name || 'Untitled'}</td>
                   <td className="p-3 text-muted-foreground">
-                    {campaign.startedAt ? new Date(campaign.startedAt).toLocaleString() : '-'}
+                    {campaign.startedAt ? (
+                      <>{new Date(campaign.startedAt).toLocaleString()} <span className="text-xs">{getTimezoneAbbreviation()}</span></>
+                    ) : '-'}
                   </td>
                   <td className="p-3">
                     <span className="text-green-600">{campaign.successful}</span>
@@ -109,7 +112,7 @@ function StatusBadge({ campaign }: { campaign: Campaign }) {
         </span>
         {campaign.scheduledFor && (
           <span className="text-xs text-muted-foreground pl-2">
-            {new Date(campaign.scheduledFor).toLocaleString()}
+            {new Date(campaign.scheduledFor).toLocaleString()} {getTimezoneAbbreviation()}
           </span>
         )}
       </div>
@@ -224,7 +227,9 @@ function CampaignDetails({ id, onBack }: { id: number; onBack: () => void }) {
           <div>
             <p className="text-muted-foreground">Sent</p>
             <p className="font-medium">
-              {campaign.startedAt ? new Date(campaign.startedAt).toLocaleString() : '-'}
+              {campaign.startedAt ? (
+                <>{new Date(campaign.startedAt).toLocaleString()} <span className="text-xs text-muted-foreground font-normal">{getTimezoneAbbreviation()}</span></>
+              ) : '-'}
             </p>
           </div>
           <div>

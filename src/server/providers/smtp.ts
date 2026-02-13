@@ -10,17 +10,20 @@ interface SmtpConfig {
   pass: string
   fromEmail: string
   fromName: string
+  replyTo?: string
 }
 
 export class SmtpProvider extends EmailProvider {
   private transporter: Transporter
   private fromEmail: string
   private fromName: string
+  private replyTo?: string
 
   constructor(config: SmtpConfig) {
     super()
     this.fromEmail = config.fromEmail
     this.fromName = config.fromName
+    this.replyTo = config.replyTo
     this.transporter = nodemailer.createTransport({
       host: config.host,
       port: config.port,
@@ -37,11 +40,13 @@ export class SmtpProvider extends EmailProvider {
   }
 
   async send(options: SendOptions): Promise<void> {
+    const replyTo = options.replyTo || this.replyTo
     const mailOptions = {
-      from: `"${this.fromName}" <${this.fromEmail}>`,
+      from: `"${(this.fromName || '').replace(/"/g, '')}" <${this.fromEmail}>`,
       to: options.to,
       cc: options.cc?.join(', ') || undefined,
       bcc: options.bcc?.join(', ') || undefined,
+      replyTo: replyTo || undefined,
       subject: options.subject,
       html: options.html,
       attachments: options.attachments,

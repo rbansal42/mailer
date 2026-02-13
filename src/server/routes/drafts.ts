@@ -1,6 +1,6 @@
 import { Router } from 'express'
-import { queryAll, queryOne, execute, safeJsonParse } from '../db'
-import { createDraftSchema, updateDraftSchema, validate } from '../lib/validation'
+import { queryAll, queryOne, execute, sql, safeJsonParse } from '../db'
+import { createDraftSchema, updateDraftSchema, bulkIdsSchema, validate } from '../lib/validation'
 import { logger } from '../lib/logger'
 
 export const draftsRouter = Router()
@@ -267,6 +267,86 @@ draftsRouter.post('/:id/duplicate', async (req, res) => {
   } catch (error) {
     logger.error('Failed to duplicate draft', { service: 'drafts' }, error as Error)
     res.status(500).json({ error: 'Failed to duplicate draft' })
+  }
+})
+
+// Bulk delete drafts
+draftsRouter.delete('/bulk', async (req, res) => {
+  const validation = validate(bulkIdsSchema, req.body)
+  if (!validation.success) {
+    return res.status(400).json({ error: validation.error })
+  }
+
+  const { ids } = validation.data
+
+  try {
+    const result = await sql.begin(async (tx: any) => {
+      const placeholders = ids.map((_: number, i: number) => `$${i + 1}`).join(', ')
+      const rows = await tx.unsafe(
+        `DELETE FROM drafts WHERE id IN (${placeholders}) AND user_id = $${ids.length + 1} RETURNING id`,
+        [...ids, req.userId]
+      )
+      return rows.length
+    })
+
+    logger.info('Bulk drafts deleted', { requestId: (req as any).requestId, deleted: result, ids })
+    res.json({ deleted: result })
+  } catch (error) {
+    logger.error('Failed to bulk delete drafts', { requestId: (req as any).requestId }, error as Error)
+    res.status(500).json({ error: 'Failed to bulk delete drafts' })
+  }
+})
+
+// Bulk duplicate drafts
+draftsRouter.post('/bulk-duplicate', async (req, res) => {
+  const validation = validate(bulkIdsSchema, req.body)
+  if (!validation.success) {
+    return res.status(400).json({ error: validation.error })
+  }
+
+  const { ids } = validation.data
+
+  try {
+    const created = await sql.begin(async (tx: any) => {
+      let count = 0
+      for (const id of ids) {
+        const rows = await tx.unsafe(
+          `SELECT * FROM drafts WHERE id = $1 AND user_id = $2`,
+          [id, req.userId]
+        )
+        const original = rows[0] as DraftRow | undefined
+        if (!original) continue
+
+        const newName = await getUniqueDraftName(`Copy of ${original.name || 'Untitled'}`, req.userId)
+
+        await tx.unsafe(
+          `INSERT INTO drafts (user_id, name, template_id, mail_id, list_id, subject, test_email, recipients, recipients_text, variables, cc, bcc)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+          [
+            req.userId,
+            newName,
+            original.template_id ?? null,
+            original.mail_id ?? null,
+            original.list_id ?? null,
+            original.subject ?? null,
+            original.test_email ?? null,
+            original.recipients ?? null,
+            original.recipients_text ?? null,
+            original.variables ?? null,
+            original.cc ?? null,
+            original.bcc ?? null,
+          ]
+        )
+        count++
+      }
+      return count
+    })
+
+    logger.info('Bulk drafts duplicated', { requestId: (req as any).requestId, created, ids })
+    res.json({ created })
+  } catch (error) {
+    logger.error('Failed to bulk duplicate drafts', { requestId: (req as any).requestId }, error as Error)
+    res.status(500).json({ error: 'Failed to bulk duplicate drafts' })
   }
 })
 

@@ -46,7 +46,9 @@ export const saveAsTemplateSchema = z.object({
 // Provider-specific config schemas
 const gmailConfigSchema = z.object({
   email: z.string().email(),
-  appPassword: z.string().min(1)
+  appPassword: z.string().min(1),
+  fromName: z.string().optional(),
+  replyTo: z.string().email().optional(),
 })
 
 const smtpConfigSchema = z.object({
@@ -56,7 +58,8 @@ const smtpConfigSchema = z.object({
   user: z.string().min(1),
   pass: z.string().min(1),
   fromEmail: z.string().email(),
-  fromName: z.string().optional()
+  fromName: z.string().optional(),
+  replyTo: z.string().email().optional(),
 })
 
 // Account schemas
@@ -203,6 +206,11 @@ export const createBranchSchema = z.object({
 })
 
 export const updateBranchSchema = createBranchSchema.partial().omit({ id: true })
+
+// Bulk operations schema
+export const bulkIdsSchema = z.object({
+  ids: z.array(z.number().int().positive()).min(1, 'At least one ID required').max(100, 'Maximum 100 items per bulk operation'),
+})
 
 // Validation helper
 export function validate<T>(schema: z.ZodSchema<T>, data: unknown): { success: true; data: T } | { success: false; error: string } {
