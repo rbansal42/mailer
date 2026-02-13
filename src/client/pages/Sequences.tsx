@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from '@/components/ui/alert-dialog'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { SequenceBranchBuilder } from '@/components/SequenceBranchBuilder'
 const SequenceFlowBuilder = lazy(() => import('@/components/SequenceFlowBuilder'))
 import { BranchConditionEditor } from '@/components/BranchConditionEditor'
@@ -26,15 +27,18 @@ import {
   Download,
   Sparkles,
   List,
-  Workflow
+  Workflow,
+  FileText,
+  Library
 } from 'lucide-react'
 import { 
   api,
+  mails as mailsApi,
   Sequence, 
   SequenceStep,
   SequenceBranch,
   GenerateSequenceResponse,
-  sequences as sequencesApi
+  sequences as sequencesApi,
 } from '@/lib/api'
 
 
@@ -747,10 +751,51 @@ interface StepDialogProps {
   onSaved: () => void
 }
 
+type ContentSource = 'none' | 'library'
+type ContentType = 'template' | 'mail'
+
 function StepDialog({ open, onOpenChange, sequenceId, branchId, step, onSaved }: StepDialogProps) {
   const [subject, setSubject] = useState('')
   const [delayDays, setDelayDays] = useState(0)
   const [delayHours, setDelayHours] = useState(0)
+  const [contentSource, setContentSource] = useState<ContentSource>('none')
+  const [selectedContentId, setSelectedContentId] = useState<string>('')  // "template:123" or "mail:456"
+
+  // Fetch mails and templates only when dialog is open
+  const { data: mailsList } = useQuery({
+    queryKey: ['mails'],
+    queryFn: mailsApi.list,
+    enabled: open,
+  })
+
+  const { data: templatesList } = useQuery({
+    queryKey: ['templates'],
+    queryFn: api.getTemplates,
+    enabled: open,
+  })
+
+  // Parse the selected content ID into type and numeric ID
+  const parseContentId = (value: string): { type: ContentType; id: number } | null => {
+    if (!value) return null
+    const [type, idStr] = value.split(':')
+    const id = parseInt(idStr, 10)
+    if ((type === 'template' || type === 'mail') && !isNaN(id)) {
+      return { type, id }
+    }
+    return null
+  }
+
+  // Get display name for selected content
+  const getSelectedContentName = (): string | null => {
+    const parsed = parseContentId(selectedContentId)
+    if (!parsed) return null
+    if (parsed.type === 'template') {
+      const t = templatesList?.find(t => t.id === parsed.id)
+      return t ? t.name : 'Template not found'
+    }
+    const m = mailsList?.find(m => m.id === parsed.id)
+    return m ? m.name : 'Mail not found'
+  }
 
   // Reset form when dialog opens
   const handleOpenChange = (newOpen: boolean) => {
@@ -758,26 +803,65 @@ function StepDialog({ open, onOpenChange, sequenceId, branchId, step, onSaved }:
       setSubject(step?.subject || '')
       setDelayDays(step?.delay_days || 0)
       setDelayHours(step?.delay_hours || 0)
+
+      // Determine content source from existing step
+      if (step?.template_id) {
+        setContentSource('library')
+        setSelectedContentId(`template:${step.template_id}`)
+      } else if (step?.blocks && step.blocks.length > 0) {
+        // Step has custom blocks (from a mail or inline edit) — show as library/none
+        setContentSource('none')
+        setSelectedContentId('')
+      } else {
+        setContentSource('none')
+        setSelectedContentId('')
+      }
     }
     onOpenChange(newOpen)
   }
 
   const saveMutation = useMutation({
     mutationFn: async () => {
+      const parsed = contentSource === 'library' ? parseContentId(selectedContentId) : null
+
+      // Determine templateId and blocks to send
+      let templateId: number | undefined | null = undefined
+      let blocks: Array<{ id: string; type: string; props: Record<string, unknown> }> | null | undefined = undefined
+
+      if (parsed) {
+        if (parsed.type === 'template') {
+          templateId = parsed.id
+          blocks = null  // Clear any custom blocks when using a template
+        } else if (parsed.type === 'mail') {
+          // For mails, copy the blocks from the mail into the step
+          const mail = mailsList?.find(m => m.id === parsed.id)
+          if (mail?.blocks) {
+            blocks = mail.blocks
+            templateId = null  // Clear template reference
+          }
+        }
+      } else if (contentSource === 'none') {
+        // Explicitly clear content when switching to "none"
+        templateId = null
+        blocks = null
+      }
+
       if (step) {
-        // Update existing step
         return sequencesApi.updateStep(sequenceId, step.id, {
           subject,
           delayDays,
           delayHours,
+          ...(templateId !== undefined && { templateId }),
+          ...(blocks !== undefined && { blocks }),
         })
       } else {
-        // Create new step
         return sequencesApi.addStep(sequenceId, {
           subject,
           delayDays,
           delayHours,
           branchId,
+          ...(templateId !== undefined && templateId !== null && { templateId }),
+          ...(blocks !== undefined && blocks !== null && { blocks }),
         })
       }
     },
@@ -790,6 +874,9 @@ function StepDialog({ open, onOpenChange, sequenceId, branchId, step, onSaved }:
       toast.error(step ? 'Failed to update step' : 'Failed to add step')
     },
   })
+
+  const selectedName = getSelectedContentName()
+  const isContentNotFound = selectedName === 'Template not found' || selectedName === 'Mail not found'
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -806,6 +893,89 @@ function StepDialog({ open, onOpenChange, sequenceId, branchId, step, onSaved }:
               placeholder="e.g., Welcome to our community!"
             />
           </div>
+
+          {/* Content Source */}
+          <div className="space-y-2">
+            <Label>Email Content</Label>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant={contentSource === 'none' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => {
+                  setContentSource('none')
+                  setSelectedContentId('')
+                }}
+                className="flex-1"
+              >
+                <FileText className="h-3.5 w-3.5 mr-1.5" />
+                Subject Only
+              </Button>
+              <Button
+                type="button"
+                variant={contentSource === 'library' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setContentSource('library')}
+                className="flex-1"
+              >
+                <Library className="h-3.5 w-3.5 mr-1.5" />
+                From Library
+              </Button>
+            </div>
+          </div>
+
+          {/* Library Picker */}
+          {contentSource === 'library' && (
+            <div className="space-y-2">
+              <Label>Select Template or Mail</Label>
+              <Select value={selectedContentId} onValueChange={setSelectedContentId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose email content..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {templatesList && templatesList.length > 0 && (
+                    <SelectGroup>
+                      <SelectLabel>Templates</SelectLabel>
+                      {templatesList.map((template) => (
+                        <SelectItem key={`template:${template.id}`} value={`template:${template.id}`}>
+                          {template.name}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  )}
+                  {mailsList && mailsList.length > 0 && (
+                    <SelectGroup>
+                      <SelectLabel>Saved Mails</SelectLabel>
+                      {mailsList.map((mail) => (
+                        <SelectItem key={`mail:${mail.id}`} value={`mail:${mail.id}`}>
+                          {mail.name}
+                          {mail.status === 'sent' && (
+                            <span className="ml-1.5 text-xs text-muted-foreground">(sent)</span>
+                          )}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  )}
+                  {(!templatesList || templatesList.length === 0) && (!mailsList || mailsList.length === 0) && (
+                    <SelectItem value="__empty" disabled>
+                      No templates or mails available
+                    </SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+              {isContentNotFound && (
+                <p className="text-xs text-destructive">
+                  The previously linked content has been deleted. Please select new content or switch to &quot;Subject Only&quot;.
+                </p>
+              )}
+              {selectedContentId && !isContentNotFound && selectedName && (
+                <p className="text-xs text-muted-foreground">
+                  Selected: {selectedName}
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Delay (days)</Label>

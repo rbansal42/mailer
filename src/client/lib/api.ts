@@ -471,7 +471,7 @@ export const sequences = {
   
   updateStep: (sequenceId: number, stepId: number, data: {
     subject?: string
-    templateId?: number
+    templateId?: number | null
     delayDays?: number
     delayHours?: number
     sendTime?: string

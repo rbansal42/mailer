@@ -37,8 +37,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '../components/ui/alert-dialog'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog'
-import { Plus, Send, Save, ChevronLeft, ChevronRight, AlertCircle, CheckCircle2, Loader2, Search, Copy, Clock, Eye, Sun, Moon, Trash2, X } from 'lucide-react'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../components/ui/dialog'
+import { Plus, Send, Save, ChevronLeft, ChevronRight, AlertCircle, CheckCircle2, Loader2, Search, Copy, Clock, Eye, Sun, Moon, Trash2, X, Mail as MailIcon, Users, TriangleAlert } from 'lucide-react'
 import type { Recipient } from '../lib/api'
 import { getTimezoneAbbreviation } from '../lib/utils'
 
@@ -342,6 +342,10 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
   const [saveListOpen, setSaveListOpen] = useState(false)
   const [newListName, setNewListName] = useState('')
   
+  // Send confirmation dialog state
+  const [showSendConfirm, setShowSendConfirm] = useState(false)
+  const [testSentThisSession, setTestSentThisSession] = useState(false)
+
   // Scheduling state
   const [showScheduler, setShowScheduler] = useState(false)
   const [scheduledDateTime, setScheduledDateTime] = useState('')
@@ -402,6 +406,16 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
       fetchPreview()
     }
   }, [showRenderedPreview, fetchPreview])
+
+  // Fetch sender accounts for the confirmation dialog
+  const { data: senderAccounts } = useQuery({
+    queryKey: ['accounts'],
+    queryFn: api.getAccounts,
+    enabled: showSendConfirm, // only fetch when dialog is open
+  })
+  const primarySender = senderAccounts
+    ?.filter(a => a.enabled)
+    .sort((a, b) => a.priority - b.priority)[0] ?? null
 
   // Load lists on mount
   useEffect(() => {
@@ -503,6 +517,7 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
 
       if (response.ok) {
         setTestResult({ success: true, message: `Test sent to ${parsedTestEmails.length} address(es)` })
+        setTestSentThisSession(true)
       } else {
         const data = await response.json()
         setTestResult({ success: false, message: data.error || 'Failed to send test' })
@@ -660,7 +675,7 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
             <Clock className="h-4 w-4 mr-1" />
             Schedule
           </Button>
-          <Button size="sm" onClick={() => handleSend()} disabled={!canSend || sending}>
+          <Button size="sm" onClick={() => setShowSendConfirm(true)} disabled={!canSend || sending}>
             <Send className="h-4 w-4 mr-1" />
             Send Now
           </Button>
@@ -1147,6 +1162,128 @@ function CampaignComposer({ draft, templates, mails, onBack }: ComposerProps) {
             <Button onClick={handleScheduledSend} disabled={!scheduledDateTime}>
               <Clock className="h-4 w-4 mr-1" />
               Schedule
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Send Confirmation Dialog */}
+      <Dialog open={showSendConfirm} onOpenChange={setShowSendConfirm}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Confirm Send</DialogTitle>
+            <DialogDescription>Review before sending</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            {/* Subject */}
+            <div className="flex items-start gap-3 rounded-lg border p-3">
+              <MailIcon className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground">Subject</p>
+                <p className="text-sm font-medium truncate">
+                  {replaceVariables(subject, recipients[0] || {})}
+                </p>
+              </div>
+            </div>
+
+            {/* From account */}
+            <div className="flex items-start gap-3 rounded-lg border p-3">
+              <Send className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground">From</p>
+                {primarySender ? (
+                  <p className="text-sm font-medium">
+                    {primarySender.name}
+                    <span className="text-muted-foreground font-normal">
+                      {' '}({primarySender.providerType === 'gmail'
+                        ? (primarySender.config as { email: string }).email
+                        : (primarySender.config as { fromEmail: string }).fromEmail})
+                    </span>
+                  </p>
+                ) : senderAccounts === undefined ? (
+                  <p className="text-sm text-muted-foreground">Loading...</p>
+                ) : (
+                  <p className="text-sm text-destructive">No enabled sender accounts</p>
+                )}
+              </div>
+            </div>
+
+            {/* Recipients */}
+            <div className="flex items-start gap-3 rounded-lg border p-3">
+              <Users className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground">Recipients</p>
+                <p className="text-sm font-medium">
+                  Sending to {recipients.length} recipient{recipients.length !== 1 ? 's' : ''}
+                </p>
+              </div>
+            </div>
+
+            {/* Warnings */}
+            {(validation.invalidEmails.length > 0 || validation.duplicates.length > 0 || !testSentThisSession) && (
+              <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/5 p-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <TriangleAlert className="h-4 w-4 text-yellow-600 shrink-0" />
+                  <p className="text-xs font-medium text-yellow-600">Warnings</p>
+                </div>
+                <div className="space-y-1 pl-6">
+                  {validation.invalidEmails.length > 0 && (
+                    <p className="text-xs text-yellow-700">
+                      {validation.invalidEmails.length} invalid email{validation.invalidEmails.length !== 1 ? 's' : ''} will be skipped
+                    </p>
+                  )}
+                  {validation.duplicates.length > 0 && (
+                    <p className="text-xs text-yellow-700">
+                      {validation.duplicates.length} duplicate email{validation.duplicates.length !== 1 ? 's' : ''} will be skipped
+                    </p>
+                  )}
+                  {!testSentThisSession && (
+                    <p className="text-xs text-yellow-700">
+                      No test email sent this session
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Send timing */}
+            <div className="flex items-start gap-3 rounded-lg border p-3">
+              <Clock className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground">Timing</p>
+                <p className="text-sm font-medium">Send immediately</p>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="flex-col gap-2 sm:flex-row">
+            <Button variant="outline" onClick={() => setShowSendConfirm(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="secondary"
+              disabled={!canSendTest || sendingTest}
+              onClick={() => {
+                handleSendTest()
+              }}
+            >
+              {sendingTest ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-1" />
+              ) : (
+                <Send className="h-3 w-3 mr-1" />
+              )}
+              Send Test First
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                setShowSendConfirm(false)
+                handleSend()
+              }}
+            >
+              <Send className="h-3 w-3 mr-1" />
+              Send to {recipients.length} Recipient{recipients.length !== 1 ? 's' : ''}
             </Button>
           </DialogFooter>
         </DialogContent>
